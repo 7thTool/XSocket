@@ -13,7 +13,7 @@ if(WIN32)
   # Same name on 64bit systems
   link_libraries(ws2_32.lib Mswsock.lib)
 else()
-  add_definitions(-g -W -Wall -fPIC)
+  add_definitions(-g -W -Wall -fPIC -fpermissive)
 endif()
 
 if(WIN32)

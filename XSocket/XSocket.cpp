@@ -43,35 +43,35 @@ void ReleaseNetEnv()
 #endif//
 }
 
-double H2N(double n)
-{
-	return htond(n);
-}
+// double H2N(double n)
+// {
+// 	return htond(n);
+// }
 
-double N2H(double n)
-{
-	return ntohd(n);
-}
+// double N2H(double n)
+// {
+// 	return ntohd(n);
+// }
 
-float H2N(float n)
-{
-	return htonf(n);
-}
+// float H2N(float n)
+// {
+// 	return htonf(n);
+// }
 
-float N2H(float n)
-{
-	return ntohf(n);
-}
+// float N2H(float n)
+// {
+// 	return ntohf(n);
+// }
 
-uint64_t H2N(uint64_t n)
-{
-	return htonll(n);
-}
+// uint64_t H2N(uint64_t n)
+// {
+// 	return htonll(n);
+// }
 
-uint64_t N2H(uint64_t n)
-{
-	return ntohll(n);
-}
+// uint64_t N2H(uint64_t n)
+// {
+// 	return ntohll(n);
+// }
 
 u_long H2N(u_long n)
 {

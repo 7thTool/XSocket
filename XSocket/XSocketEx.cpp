@@ -266,7 +266,7 @@ Service* Service::service()
 	return s_thread_service_;
 }
 
-Service::Service()
+Service::Service():stop_flag_(true)
 {
 	
 }

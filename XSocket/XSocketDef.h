@@ -55,9 +55,11 @@
 #include <sys/timeb.h>
 #include <pthread.h>
 #include <signal.h>
-
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <string.h>
 
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -71,6 +73,10 @@
 #ifndef SOCKET
 typedef int SOCKET;
 #endif//SOCKET
+
+#ifndef FAR
+#define FAR
+#endif//
 
 typedef struct sockaddr SOCKADDR;
 typedef struct sockaddr *PSOCKADDR;

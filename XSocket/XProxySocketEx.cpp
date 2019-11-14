@@ -31,7 +31,7 @@ namespace ATL {
 
 inline int Base64EncodeGetRequiredLength(int nSrcLen, int nFlags=ATL_BASE64_FLAG_NONE)
 {
-	__int64 nSrcLen4=static_cast<__int64>(nSrcLen)*4;
+	int64_t nSrcLen4=static_cast<int64_t>(nSrcLen)*4;
 
 	int nRet = static_cast<int>(nSrcLen4/3);
 

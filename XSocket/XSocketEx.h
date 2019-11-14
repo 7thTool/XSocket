@@ -20,8 +20,12 @@
 
 #include <atomic>
 #include <mutex>
+#ifndef WIN32
+#include <condition_variable>
+#endif
 #include <thread>
 #include <functional>
+#include <algorithm>
 #include <vector>
 #include <queue>
 #include <set>
@@ -325,7 +329,7 @@ public:
 
 	bool IsConnectTimeOut() 
 	{ 
-		if(m_ConnectTimeOut && (GetTickCount() >= (m_ConnectTime + m_ConnectTimeOut))) {
+		if(m_ConnectTimeOut && (Tick() >= (m_ConnectTime + m_ConnectTimeOut))) {
 			return true;
 		}
 		return false;
@@ -342,7 +346,7 @@ protected:
 		Base::OnIdle(nErrorCode);
 
 		//ASSERT(IsConnectSocket());
-		if(m_ConnectTimeOut && (Base::m_lEvent == FD_CONNECT)) {
+		if(IsSelect(FD_CONNECT) && m_ConnectTimeOut) {
 			if(IsConnectTimeOut()) {
 				OnConnect(ETIMEDOUT);
 			}
@@ -354,7 +358,7 @@ protected:
 		Base::OnRole(nRole);
 
 		//ASSERT(nRole==SOCKET_ROLE_CONNECT);
-		m_ConnectTime = GetTickCount();
+		m_ConnectTime = Tick();
 	}
 
 	virtual void OnConnect(int nErrorCode)
@@ -363,7 +367,7 @@ protected:
 
 		if(!nErrorCode) {
 			m_bConnected = true;
-			m_ConnectTime = GetTickCount() - m_ConnectTime; //记住连接耗时
+			m_ConnectTime = Tick() - m_ConnectTime; //记住连接耗时
 			Select(FD_READ|FD_WRITE|FD_OOB);
 		}
 	}
@@ -407,7 +411,7 @@ protected:
 	class Queue
 	{
 	public:
-		Queue() : { }
+		Queue() { }
 		Queue(const Queue<Ty>&) = delete;
 		Queue& operator=(const Queue<Ty>&) = delete;
 		~Queue() { 
@@ -421,9 +425,9 @@ protected:
 		{
 			std::lock_guard<std::mutex> lock(mutex_);
 			queue_.push(o);
-			if (timeout_) {
+			//if (timeout_) {
 				cv_.notify_one();
-			}
+			//}
 		}
 		bool pop(Ty& o, size_t timeout = 0)
 		{
@@ -464,7 +468,7 @@ class Service
 {
 protected:
     //停止标记，默认停止状态，启动后停止状态为false
-    std::atomic<bool> stop_flag_ = true;
+    std::atomic<bool> stop_flag_;
 public:
 	static Service* service();
 
@@ -525,7 +529,7 @@ protected:
  *
  *	封装EventService，实现事件服务框架
  */
-template<class TEvent, class TBase = Service>
+template<typename TEvent, typename TBase = Service>
 class EventService : public TBase
 {
 public:
@@ -569,7 +573,7 @@ public:
 	DealyEvent(TEvent evt, size_t _delay, size_t _repeat):TEvent(evt),time(std::chrono::steady_clock::now()),dealy(_delay),repeat(_repeat){}
 	inline bool IsPoint()
 	{
-		if(dealy > 0 && repeat >= 0) {
+		if(dealy.count() > 0 && repeat >= 0) {
 			if((std::chrono::steady_clock::now()-time) > dealy) {
 				return true;
 			}
@@ -582,7 +586,7 @@ public:
 		return repeat > 0;
 	}
 	inline void Update() {
-		if(dealy > 0 && repeat > 0) {
+		if(dealy.count() > 0 && repeat > 0) {
 			time = std::chrono::steady_clock::now();//std::chrono::microseconds(evt.millis);
 			//dealy;
 			if(repeat == (size_t)-1) {
@@ -1008,13 +1012,11 @@ protected:
 					GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
 					Trigger(FD_CONNECT, nErrorCode);
 					RemoveSelect(FD_CONNECT);
-					if (IsSocket()) {
-						if (IsSelect(FD_WRITE)) {
-							Trigger(FD_WRITE, 0);
-						}
-						if (IsSelect(FD_READ)) {
-							Trigger(FD_READ, 0);
-						}
+					if (IsSocket() && IsSelect(FD_WRITE)) {
+						Trigger(FD_WRITE, 0);
+					}
+					if (IsSocket() && IsSelect(FD_READ)) {
+						Trigger(FD_READ, 0);
 					}
 				}
 			}
@@ -1173,13 +1175,11 @@ protected:
 								sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, &nErrorCode, sizeof(nErrorCode));
 								sock_ptr->Trigger(FD_CONNECT, nErrorCode);
 								sock_ptr->RemoveSelect(FD_CONNECT);
-								if (sock_ptr->IsSocket()) {
-									if (sock_ptr->IsSelect(FD_WRITE)) {
-										sock_ptr->Trigger(FD_WRITE, 0);
-									}
-									if (sock_ptr->IsSelect(FD_READ)) {
-										sock_ptr->Trigger(FD_READ, 0);
-									}
+								if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_WRITE)) {
+									sock_ptr->Trigger(FD_WRITE, 0);
+								}
+								if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_READ)) {
+									sock_ptr->Trigger(FD_READ, 0);
 								}
 							} else {
 								sock_ptr->Trigger(FD_WRITE, 0);

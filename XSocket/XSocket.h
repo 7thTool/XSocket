@@ -33,12 +33,12 @@ namespace XSocket {
 	long InitNetEnv();
 	void ReleaseNetEnv();
 
-	double H2N(double n);
-	double N2H(double n);
-	float H2N(float n);
-	float N2H(float n);
-	uint64_t H2N(uint64_t n);
-	uint64_t N2H(uint64_t n);
+	// double H2N(double n);
+	// double N2H(double n);
+	// float H2N(float n);
+	// float N2H(float n);
+	// uint64_t H2N(uint64_t n);
+	// uint64_t N2H(uint64_t n);
 	u_long H2N(u_long n);
 	u_long N2H(u_long n);
 	u_short H2N(u_short n);
