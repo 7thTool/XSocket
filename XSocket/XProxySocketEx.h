@@ -463,9 +463,9 @@ public:
 					//char nNameLen = (char)strlen(m_ProxyInfo.szUser);
 					//char nPwdLen = (char)strlen(m_ProxyInfo.szPwd);
 					//if (m_ProxyInfo.szPwd[0]) {
-						_snprintf(szAuth, 1024, "%s:%s", m_ProxyInfo.szUser, m_ProxyInfo.szPwd);
+						snprintf(szAuth, 1024, "%s:%s", m_ProxyInfo.szUser, m_ProxyInfo.szPwd);
 					//} else {
-					//	_snprintf(szAuth, 1024, "%s", m_ProxyInfo.szUser);
+					//	snprintf(szAuth, 1024, "%s", m_ProxyInfo.szUser);
 					//}
 					ProxyHelper::Base64Encode(szAuth, strlen(szAuth), szBase64Encode, 1024);
 

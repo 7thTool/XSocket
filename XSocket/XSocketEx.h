@@ -715,8 +715,9 @@ template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_S
 class SocketSet : public TService
 {
 public:
+	typedef TService Service;
 	typedef TSocket Socket;
-	//static const u_short uFD_SETSize = uFD_SETSize;
+	//static const u_short SOCKET_SETSIZE = uFD_SETSize;
 protected:
 	u_short sock_count_;
 	Socket* sock_ptrs_[uFD_SETSize];
@@ -730,7 +731,7 @@ public:
 		sock_idle_next_ = 0;
 	}
 
-	inline size_t GetMaxSocketCount() { return uFD_SETSize; }
+	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
 	inline size_t GetSocketCount() { return sock_count_; }
 
 	inline void AsyncSelect(SocketEx* sock_ptr, int evt) {
@@ -868,7 +869,7 @@ public:
 		sockset_ptrs_.resize(nMaxSockSetCount,NULL);
 		for (size_t i = 0; i < nMaxSockSetCount; i++)
 		{
-			sockset_ptrs_[i] = new TSocketSet();
+			sockset_ptrs_[i] = new SocketSet();
 			sockset_ptrs_[i]->Start();
 		}
 	}
@@ -887,12 +888,7 @@ public:
 
 	inline size_t GetSocketSetCount() { return sockset_ptrs_.size(); }
 	inline size_t GetMaxSocketCount() { 
-		size_t count = 0;
-		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
-		{
-			count += sockset_ptrs_[i]->GetMaxSocketCount();
-		}
-		return count; 
+		return sockset_ptrs_.size() * SocketSet::GetMaxSocketCount(); 
 	}
 	inline size_t GetSocketCount() { 
 		size_t count = 0;
@@ -1001,17 +997,17 @@ protected:
 		int maxfds = 0;
 		fd_set exceptfds;
 		FD_ZERO(&exceptfds);
+		maxfds = fd + 1;
 		FD_SET(fd, &exceptfds);
 		struct timeval tv = {0, 0};
 		if (Base::IsListenSocket()) {
 			fd_set readfds;
 			FD_ZERO(&readfds);
-			maxfds = fd + 1;
 			FD_SET(fd, &readfds);
 			nfds = select(maxfds, &readfds, NULL, &exceptfds, &tv);
 			if (nfds > 0) {
 				if (FD_ISSET(fd,&readfds)) {
-					Trigger(FD_ACCEPT, 0);
+					Base::Trigger(FD_ACCEPT, 0);
 				}
 			}
 		} else if (Base::IsSelect(FD_CONNECT)) {
@@ -1082,30 +1078,6 @@ protected:
 			}
 		}
 	}
-
-	// void run()
-	// {
-	// 	while (!stop_flag_)
-	// 	{
-	// 		size_t tick_count = Tick();
-	// 		if(IsSocket()) {
-	// 			run_once();
-	// 		}
-	// 		size_t tick_span = Tick() - tick_count;
-	// 		if(tick_span < 20) {
-	// 			if(IsSelect(FD_IDLE)) {
-	// 				OnIdle(Tick());
-	// 				tick_span = Tick() - tick_count;
-	// 				if(tick_span < 20) {
-	// 					std::this_thread::yield();
-	// 				}
-	// 			} else {
-	// 				std::this_thread::yield();
-	// 			}
-	// 			//std::this_thread::sleep_for(std::chrono::milliseconds(20-tick_count));
-	// 		}
-	// 	}
-	// }
 };
 
 /*!
@@ -1118,7 +1090,8 @@ class SelectSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
 {
 	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
 public:
-	typedef typename Base::Socket Socket;
+	typedef TService Service;
+	typedef TSocket Socket;
 public:
 	SelectSocketSet()
 	{
@@ -1172,7 +1145,7 @@ protected:
 					lock.lock();
 					Socket *sock_ptr = Base::sock_ptrs_[i];
 					if (sock_ptr) {
-						if (FD_ISSET(*Base::sock_ptr, &readfds)) {
+						if (FD_ISSET(*sock_ptr, &readfds)) {
 							if (sock_ptr->IsListenSocket()) {
 								sock_ptr->Trigger(FD_ACCEPT, 0);
 							} else {
@@ -1227,11 +1200,12 @@ protected:
  *
  *	封装SelectManager，实现对select模型管理监听Socket连接，依赖SelectSocket
  */
-template<class T, class TService, class TBase/* = ListenSocket<SocketEx>*/, class TWorkSocket = WorkSocket<SocketEx>>
+template<class T, class TService, class TBase = ListenSocket<SocketEx>, class TWorkSocket = WorkSocket<SocketEx>>
 class SelectListen : public SelectSocket<TService,TBase>
 {
 	typedef SelectSocket<TService,TBase> Base;
 public:
+	typedef TService Service;
 	typedef TWorkSocket SockWorker;
 protected:
 	std::vector<SockWorker*> sock_ptrs_;
@@ -1346,7 +1320,7 @@ protected:
 					break;
 	#endif//
 				default:
-					pT->OnClose(nErrorCode);
+					Base::Trigger(FD_CLOSE,nErrorCode);
 					break;
 				}
 			}
@@ -1402,7 +1376,7 @@ public:
 	}
 	virtual ~SelectClient()
 	{
-		Stop();
+		Base::Stop();
 	}
 
 protected:
@@ -1429,7 +1403,7 @@ public:
 
 	~SelectServer()
 	{
-		Stop();
+		Base::Stop();
 	}
 };
 
@@ -1449,7 +1423,7 @@ public:
 	}
 	virtual ~SelectUdpClient()
 	{
-		Stop();
+		Base::Stop();
 	}
 
 protected:
@@ -1471,7 +1445,7 @@ public:
 	}
 	virtual ~SelectUdpServer()
 	{
-		Stop();
+		Base::Stop();
 	}
 
 protected:

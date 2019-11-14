@@ -5,13 +5,14 @@
 #include "../../../XSocket/XProxySocketEx.h"
 #include "../../../XSocket/XSocketImpl.h"
 #ifdef USE_EPOLL
-#include "../../../XEPoll.h"
+#include "../../../XSocket/XEPoll.h"
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
 
 class worker;
 #ifdef USE_EPOLL
+typedef XSocket::EPollSocketSet<XSocket::ThreadService,worker,DEFAULT_FD_SETSIZE> ServerSocketSet;
 #elif defined(USE_IOCP)
 typedef XSocket::CompletionPortSocketSet<XSocket::ThreadService,worker,DEFAULT_FD_SETSIZE> ServerSocketSet;
 #endif//
@@ -19,6 +20,7 @@ typedef XSocket::CompletionPortSocketSet<XSocket::ThreadService,worker,DEFAULT_F
 #ifndef USE_UDP
 class worker
 #ifdef USE_EPOLL
+	: public XSocket::SampleSocketImpl<XSocket::SocketWrapper<XSocket::WorkSocket<XSocket::EPollSocket<ServerSocketSet,XSocket::SocketEx>>>>
 #elif defined(USE_IOCP)
 	: public XSocket::SampleSocketImpl<XSocket::SocketWrapper<XSocket::WorkSocket<XSocket::CompletionPortSocket<ServerSocketSet,XSocket::SocketEx>>>>
 #else
@@ -26,6 +28,7 @@ class worker
 #endif
 {
 #ifdef USE_EPOLL
+	typedef XSocket::SampleSocketImpl<XSocket::SocketWrapper<XSocket::WorkSocket<XSocket::EPollSocket<ServerSocketSet,XSocket::SocketEx>>>> Base;
 #elif defined(USE_IOCP)
 	typedef XSocket::SampleSocketImpl<XSocket::SocketWrapper<XSocket::WorkSocket<XSocket::CompletionPortSocket<ServerSocketSet,XSocket::SocketEx>>>> Base;
 #else
@@ -69,7 +72,7 @@ protected:
 
 class server 
 #ifdef USE_EPOLL
-	: public SocketExImpl<server,EPollServer<ListenSocket<SocketEx>,worker,DEFAULT_FD_SETSIZE> >
+	: public XSocket::EPollServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,ServerSocketSet>
 #elif defined(USE_IOCP)
 	: public XSocket::CompletionPortServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,ServerSocketSet>
 #else
@@ -77,7 +80,7 @@ class server
 #endif//
 {
 #ifdef USE_EPOLL
-	typedef SocketExImpl<server,EPollServer<ListenSocket<SocketEx>,worker,DEFAULT_FD_SETSIZE> > Base;
+	typedef XSocket::EPollServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,ServerSocketSet> Base;
 #elif defined(USE_IOCP)
 	typedef XSocket::CompletionPortServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,ServerSocketSet> Base;
 #else

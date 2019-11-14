@@ -146,6 +146,26 @@ typedef struct timeval FAR *LPTIMEVAL;
 typedef unsigned char byte;
 #endif//
 
+//#ifndef vsprintf
+//#define vsprintf vsnprintf
+//#endif//vsprintf
+
+#ifndef stricmp
+#define stricmp strcasecmp 
+#endif//stricmp
+
+#ifndef wcsicmp
+#define wcsicmp wcscasecmp 
+#endif//wcsicmp
+
+#ifndef strnicmp
+#define strnicmp strncasecmp 
+#endif//strnicmp
+
+#ifndef wcsnicmp
+#define wcsnicmp wcsncasecmp 
+#endif//wcsnicmp
+
 /*!
  *	@brief 代理类型.
  *
@@ -182,7 +202,7 @@ typedef struct  tagPROXYINFO
 #endif//
 
 #ifndef PRINTF
-#ifdef _DEBUG
+#if 1
 #define PRINTF(format,...) printf(format, ##__VA_ARGS__)
 #else
 #define PRINTF(format,...) 

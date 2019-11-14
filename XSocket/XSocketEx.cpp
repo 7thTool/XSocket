@@ -243,7 +243,7 @@ void SocketEx::OnConnect(int nErrorCode)
 
 void SocketEx::OnClose(int nErrorCode)
 {
-#ifdef _DEBUG
+#if 1
 	char szError[1024] = {0};
 	GetErrorMessageA(nErrorCode,szError,1023);
 	PRINTF("%u::OnClose:[%d] %s\n", m_Sock, nErrorCode, szError);

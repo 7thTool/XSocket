@@ -42,7 +42,7 @@
 #ifdef WIN32
 #define USE_IOCP
 #else
-#define USE_EPOLL
+//#define USE_EPOLL
 #ifdef USE_EPOLL
 #define USE_EPOLLET
 #endif//
