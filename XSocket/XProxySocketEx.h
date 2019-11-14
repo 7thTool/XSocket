@@ -570,7 +570,7 @@ protected:
 				ProxyHandler::ReceiveProxy();
 				//
 				if (!ProxyHandler::IsInProxy()) {
-					Base::OnConnect(IsProxyOK()?0:ECONNABORTED);
+					Base::OnConnect(ProxyHandler::IsProxyOK()?0:ECONNABORTED);
 				}
 			}
 		} else {
@@ -602,7 +602,7 @@ protected:
 			return;
 		}
 
-		AddSelect(FD_READ|FD_WRITE);
+		Base::AddSelect(FD_READ|FD_WRITE);
 		if (ProxyHandler::IsInProxy()) {
 		} else {
 			Base::OnConnect(ProxyHandler::IsProxyOK()?0:ECONNABORTED);

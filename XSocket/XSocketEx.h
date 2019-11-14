@@ -346,7 +346,7 @@ protected:
 		Base::OnIdle(nErrorCode);
 
 		//ASSERT(IsConnectSocket());
-		if(IsSelect(FD_CONNECT) && m_ConnectTimeOut) {
+		if(Base::IsSelect(FD_CONNECT) && m_ConnectTimeOut) {
 			if(IsConnectTimeOut()) {
 				OnConnect(ETIMEDOUT);
 			}
@@ -368,7 +368,7 @@ protected:
 		if(!nErrorCode) {
 			m_bConnected = true;
 			m_ConnectTime = Tick() - m_ConnectTime; //记住连接耗时
-			Select(FD_READ|FD_WRITE|FD_OOB);
+			Base::Select(FD_READ|FD_WRITE|FD_OOB);
 		}
 	}
 };
@@ -532,18 +532,19 @@ protected:
 template<typename TEvent, typename TBase = Service>
 class EventService : public TBase
 {
+	typedef TBase Base;
 public:
-	typedef typename TEvent TEvent;
+	typedef TEvent Event;
 protected:
-	Queue<TEvent> queue_;
+	Queue<Event> queue_;
 public:
 
-	inline void Post(const TEvent& evt) {
+	inline void Post(const Event& evt) {
 		queue_.push(evt);
 	}
 
 protected:
-	virtual void OnEvent(const TEvent& evt)
+	virtual void OnEvent(const Event& evt)
 	{
 		
 	}
@@ -568,9 +569,14 @@ protected:
 template<class TEvent>
 class DealyEvent : public TEvent
 {
+	typedef TEvent Base;
 public:
-	DealyEvent(TEvent evt):TEvent(evt){}
-	DealyEvent(TEvent evt, size_t _delay, size_t _repeat):TEvent(evt),time(std::chrono::steady_clock::now()),dealy(_delay),repeat(_repeat){}
+	typedef TEvent Event;
+public:
+	DealyEvent():Base(){}
+	DealyEvent(Event evt):Base(evt){}
+	DealyEvent(Event evt, size_t _delay, size_t _repeat):Base(evt),time(std::chrono::steady_clock::now()),dealy(_delay),repeat(_repeat){}
+	DealyEvent(const DealyEvent& o):Base((Event)o),time(o.time),dealy(o.delay),repeat(o.repeat){}
 	inline bool IsPoint()
 	{
 		if(dealy.count() > 0 && repeat >= 0) {
@@ -606,39 +612,45 @@ public:
 template<class TEvent, class TBase = Service>
 class DelayEventService : public EventService<DealyEvent<TEvent>,TBase>
 {
-	typedef DealyEvent<TEvent> Event;
 	typedef EventService<DealyEvent<TEvent>,TBase> Base;
 public:
+	typedef TEvent Event;
+	typedef DealyEvent<TEvent> DelayEvent;
+public:
 	
-	inline void PostDelay(const TEvent& evt, size_t mills = 0, size_t repeat = 0) {
+	inline void Post(const Event& evt) {
+		PostDelay(evt);
+	}
+
+	inline void PostDelay(const Event& evt, size_t mills = 0, size_t repeat = 0) {
 		if(mills) {
-			queue_.push(Event(evt,mills,repeat));
+			Base::queue_.push(DelayEvent(evt,mills,repeat));
 		} else {
-			queue_.push(Event(evt));
+			Base::queue_.push(DelayEvent(evt));
 		}
 	}
 
 protected:
 
-	virtual void OnEvent(const TEvent& evt)
+	virtual void OnEvent(const Event& evt)
 	{
 		
 	}
 
 	virtual void OnRunOnce()
 	{
-		Event evt;
-		for(size_t i = 0, j = queue_.size(); i < j; i++)
+		DelayEvent evt;
+		for(size_t i = 0, j = Base::queue_.size(); i < j; i++)
 		{
-			if (queue_.pop(evt)) {
+			if (Base::queue_.pop(evt)) {
 				if(evt.IsPoint()) {
 					OnEvent(evt);
 					evt.Update();
 					if(evt.IsRepeat()) {
-						queue_.push(evt);
+						Base::queue_.push(evt);
 					}
 				} else {
-					queue_.push(evt);
+					Base::queue_.push(evt);
 				}
 			} else {
 				break;
@@ -662,10 +674,9 @@ public:
 	{
 		Stop();
 		bool expected = true;
-		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+		if (!Base::stop_flag_.compare_exchange_strong(expected, false)) {
 			return true;
 		}
-		stop_flag_ = false;
 		thread_ptr_ = std::make_shared<std::thread>(std::bind(&This::OnRun,this));
 		return true;
 	}
@@ -673,7 +684,7 @@ public:
 	void Stop()
 	{
 		bool expected = false;
-		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+		if (!Base::stop_flag_.compare_exchange_strong(expected, true)) {
 			return;
 		}
 		if(thread_ptr_) {
@@ -704,11 +715,11 @@ template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_S
 class SocketSet : public TService
 {
 public:
-	typedef typename TSocket TSocket;
-	static const u_short uFD_SETSize = uFD_SETSize;
+	typedef TSocket Socket;
+	//static const u_short uFD_SETSize = uFD_SETSize;
 protected:
 	u_short sock_count_;
-	TSocket* sock_ptrs_[uFD_SETSize];
+	Socket* sock_ptrs_[uFD_SETSize];
 	u_short sock_idle_next_;
 	std::mutex mutex_;
 public:
@@ -726,7 +737,7 @@ public:
 		sock_ptr->Select(evt);
 	}
 
-	int AddSocket(TSocket* sock_ptr)
+	int AddSocket(Socket* sock_ptr)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		int i;
@@ -747,7 +758,7 @@ public:
 		return -1;
 	}
 
-	int RemoveSocket(TSocket* sock_ptr)
+	int RemoveSocket(Socket* sock_ptr)
 	{
 		ASSERT(sock_ptr);
 		//std::unique_lock<std::mutex> lock(mutex_);
@@ -770,7 +781,7 @@ public:
 		return -1;
 	}
 
-	int RemoveInvalidSocket(TSocket* & sock_ptr)
+	int RemoveInvalidSocket(Socket* & sock_ptr)
 	{
 		//std::unique_lock<std::mutex> lock(mutex_);
 		int i;
@@ -846,9 +857,10 @@ template<class TSocketSet>
 class SocketManager
 {
 public:
-	typedef typename TSocketSet::TSocket TSocket;
+	typedef TSocketSet SocketSet;
+	typedef typename TSocketSet::Socket Socket;
 protected:
-	std::vector<TSocketSet*> sockset_ptrs_;
+	std::vector<SocketSet*> sockset_ptrs_;
 	size_t sockset_add_next_ = 0;
 public:
 	SocketManager(int nMaxSockSetCount)
@@ -891,13 +903,13 @@ public:
 		return count; 
 	}
 
-	inline TSocketSet* GetSocketSet(size_t pos) {
+	inline SocketSet* GetSocketSet(size_t pos) {
 		if(pos < sockset_ptrs_.size())
 			return sockset_ptrs_[pos];
 		return nullptr;
 	}
 
-	int AddSocket(TSocket* sock_ptr)
+	int AddSocket(Socket* sock_ptr)
 	{
 		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
 		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
@@ -913,7 +925,7 @@ public:
 		return -1;
 	}
 
-	int RemoveSocket(TSocket* sock_ptr)
+	int RemoveSocket(Socket* sock_ptr)
 	{
 		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
@@ -926,7 +938,7 @@ public:
 		return -1;
 	}
 
-	int RemoveInvalidSocket(TSocket* & sock_ptr)
+	int RemoveInvalidSocket(Socket* & sock_ptr)
 	{
 		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
@@ -962,6 +974,8 @@ class SelectSocket : public TBase, public TService
 	typedef SelectSocket<TService,TBase> This;
 	typedef TBase Base;
 public:
+	typedef TService Service;
+public:
 	SelectSocket() : Base()
 	{
     	
@@ -976,9 +990,9 @@ protected:
 
 	virtual void OnRunOnce()
 	{
-		TService::OnRunOnce();
+		Service::OnRunOnce();
 
-		if(!IsSocket()) {
+		if(!Base::IsSocket()) {
 			return;
 		}
 
@@ -989,7 +1003,7 @@ protected:
 		FD_ZERO(&exceptfds);
 		FD_SET(fd, &exceptfds);
 		struct timeval tv = {0, 0};
-		if (IsListenSocket()) {
+		if (Base::IsListenSocket()) {
 			fd_set readfds;
 			FD_ZERO(&readfds);
 			maxfds = fd + 1;
@@ -1000,7 +1014,7 @@ protected:
 					Trigger(FD_ACCEPT, 0);
 				}
 			}
-		} else if (IsSelect(FD_CONNECT)) {
+		} else if (Base::IsSelect(FD_CONNECT)) {
 			fd_set writefds;
 			FD_ZERO(&writefds);
 			maxfds = fd + 1;
@@ -1009,62 +1023,62 @@ protected:
 			if (nfds > 0) {
 				if (FD_ISSET(fd, &writefds)) {
 					int nErrorCode = 0;
-					GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
-					Trigger(FD_CONNECT, nErrorCode);
-					RemoveSelect(FD_CONNECT);
-					if (IsSocket() && IsSelect(FD_WRITE)) {
-						Trigger(FD_WRITE, 0);
+					Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
+					Base::Trigger(FD_CONNECT, nErrorCode);
+					Base::RemoveSelect(FD_CONNECT);
+					if (Base::IsSocket() && Base::IsSelect(FD_WRITE)) {
+						Base::Trigger(FD_WRITE, 0);
 					}
-					if (IsSocket() && IsSelect(FD_READ)) {
-						Trigger(FD_READ, 0);
+					if (Base::IsSocket() && Base::IsSelect(FD_READ)) {
+						Base::Trigger(FD_READ, 0);
 					}
 				}
 			}
 		} else {
 			fd_set readfds;
 			FD_ZERO(&readfds);
-			if(IsSelectRead()) {
+			if(Base::IsSelectRead()) {
 				FD_SET(fd, &readfds);
 			}
 			fd_set writefds;
 			FD_ZERO(&writefds);
-			if(IsSelectWrite()) {
+			if(Base::IsSelectWrite()) {
 				FD_SET(fd, &writefds);
 			}
 			nfds = select(maxfds, &readfds, &writefds, &exceptfds, &tv);
 			if (nfds > 0) {
 				if (FD_ISSET(fd,&readfds)) {
 					int err = 0;
-					GetSockOpt(SOL_SOCKET, SO_OOBINLINE, &err, sizeof(err));
+					Base::GetSockOpt(SOL_SOCKET, SO_OOBINLINE, &err, sizeof(err));
 					if (err) {
-						Trigger(FD_OOB, 0);
+						Base::Trigger(FD_OOB, 0);
 					} else {
-						Trigger(FD_READ, 0);
+						Base::Trigger(FD_READ, 0);
 					}
 				}
 				if (FD_ISSET(fd, &writefds)) {
-					Trigger(FD_WRITE, 0);
+					Base::Trigger(FD_WRITE, 0);
 				}
 			}
 		}
 		if (nfds > 0) {
 			if (FD_ISSET(fd, &exceptfds)) {
 				int nErrorCode = 0;
-				GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
+				Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
 				if (nErrorCode == 0) {
-					nErrorCode = GetLastError();
+					nErrorCode = Base::GetLastError();
 				}
 				if (nErrorCode == 0) {
 					nErrorCode = ENETDOWN;
 				}
 				//SetLastError(nErrorCode);
-				Trigger(FD_CLOSE, nErrorCode);
+				Base::Trigger(FD_CLOSE, nErrorCode);
 			}
 		} else if (nfds == 0) {
 			//
 		} else {
-			if (IsSocket()) {
-				Trigger(FD_CLOSE, GetLastError());
+			if (Base::IsSocket()) {
+				Base::Trigger(FD_CLOSE, GetLastError());
 			}
 		}
 	}
@@ -1104,6 +1118,8 @@ class SelectSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
 {
 	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
 public:
+	typedef typename Base::Socket Socket;
+public:
 	SelectSocketSet()
 	{
 		
@@ -1124,24 +1140,24 @@ protected:
 		fd_set writefds;
 		FD_ZERO(&writefds);
 		struct timeval tv = {0, 0};
-		std::unique_lock<std::mutex> lock(mutex_);
+		std::unique_lock<std::mutex> lock(Base::mutex_);
 		{
 			for (size_t i=0; i<uFD_SETSize; ++i)
 			{
-				if (sock_ptrs_[i] && sock_ptrs_[i]->IsSocket()) {
+				if (Base::sock_ptrs_[i] && Base::sock_ptrs_[i]->IsSocket()) {
 					nfds++;
-					FD_SET(*sock_ptrs_[i], &exceptfds);
-					if(sock_ptrs_[i]->IsSelectRead()) {
-						if(maxfds<(*sock_ptrs_[i]+1)) {
-							maxfds = (*sock_ptrs_[i]+1);
+					FD_SET(*Base::sock_ptrs_[i], &exceptfds);
+					if(Base::sock_ptrs_[i]->IsSelectRead()) {
+						if(maxfds<(*Base::sock_ptrs_[i]+1)) {
+							maxfds = (*Base::sock_ptrs_[i]+1);
 						}
-						FD_SET(*sock_ptrs_[i], &readfds);
+						FD_SET(*Base::sock_ptrs_[i], &readfds);
 					} 
-					if(sock_ptrs_[i]->IsSelectWrite()) {
-						if(maxfds<(*sock_ptrs_[i]+1)) {
-							maxfds = (*sock_ptrs_[i]+1);
+					if(Base::sock_ptrs_[i]->IsSelectWrite()) {
+						if(maxfds<(*Base::sock_ptrs_[i]+1)) {
+							maxfds = (*Base::sock_ptrs_[i]+1);
 						}
-						FD_SET(*sock_ptrs_[i], &writefds);
+						FD_SET(*Base::sock_ptrs_[i], &writefds);
 					}
 				}
 			}
@@ -1152,11 +1168,11 @@ protected:
 		if (nfds > 0) {
 			for (size_t i = 0; i < uFD_SETSize; ++i)
 			{
-				if (sock_ptrs_[i]) {
+				if (Base::sock_ptrs_[i]) {
 					lock.lock();
-					TSocket *sock_ptr = sock_ptrs_[i];
+					Socket *sock_ptr = Base::sock_ptrs_[i];
 					if (sock_ptr) {
-						if (FD_ISSET(*sock_ptr, &readfds)) {
+						if (FD_ISSET(*Base::sock_ptr, &readfds)) {
 							if (sock_ptr->IsListenSocket()) {
 								sock_ptr->Trigger(FD_ACCEPT, 0);
 							} else {
@@ -1215,6 +1231,7 @@ template<class T, class TService, class TBase/* = ListenSocket<SocketEx>*/, clas
 class SelectListen : public SelectSocket<TService,TBase>
 {
 	typedef SelectSocket<TService,TBase> Base;
+public:
 	typedef TWorkSocket SockWorker;
 protected:
 	std::vector<SockWorker*> sock_ptrs_;
@@ -1237,9 +1254,9 @@ protected:
 		const char* addr = pT->GetAddress();
 		u_short port = pT->GetPort();
 		if(port != 0) {
-			Open();
-			Bind(addr, port);
-			Listen();
+			pT->Open();
+			pT->Bind(addr, port);
+			pT->Listen();
 			return true;
 		}
 
@@ -1250,11 +1267,11 @@ protected:
 	{
 		T* pT = static_cast<T*>(this);
 		//服务结束运行，释放资源
-		if(IsSocket()) {
+		if(pT->IsSocket()) {
 #ifndef WIN32
-			ShutDown();
+			pT->ShutDown();
 #endif
-			Close();
+			pT->Close();
 		}
 		pT->RemoveAllSocket(true);
 		for (size_t i = 0; i < sock_ptrs_.size(); i++)
@@ -1310,9 +1327,9 @@ protected:
 		//	bConitnue = false;
 			SOCKADDR_IN Addr = {0};
 			int AddrLen = sizeof(SOCKADDR_IN);
-			SOCKET Sock = Accept((SOCKADDR*)&Addr, &AddrLen);
+			SOCKET Sock = Base::Accept((SOCKADDR*)&Addr, &AddrLen);
 	 		if(XSocket::IsSocket(Sock)) {
-				Trigger(FD_ACCEPT, (const char*)&Addr, AddrLen, (int)Sock);
+				Base::Trigger(FD_ACCEPT, (const char*)&Addr, AddrLen, (int)Sock);
 				//bConitnue = true;
 			} else {
 				nErrorCode = GetLastError();
@@ -1329,7 +1346,7 @@ protected:
 					break;
 	#endif//
 				default:
-					OnClose(nErrorCode);
+					pT->OnClose(nErrorCode);
 					break;
 				}
 			}
