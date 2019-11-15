@@ -165,6 +165,8 @@ protected:
 				nErrorCode = GetLastError();
 				switch(nErrorCode)
 				{
+				case 0:
+					break;
 #ifdef WIN32
 				case WSAEWOULDBLOCK:
 				case WSA_IO_PENDING:
@@ -232,6 +234,8 @@ protected:
 				nErrorCode = Base::GetLastError();
 				switch(nErrorCode)
 				{
+				case 0:
+					break;
 #ifdef WIN32
 				case WSAEWOULDBLOCK:
 				case WSA_IO_PENDING:
@@ -246,7 +250,7 @@ protected:
 					OnClose(nErrorCode);
 					break;
 				}
-			}  else if(nBufLen == 0) {
+			} else if(nBufLen == 0) {
 				OnClose(Base::GetLastError());
 			} else {
 				OnSend(lpBuf, nBufLen, 0);

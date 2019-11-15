@@ -231,6 +231,9 @@ public:
 			(DWORD)pOverlapped->Flags, 
 			&pOverlapped->Overlapped,
 			NULL);
+		if(nSend == 0) {
+			return SOCKET_ERROR;
+		}
 		return nSend;
 	}
 
@@ -250,6 +253,9 @@ public:
 			(LPDWORD)&pOverlapped->Flags, 
 			&pOverlapped->Overlapped,
 			NULL);
+		if(nRecv == 0) {
+			return SOCKET_ERROR;
+		}
 		return nRecv;
 	}
 
@@ -300,6 +306,8 @@ protected:
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
 class CompletionPortSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
 {
+public:
+	typedef TSocket Socket;
 	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
 protected:
 	HANDLE m_hIocp;
@@ -337,7 +345,7 @@ public:
 		}
 	}
 	
-	int AddSocket(TSocket* sock_ptr)
+	int AddSocket(Socket* sock_ptr)
 	{
 		int i = Base::AddSocket(sock_ptr);
 		if(i >= 0) {
@@ -435,7 +443,7 @@ protected:
 		// } 
 		if (Pos > 0 && Pos <= uFD_SETSize) {
 			std::unique_lock<std::mutex> lock(mutex_);
-			TSocket *sock_ptr = sock_ptrs_[Pos - 1];
+			Socket *sock_ptr = sock_ptrs_[Pos - 1];
 			lock.unlock();
 			if (!bStatus) {
 				if (sock_ptr) {
@@ -554,13 +562,16 @@ protected:
  */
 template<class T, class TService, class TBase, class TSocketSet>
 class CompletionPortServer 
-: public SelectListen<T,TService,TBase,typename TSocketSet::TSocket>
+: public SelectListen<T,TService,TBase,typename TSocketSet::Socket>
 , public SocketManager<TSocketSet>
 {
-	typedef SelectListen<T,TService,TBase,typename TSocketSet::TSocket> Base;
-	typedef SocketManager<TSocketSet> SockManager;
 public:
-	CompletionPortServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+TSocketSet::uFD_SETSize-1)/TSocketSet::uFD_SETSize)
+	typedef TSocketSet SocketSet;
+	typedef typename SocketSet::Socket Socket;
+	typedef SocketManager<SocketSet> SockManager;
+	typedef SelectListen<T,TService,TBase,Socket> Base;
+public:
+	CompletionPortServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
 	{
 		
 	}

@@ -300,9 +300,10 @@ class EPollServer
 , public SocketManager<TSocketSet>
 {
 public:
-	typedef SelectListen<T,TService,TBase,typename TSocketSet::Socket> Base;
+	typedef typename SocketSet::Socket Socket;
 	typedef TSocketSet SocketSet;
-	typedef SocketManager<TSocketSet> SockManager;
+	typedef SocketManager<SocketSet> SockManager;
+	typedef SelectListen<T,TService,TBase,Socket> Base;
 public:
 	EPollServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
 	{
