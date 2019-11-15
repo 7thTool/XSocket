@@ -352,17 +352,16 @@ public:
 		{
 			if(sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
+					sock_count_++;
+					sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
 					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, m_hIocp, (ULONG_PTR)(i + 1), 0);
 					ASSERT(hIocp);
 					if (hIocp != INVALID_HANDLE_VALUE) {
 						PRINTF("CreateIoCompletionPort: %ld by %ld\n", hIocp, m_hIocp);
-						return i;
 					} else {
 						PRINTF("CreateIoCompletionPort Error:%d\n", ::GetLastError());
 					}
-					sock_count_++;
-					sock_ptrs_[i] = sock_ptr;
 					AsyncSelect(sock_ptr, evt);
 					return i;
 				} else {
@@ -561,33 +560,6 @@ protected:
 				}
 			}
 		}
-	}
-};
-
-/*!
- *	@brief CompletionPortServer 模板定义.
- *
- *	封装CompletionPortServer，实现对CompletionPort模型管理监听Socket连接，依赖CompletionPortManager
- */
-template<class T, class TService, class TBase, class TSocketSet>
-class CompletionPortServer 
-: public SelectListen<T,TService,TBase,typename TSocketSet::Socket>
-, public SocketManager<TSocketSet>
-{
-public:
-	typedef TSocketSet SocketSet;
-	typedef typename SocketSet::Socket Socket;
-	typedef SocketManager<SocketSet> SockManager;
-	typedef SelectListen<T,TService,TBase,Socket> Base;
-public:
-	CompletionPortServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
-	{
-		
-	}
-
-	~CompletionPortServer()
-	{
-		Stop();
 	}
 };
 

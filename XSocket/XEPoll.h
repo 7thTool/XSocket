@@ -165,10 +165,10 @@ public:
 		{
 			if(Base::sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
-					sock_ptr->AttachService(this);
-					sock_ptr->SocketEx::Select(evt);
 					Base::sock_count_++;
 					Base::sock_ptrs_[i] = sock_ptr;
+					sock_ptr->AttachService(this);
+					sock_ptr->SocketEx::Select(evt);
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
 					event.data.ptr = (void *)sock_ptr;
@@ -367,33 +367,6 @@ protected:
 		} else {
 			//
 		}
-	}
-};
-
-/*!
- *	@brief EPollServer 模板定义.
- *
- *	封装EPollServer，实现对epoll模型管理监听Socket连接，依赖EPollManager
- */
-template<class T, class TService, class TBase, class TSocketSet>
-class EPollServer 
-: public SelectListen<T,TService,TBase,typename TSocketSet::Socket>
-, public SocketManager<TSocketSet>
-{
-public:
-	typedef TSocketSet SocketSet;
-	typedef typename SocketSet::Socket Socket;
-	typedef SocketManager<SocketSet> SockManager;
-	typedef SelectListen<T,TService,TBase,Socket> Base;
-public:
-	EPollServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
-	{
-		
-	}
-
-	~EPollServer()
-	{
-		Base::Stop();
 	}
 };
 

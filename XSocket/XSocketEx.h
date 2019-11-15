@@ -919,6 +919,7 @@ public:
 		{
 			sockset_ptrs_[i]->Start();
 		}
+		return true;
 	}
 
 	void Stop()
@@ -1461,8 +1462,13 @@ public:
 
 	bool Start()
 	{
-		Base::Start();
-		SockManager::Start();
+		if(!Base::Start()) {
+			return false;
+		}
+		if(!SockManager::Start()) {
+			return false;
+		}
+		return true;
 	}
 
 	void Stop()
