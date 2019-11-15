@@ -109,21 +109,9 @@ protected:
 };
 
 class server 
-#ifdef USE_EPOLL
-	: public XSocket::EPollServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet>
-#elif defined(USE_IOCP)
-	: public XSocket::CompletionPortServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet>
-#else
 	: public XSocket::SelectServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet>
-#endif//
 {
-#ifdef USE_EPOLL
-	typedef XSocket::EPollServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet> Base;
-#elif defined(USE_IOCP)
-	typedef XSocket::CompletionPortServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet> Base;
-#else
 	typedef XSocket::SelectServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet> Base;
-#endif//
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{

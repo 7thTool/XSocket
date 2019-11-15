@@ -896,23 +896,37 @@ public:
 	SocketManager(int nMaxSockSetCount)
 	{
 		sockset_ptrs_.resize(nMaxSockSetCount,NULL);
-		for (size_t i = 0; i < nMaxSockSetCount; i++)
+		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
 		{
 			sockset_ptrs_[i] = new SocketSet();
-			sockset_ptrs_[i]->Start();
 		}
+		sockset_add_next_ = 0;
 	}
 
 	~SocketManager() 
 	{
-		int i,j;
-		for (i=0,j=sockset_ptrs_.size();i<j;i++)
+		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
-			sockset_ptrs_[i]->Stop();
 			delete sockset_ptrs_[i];
 		}
 		sockset_ptrs_.clear();
 		sockset_add_next_ = 0;
+	}
+
+	bool Start()
+	{
+		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
+		{
+			sockset_ptrs_[i]->Start();
+		}
+	}
+
+	void Stop()
+	{
+		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
+		{
+			sockset_ptrs_[i]->Stop();
+		}
 	}
 
 	inline size_t GetSocketSetCount() { return sockset_ptrs_.size(); }
@@ -1442,6 +1456,18 @@ public:
 
 	~SelectServer()
 	{
+		Stop();
+	}
+
+	bool Start()
+	{
+		Base::Start();
+		SockManager::Start();
+	}
+
+	void Stop()
+	{
+		SockManager::Stop();
 		Base::Stop();
 	}
 };
