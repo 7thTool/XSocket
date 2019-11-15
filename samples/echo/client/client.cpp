@@ -5,10 +5,30 @@
 #include "../../../XSocket/XEPoll.h"
 #endif//
 
+class client;
+
+class Event
+{
+public:
+	client* dst = nullptr;
+	int id;
+	std::string buf;
+	int flags;
+
+	Event() {}
+	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+
+	// inline int get_id() { return evt; }
+	// inline const char* get_data() { return data.c_str(); }
+	// inline int get_datalen() { return data.size(); }
+	// inline int get_flags() { return flags; }
+};
+typedef XSocket::DelayEventService<Event,XSocket::ThreadService> ClientService;
+
 class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	: public XSocket::SelectClient<XSocket::ThreadService,XSocket::SampleSocketImpl<XSocket::SocketWrapper<XSocket::ConnectSocket<XSocket::SocketEx>>>>
+	: public XSocket::SelectClient<ClientService,XSocket::SampleSocketImpl<XSocket::ConnectSocket<XSocket::SocketEx>>>
 #else
 	: public SocketExImpl<client,SampleSocketArchitectureImpl<ProxyConnectHandler<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > >
 #endif//USE_MANAGER
@@ -22,7 +42,7 @@ class client
 {
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	typedef XSocket::SelectClient<XSocket::ThreadService,XSocket::SampleSocketImpl<XSocket::SocketWrapper<XSocket::ConnectSocket<XSocket::SocketEx>>>> Base;
+	typedef XSocket::SelectClient<ClientService,XSocket::SampleSocketImpl<XSocket::ConnectSocket<XSocket::SocketEx>>> Base;
 #else
 	typedef SocketExImpl<client,SampleSocketArchitectureImpl<ProxyConnectHandler<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > > Base;
 #endif//USE_MANAGER
@@ -87,7 +107,19 @@ protected:
 	}
 #endif//USE_MANAGER
 
+public:
+	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	{
+		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
+	}
+
 protected:
+	virtual void OnEvent(const Event& evt)
+	{
+		if(evt.id == FD_WRITE) {
+			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
+		}
+	}
 	//
 	/*virtual void OnIdle(int nErrorCode)
 	{
@@ -115,7 +147,7 @@ protected:
 	{
 		Base::OnRecvBuf(lpBuf, nBufLen, nFlags);
 		PRINTF("say:hello.\n");
-		SendBuf("hello.",6,0);
+		PostBuf("hello.",6,0);
 	}
 
 	virtual void OnConnect(int nErrorCode)

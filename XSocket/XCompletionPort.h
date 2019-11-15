@@ -64,7 +64,7 @@ typedef struct _PER_IO_OPERATION_DATA
  *
  *	封装CompletionPortSocket
  */
-template<class TSocketSet, class TBase = SocketEx>
+template<class TBase = SocketEx>
 class CompletionPortSocket : public TBase
 {
 	typedef TBase Base;
@@ -75,8 +75,6 @@ protected:
 	PER_IO_OPERATION_DATA m_SendOverlapped;
 	PER_IO_OPERATION_DATA m_ReceiveOverlapped;
 public:
-	inline TSocketSet* service() { return dynamic_cast<TSocketSet*>(Service::service()); }
-
 	CompletionPortSocket():Base()
 	{
 		memset(&m_SendOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
@@ -306,9 +304,10 @@ protected:
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
 class CompletionPortSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
 {
-public:
-	typedef TSocket Socket;
 	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
+public:
+	typedef TService Service;
+	typedef TSocket Socket;
 protected:
 	HANDLE m_hIocp;
 public:
@@ -336,7 +335,7 @@ public:
 		Base::Stop();
 	}
 
-	inline void AsyncSelect(SocketEx* sock_ptr, int evt) {
+	void AsyncSelect(SocketEx* sock_ptr, int evt) {
 		if(evt & FD_READ) {
 			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)sock_ptr, NULL);
 		}
@@ -345,22 +344,32 @@ public:
 		}
 	}
 	
-	int AddSocket(Socket* sock_ptr)
+	int AddSocket(Socket* sock_ptr, int evt = 0)
 	{
-		int i = Base::AddSocket(sock_ptr);
-		if(i >= 0) {
-			if (sock_ptr) {
-				HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, m_hIocp, (ULONG_PTR)(i + 1), 0);
-				ASSERT(hIocp);
-				if (hIocp != INVALID_HANDLE_VALUE) {
-					PRINTF("CreateIoCompletionPort: %ld by %ld\n", hIocp, m_hIocp);
+		std::unique_lock<std::mutex> lock(mutex_);
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(sock_ptrs_[i]==NULL) {
+				if (sock_ptr) {
+					sock_ptr->AttachService(this);
+					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, m_hIocp, (ULONG_PTR)(i + 1), 0);
+					ASSERT(hIocp);
+					if (hIocp != INVALID_HANDLE_VALUE) {
+						PRINTF("CreateIoCompletionPort: %ld by %ld\n", hIocp, m_hIocp);
+						return i;
+					} else {
+						PRINTF("CreateIoCompletionPort Error:%d\n", ::GetLastError());
+					}
+					sock_count_++;
+					sock_ptrs_[i] = sock_ptr;
+					AsyncSelect(sock_ptr, evt);
 					return i;
 				} else {
-					PRINTF("CreateIoCompletionPort Error:%d\n", ::GetLastError());
+					//测试可不可以增加Socket，返回true表示可以增加
+					return i;
 				}
-			} else {
-				//测试可不可以增加Socket，返回true表示可以增加
-				return i;
+				break;
 			}
 		}
 		return -1;

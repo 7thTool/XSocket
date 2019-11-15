@@ -34,6 +34,9 @@
 
 namespace XSocket {
 
+	class SocketEx;
+	class Service;
+
 const uint32_t MAX_SOCK_COUNT =	(u_short)(-1);
 
 /*!
@@ -88,6 +91,9 @@ public:
 	inline bool IsListenSocket() { return Role()==SOCKET_ROLE_LISTEN; }
 	inline bool IsWorkSocket() { return Role()==SOCKET_ROLE_WORK; }
 
+	inline void AttachService(Service* svr) { OnAttachService(svr); }
+	inline void DetachService(Service* svr) { OnDetachService(svr); }
+	
 	inline void Select(int lEvent) { m_lEvent |= lEvent; }
 	inline void RemoveSelect(int lEvent) { m_lEvent &= ~lEvent; }
 	inline bool IsSelect(int evt, bool all = false) {
@@ -167,6 +173,15 @@ protected:
 	 *	other value indecate unknown error.
 	 */
 	virtual void OnRole(int nRole);
+
+	/*!
+	 *	@brief 通知套接字绑定/解除绑定服务对象.
+	 *
+	 *	收到这个回调，说明Socket加入/离开了服务管理，接下来开始进入/退出Select事件通知处理了
+	 *	@param pSvr 服务对象指针
+	 */
+	virtual void OnAttachService(Service* pSvr){}
+	virtual void OnDetachService(Service* pSvr){}
 
 	/*!
 	 *	@brief 通知套接字无可操作状态，正在空闲或者等待中.
@@ -275,6 +290,128 @@ protected:
 private:
 	SocketEx(const SocketEx& Sock) {};
 	void operator=(const SocketEx& Sock) {};
+};
+
+	template <class Ty>
+	class Queue
+	{
+	public:
+		Queue() { }
+		Queue(const Queue<Ty>&) = delete;
+		Queue& operator=(const Queue<Ty>&) = delete;
+		~Queue() { 
+#ifdef _DEBUG
+			std::lock_guard<std::mutex> lock(mutex_);
+			assert(queue_.empty()); 
+#endif
+		}
+
+		void push(const Ty& o)
+		{
+			std::lock_guard<std::mutex> lock(mutex_);
+			queue_.push(o);
+			//if (timeout_) {
+				cv_.notify_one();
+			//}
+		}
+		bool pop(Ty& o, size_t timeout = 0)
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+			if(queue_.empty()) {
+				if (timeout) {
+					if (!cv_.wait_for(lock, std::chrono::milliseconds(timeout),
+						[this]() { return !queue_.empty(); })) { 
+						return false; 
+					}
+				} else {
+					return false;
+				}
+			} 
+			o = queue_.front();
+			queue_.pop();
+			return true;
+		}
+		size_t size()
+		{
+			return queue_.size();
+		}
+		bool empty()
+		{
+			return queue_.empty();
+		}
+	private:
+		std::queue<Ty> queue_;
+		std::mutex mutex_;
+		std::condition_variable cv_;
+	};
+
+/*!
+ *	@brief Service 定义.
+ *
+ *	封装Service，实现基本服务框架
+ */
+class Service 
+{
+protected:
+    //停止标记，默认停止状态，启动后停止状态为false
+    std::atomic<bool> stop_flag_;
+public:
+	static Service* service();
+
+	Service();
+
+	inline bool IsStopFlag() {
+		return stop_flag_;
+	}
+
+	virtual void AsyncSelect(SocketEx* sock_ptr, int evt) {
+		sock_ptr->Select(evt);
+	}
+
+protected:
+	//
+	virtual void OnRun()
+	{
+		if(OnInit()) {
+			while (!IsStopFlag()) {
+				size_t tick_count = Tick();
+				OnRunOnce();
+				if(IsStopFlag()) {
+					break;
+				}
+				//size_t tick_span = Tick() - tick_count;
+				//if(tick_span < 20 || tick_span > 100) {
+					OnIdle(Tick());
+					if(IsStopFlag()) {
+						break;
+					}
+					size_t tick_span = Tick() - tick_count;
+					if(tick_span < 20) {
+						//std::this_thread::yield();
+						std::this_thread::sleep_for(std::chrono::milliseconds(20-tick_span));
+					}
+				//}
+			}
+		}
+		OnTerm();
+	}
+
+	virtual bool OnInit();
+
+	virtual void OnTerm()
+	{
+
+	}
+
+	virtual void OnRunOnce()
+	{
+		
+	}
+
+	virtual void OnIdle(int nErrorCode)
+	{
+
+	}
 };
 
 /*!
@@ -387,6 +524,13 @@ public:
 	{
 
 	}
+
+protected:
+	//
+	virtual void OnAttachService(Service* pSvr)
+	{
+		
+	}
 };
 
 /*!
@@ -407,129 +551,13 @@ public:
 protected:
 };
 
-	template <class Ty>
-	class Queue
-	{
-	public:
-		Queue() { }
-		Queue(const Queue<Ty>&) = delete;
-		Queue& operator=(const Queue<Ty>&) = delete;
-		~Queue() { 
-#ifdef _DEBUG
-			std::lock_guard<std::mutex> lock(mutex_);
-			assert(queue_.empty()); 
-#endif
-		}
-
-		void push(const Ty& o)
-		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			queue_.push(o);
-			//if (timeout_) {
-				cv_.notify_one();
-			//}
-		}
-		bool pop(Ty& o, size_t timeout = 0)
-		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			if (timeout) {
-				if (!cv_.wait_for(lock, std::chrono::milliseconds(timeout),
-					[this]() { return !queue_.empty(); })) {
-					return false;
-				}
-			}
-			if (queue_.empty()) {
-				return false;
-			}
-			o = queue_.front();
-			queue_.pop();
-			return true;
-		}
-		size_t size()
-		{
-			return queue_.size();
-		}
-		bool empty()
-		{
-			return queue_.empty();
-		}
-	private:
-		std::queue<Ty> queue_;
-		std::mutex mutex_;
-		std::condition_variable cv_;
-	};
-
-/*!
- *	@brief Service 定义.
- *
- *	封装Service，实现基本服务框架
- */
-class Service 
-{
-protected:
-    //停止标记，默认停止状态，启动后停止状态为false
-    std::atomic<bool> stop_flag_;
-public:
-	static Service* service();
-
-	Service();
-
-	inline bool IsStopFlag() {
-		return stop_flag_;
-	}
-
-protected:
-	//
-	virtual void OnRun()
-	{
-		if(OnInit()) {
-			while (!IsStopFlag()) {
-				size_t tick_count = Tick();
-				OnRunOnce();
-				if(IsStopFlag()) {
-					break;
-				}
-				//size_t tick_span = Tick() - tick_count;
-				//if(tick_span < 20 || tick_span > 100) {
-					OnIdle(Tick());
-					if(IsStopFlag()) {
-						break;
-					}
-					size_t tick_span = Tick() - tick_count;
-					if(tick_span < 20) {
-						//std::this_thread::yield();
-						std::this_thread::sleep_for(std::chrono::milliseconds(20-tick_span));
-					}
-				//}
-			}
-		}
-		OnTerm();
-	}
-
-	virtual bool OnInit();
-
-	virtual void OnTerm()
-	{
-
-	}
-
-	virtual void OnRunOnce()
-	{
-		
-	}
-
-	virtual void OnIdle(int nErrorCode)
-	{
-
-	}
-};
 
 /*!
  *	@brief EventService 定义.
  *
  *	封装EventService，实现事件服务框架
  */
-template<typename TEvent, typename TBase = Service>
+template<class TEvent, class TBase = Service>
 class EventService : public TBase
 {
 	typedef TBase Base;
@@ -551,7 +579,7 @@ protected:
 
 	virtual void OnRunOnce()
 	{
-		TEvent evt;
+		Event evt;
 		for(size_t i = 0, j = queue_.size(); i < j; i++)
 		{
 			if (queue_.pop(evt)) {
@@ -575,12 +603,12 @@ public:
 public:
 	DealyEvent():Base(){}
 	DealyEvent(Event evt):Base(evt){}
-	DealyEvent(Event evt, size_t _delay, size_t _repeat):Base(evt),time(std::chrono::steady_clock::now()),dealy(_delay),repeat(_repeat){}
-	DealyEvent(const DealyEvent& o):Base((Event)o),time(o.time),dealy(o.delay),repeat(o.repeat){}
+	DealyEvent(Event evt, size_t _delay, size_t _repeat):Base(evt),time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
+	DealyEvent(const DealyEvent& o):Base((Event)o),time(o.time),delay(o.delay),repeat(o.repeat){}
 	inline bool IsPoint()
 	{
-		if(dealy.count() > 0 && repeat >= 0) {
-			if((std::chrono::steady_clock::now()-time) > dealy) {
+		if(delay.count() > 0 && repeat >= 0) {
+			if((std::chrono::steady_clock::now()-time) > delay) {
 				return true;
 			}
 			return false;
@@ -592,7 +620,7 @@ public:
 		return repeat > 0;
 	}
 	inline void Update() {
-		if(dealy.count() > 0 && repeat > 0) {
+		if(delay.count() > 0 && repeat > 0) {
 			time = std::chrono::steady_clock::now();//std::chrono::microseconds(evt.millis);
 			//dealy;
 			if(repeat == (size_t)-1) {
@@ -601,7 +629,7 @@ public:
 		}
 	}
 	std::chrono::steady_clock::time_point time;
-	std::chrono::milliseconds dealy;
+	std::chrono::milliseconds delay;
 	int repeat = 0;
 };
 /*!
@@ -734,11 +762,7 @@ public:
 	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
 	inline size_t GetSocketCount() { return sock_count_; }
 
-	inline void AsyncSelect(SocketEx* sock_ptr, int evt) {
-		sock_ptr->Select(evt);
-	}
-
-	int AddSocket(Socket* sock_ptr)
+	int AddSocket(Socket* sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		int i;
@@ -746,6 +770,8 @@ public:
 		{
 			if(sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
+					sock_ptr->AttachService(this);
+					sock_ptr->Select(evt);
 					sock_count_++;
 					sock_ptrs_[i] = sock_ptr;
 					return i;
@@ -770,6 +796,7 @@ public:
 				std::unique_lock<std::mutex> lock(mutex_);
 				TSocket* t_sock_ptr = sock_ptrs_[i];
 				if (t_sock_ptr) {
+					sock_ptr->DetachService(this);
 					sock_count_--;
 					sock_ptrs_[i] = NULL;
 					return i;
@@ -793,8 +820,9 @@ public:
 				TSocket* t_sock_ptr = sock_ptrs_[i];
 				if (t_sock_ptr) {
 					if (!sock_ptrs_[i]->IsSocket()) {
-						sock_count_--;
 						sock_ptr = sock_ptrs_[i];
+						sock_ptr->DetachService(this);
+						sock_count_--;
 						sock_ptrs_[i] = NULL;
 						return i;
 						break;
@@ -818,6 +846,7 @@ public:
 						sock_ptr->Close();
 					}
 				}
+				sock_ptr->DetachService(this);
 				sock_ptrs_[i] = NULL;
 			}
 		}
@@ -905,14 +934,14 @@ public:
 		return nullptr;
 	}
 
-	int AddSocket(Socket* sock_ptr)
+	int AddSocket(Socket* sock_ptr, int evt = 0)
 	{
 		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
 		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
 		for (; next < next_end; next++)
 		{
 			int i = next % sockset_ptrs_.size();
-			int result = sockset_ptrs_[i]->AddSocket(sock_ptr);
+			int result = sockset_ptrs_[i]->AddSocket(sock_ptr, evt);
 			if (result >= 0) {
 				return i;
 				break;
@@ -1007,7 +1036,9 @@ protected:
 			nfds = select(maxfds, &readfds, NULL, &exceptfds, &tv);
 			if (nfds > 0) {
 				if (FD_ISSET(fd,&readfds)) {
-					Base::Trigger(FD_ACCEPT, 0);
+					if (Base::IsSelect(FD_ACCEPT)) {
+						Base::Trigger(FD_ACCEPT, 0);
+					}
 				}
 			}
 		} else if (Base::IsSelect(FD_CONNECT)) {
@@ -1033,27 +1064,29 @@ protected:
 		} else {
 			fd_set readfds;
 			FD_ZERO(&readfds);
-			if(Base::IsSelectRead()) {
-				FD_SET(fd, &readfds);
-			}
+			FD_SET(fd, &readfds);
 			fd_set writefds;
 			FD_ZERO(&writefds);
-			if(Base::IsSelectWrite()) {
-				FD_SET(fd, &writefds);
-			}
+			FD_SET(fd, &writefds);
 			nfds = select(maxfds, &readfds, &writefds, &exceptfds, &tv);
 			if (nfds > 0) {
 				if (FD_ISSET(fd,&readfds)) {
 					int err = 0;
 					Base::GetSockOpt(SOL_SOCKET, SO_OOBINLINE, &err, sizeof(err));
 					if (err) {
-						Base::Trigger(FD_OOB, 0);
+						if (Base::IsSelect(FD_OOB)) {
+							Base::Trigger(FD_OOB, 0);
+						}
 					} else {
-						Base::Trigger(FD_READ, 0);
+						if (Base::IsSelect(FD_READ)) {
+							Base::Trigger(FD_READ, 0);
+						}
 					}
 				}
 				if (FD_ISSET(fd, &writefds)) {
-					Base::Trigger(FD_WRITE, 0);
+					if (Base::IsSelect(FD_WRITE)) {
+						Base::Trigger(FD_WRITE, 0);
+					}
 				}
 			}
 		}
@@ -1152,9 +1185,13 @@ protected:
 								int err = 0;
 								sock_ptr->GetSockOpt(SOL_SOCKET, SO_OOBINLINE, &err, sizeof(err));
 								if (err) {
-									sock_ptr->Trigger(FD_OOB, 0);
+									if(sock_ptr->IsSelect(FD_OOB)) {
+										sock_ptr->Trigger(FD_OOB, 0);
+									}
 								} else {
-									sock_ptr->Trigger(FD_READ, 0);
+									if(sock_ptr->IsSelect(FD_READ)) {
+										sock_ptr->Trigger(FD_READ, 0);
+									}
 								}
 							}
 						}
@@ -1346,9 +1383,8 @@ protected:
 				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
 				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
 	#endif//
-				int pos = pT->AddSocket(sock_ptr);
+				int pos = pT->AddSocket(sock_ptr, FD_READ|FD_WRITE|FD_OOB);
 				if(pos >= 0) {
-					pT->GetSocketSet(pos)->AsyncSelect(sock_ptr, FD_READ|FD_WRITE|FD_OOB);
 					OnAddPeer(sock_ptr);
 				} else {
 					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
@@ -1388,15 +1424,18 @@ protected:
  *
  *	封装SelectServer，实现对select模型管理监听Socket连接，依赖SelectSet/SelectManager
  */
-template<class T, class TService = ThreadService, class TBase = ListenSocket<SocketEx>, class TWorkSocket = WorkSocket<SocketEx>, u_short uFD_SETSize = FD_SETSIZE>
+template<class T, class TService, class TBase, class TSocketSet>
 class SelectServer 
-: public SelectListen<T,TService,TBase,TWorkSocket>
-, public SocketManager<SelectSocketSet<TService,TWorkSocket,uFD_SETSize>>
+: public SelectListen<T,TService,TBase,typename TSocketSet::Socket>
+, public SocketManager<TSocketSet>
 {
-	typedef SelectListen<T,TService,TBase,TWorkSocket> Base;
-	typedef SocketManager<SelectSocketSet<TService,TWorkSocket,uFD_SETSize>> SockManager;
 public:
-	SelectServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+uFD_SETSize-1)/uFD_SETSize)
+	typedef TSocketSet SocketSet;
+	typedef typename SocketSet::Socket Socket;
+	typedef SocketManager<SocketSet> SockManager;
+	typedef SelectListen<T,TService,TBase,Socket> Base;
+public:
+	SelectServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
 	{
 		
 	}

@@ -28,15 +28,12 @@ namespace XSocket {
  *
  *	封装EPollSocket
  */
-template<class TSocketSet, class TBase = SocketEx>
+template<class TBase = SocketEx>
 class EPollSocket : public TBase
 {
 public:
 	typedef TBase Base;
-	typedef TSocketSet SocketSet;
 public:
-	inline SocketSet* ThisSocketSet() { return dynamic_cast<SocketSet*>(Service::service()); }
-
 	EPollSocket():Base()
 	{
 		
@@ -58,7 +55,7 @@ public:
 				break;
 			case EWOULDBLOCK:
 			case EINTR:
-				ThisSocketSet()->AsyncSelect(this, FD_WRITE);
+				Service::service()->AsyncSelect(this, FD_WRITE);
 				break;
 			default:
 				break;
@@ -78,13 +75,30 @@ public:
 				break;
 			case EWOULDBLOCK:
 			case EINTR:
-				ThisSocketSet()->AsyncSelect(this, FD_READ);
+				Service::service()->AsyncSelect(this, FD_READ);
 				break;
 			default:
 				break;
 			}	
 		}
 		return nRecvLen;
+	}
+
+	inline void Select(int lEvent) {  
+		int lAsyncEvent = 0;
+		if(!Base::IsSelect(FD_READ) && (lEvent & FD_READ)) {
+			lAsyncEvent |= FD_READ;
+		}
+		if(!Base::IsSelect(FD_WRITE) && (lEvent & FD_WRITE)) {
+			lAsyncEvent |= FD_WRITE;
+		}
+		Base::Select(lEvent);
+		if(lAsyncEvent & FD_READ) {
+			Base::Trigger(FD_READ, 0);
+		}
+		if(lAsyncEvent & FD_WRITE) {
+			Base::Trigger(FD_WRITE, 0);
+		}
 	}
 };
 
@@ -97,6 +111,9 @@ template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_S
 class EPollSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
 {
 	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
+public:
+	typedef TService Service;
+	typedef TSocket Socket;
 protected:
 	int m_epfd;
 public:
@@ -112,57 +129,83 @@ public:
 		}
 	}
 
-	inline void AsyncSelect(SocketEx* sock_ptr, int evt) {
+	void AsyncSelect(SocketEx* sock_ptr, int evt) {
+		if(sock_ptr->IsSelect(evt,true)) {
+			return;
+		}
 		sock_ptr->Select(evt);
 		int fd = *sock_ptr;
 		struct epoll_event event = {0};
 		event.data.ptr = (void*)sock_ptr;
-		event.events = 0 | EPOLLRDHUP
-						| EPOLLPRI 
+		event.events = 0 
+		| EPOLLRDHUP
+						
 #ifdef USE_EPOLLET
-						| EPOLLET
+		| EPOLLET
 #endif//
-		//				| EPOLLONESHOT
+		//| EPOLLONESHOT
 		;
-		if (evt&FD_WRITE) {
-			event.events |= EPOLLOUT;
-		}
-		if (evt&FD_READ) {
+		if (sock_ptr->IsSelect(FD_READ)) {
 			event.events |= EPOLLIN;
+		}
+		if (sock_ptr->IsSelect(FD_OOB)) {
+			event.events |= EPOLLPRI;
+		}
+		if (sock_ptr->IsSelect(FD_WRITE)) {
+			event.events |= EPOLLOUT;
 		}
 		epoll_ctl(m_epfd,EPOLL_CTL_MOD,fd,&event);
 	}
 	
-	int AddSocket(TSocket* sock_ptr)
+	int AddSocket(TSocket* sock_ptr, int evt = 0)
 	{
-		int i = Base::AddSocket(sock_ptr);
-		if (i >= 0) {
-			if (sock_ptr) {
-				int fd = *sock_ptr;
-				struct epoll_event event = {0};
-				event.data.ptr = (void *)sock_ptr;
-				//LT(默认)，LT+EPOLLONESHOT最可靠
-				//ET，EPOLLET最高效,ET+EPOLLONESHOT高效可靠（这里使用）
-				event.events = 0 
-				| EPOLLIN //表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
-				| EPOLLOUT //表示对应的文件描述符可以写；
-				| EPOLLRDHUP //Stream socket peer closed connection, or shut down writing  half of connection.
-				| EPOLLPRI //表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
-				//| EPOLLERR //表示对应的文件描述符发生错误；不用注册，会自动触发
-				//| EPOLLHUP //表示对应的文件描述符被挂断；不用注册，会自动触发
-#ifdef USE_EPOLLET
-				| EPOLLET //将EPOLL设为边缘触发(Edge Triggered)模式，这是相对于水平触发(LevelTriggered)来说的；
-#endif
-				//| EPOLLONESHOT //只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
-				;
-				if (SOCKET_ERROR != epoll_ctl(m_epfd, EPOLL_CTL_ADD, fd, &event)) {
+		std::unique_lock<std::mutex> lock(Base::mutex_);
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(Base::sock_ptrs_[i]==NULL) {
+				if (sock_ptr) {
+					sock_ptr->AttachService(this);
+					sock_ptr->SocketEx::Select(evt);
+					Base::sock_count_++;
+					Base::sock_ptrs_[i] = sock_ptr;
+					int fd = *sock_ptr;
+					struct epoll_event event = {0};
+					event.data.ptr = (void *)sock_ptr;
+					//LT(默认)，LT+EPOLLONESHOT最可靠
+					//ET，EPOLLET最高效,ET+EPOLLONESHOT高效可靠
+					event.events = 0 
+					//| EPOLLIN //表示对应的文件描述符可以读（包括对端SOCKET正常关闭）；
+					//| EPOLLPRI //表示对应的文件描述符有紧急的数据可读（这里应该表示有带外数据到来）；
+					//| EPOLLOUT //表示对应的文件描述符可以写；
+					| EPOLLRDHUP //Stream socket peer closed connection, or shut down writing  half of connection.
+					//| EPOLLERR //表示对应的文件描述符发生错误；不用注册，会自动触发
+					//| EPOLLHUP //表示对应的文件描述符被挂断；不用注册，会自动触发
+	#ifdef USE_EPOLLET
+					| EPOLLET //将EPOLL设为边缘触发(Edge Triggered)模式，这是相对于水平触发(LevelTriggered)来说的；
+	#endif
+					//| EPOLLONESHOT //只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
+					;
+					if(evt & FD_READ) {
+						event.events |= EPOLLIN;
+					}
+					if (evt & FD_OOB) {
+						event.events |= EPOLLPRI;
+					}
+					if (evt & FD_WRITE) {
+						event.events |= EPOLLOUT;
+					}
+					if (SOCKET_ERROR != epoll_ctl(m_epfd, EPOLL_CTL_ADD, fd, &event)) {
+						//return i;
+					} else {
+						PRINTF("epoll_ctl err:%d\n", XSocket::GetLastError());
+					}
 					return i;
 				} else {
-					PRINTF("epoll_ctl err:%d\n", XSocket::GetLastError());
+					//测试可不可以增加Socket，返回true表示可以增加
+					return i;
 				}
-			} else {
-				//测试可不可以增加Socket，返回true表示可以增加
-				return i;
+				break;
 			}
 		}
 		return -1;
@@ -170,18 +213,55 @@ public:
 
 	int RemoveSocket(TSocket* sock_ptr)
 	{
-		int i = Base::RemoveSocket(sock_ptr);
-		if (i >= 0) {
-			if (sock_ptr) {
-				if (sock_ptr->IsSocket()) {
+		ASSERT(sock_ptr);
+		//std::unique_lock<std::mutex> lock(Base::mutex_);
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(Base::sock_ptrs_[i]==sock_ptr) {
+				std::unique_lock<std::mutex> lock(Base::mutex_);
+				TSocket* t_sock_ptr = Base::sock_ptrs_[i];
+				if (t_sock_ptr) {
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
 					event.data.ptr = (void *)sock_ptr;
 					epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);
-				} 
-				return i;
-			} else {
-				return i;
+					sock_ptr->DetachService(this);
+					Base::sock_count_--;
+					Base::sock_ptrs_[i] = NULL;
+					return i;
+				} else {
+					return i;
+				}
+				break;
+			}
+		}
+		return -1;
+	}
+
+	int RemoveInvalidSocket(Socket* & sock_ptr)
+	{
+		//std::unique_lock<std::mutex> lock(Base::mutex_);
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(Base::sock_ptrs_[i]) {
+				std::unique_lock<std::mutex> lock(Base::mutex_);
+				TSocket* t_sock_ptr = Base::sock_ptrs_[i];
+				if (t_sock_ptr) {
+					if (!Base::sock_ptrs_[i]->IsSocket()) {
+						sock_ptr = Base::sock_ptrs_[i];
+						/*int fd = *sock_ptr;
+						struct epoll_event event = {0};
+						event.data.ptr = (void *)sock_ptr;
+						epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);*/
+						sock_ptr->DetachService(this);
+						Base::sock_count_--;
+						Base::sock_ptrs_[i] = NULL;
+						return i;
+						break;
+					}
+				}
 			}
 		}
 		return -1;
@@ -204,6 +284,7 @@ public:
 						sock_ptr->Close();
 					}
 				}
+				sock_ptr->DetachService(this);
 				Base::sock_ptrs_[i] = NULL;
 			}
 		}
@@ -220,7 +301,7 @@ protected:
 		int nfds = 0;
 		struct epoll_event events[uFD_SETSize] = {0};
 		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
-		nfds = epoll_wait(m_epfd, events, uFD_SETSize, -1);
+		nfds = epoll_wait(m_epfd, events, uFD_SETSize, 0);
 		if (nfds > 0) {
 			for (i = 0; i < nfds; ++i)
 			{
@@ -242,13 +323,13 @@ protected:
 				//	 */
 				//	evt |= EPOLLIN|EPOLLOUT;
 				//}
-				if (sock_ptr->IsSocket() && evt & EPOLLPRI) {
+				if (sock_ptr->IsSocket() && (evt & EPOLLPRI)) {
 					//有紧急数据
 					if (sock_ptr->IsSelect(FD_OOB)) {
 						sock_ptr->Trigger(FD_OOB, 0);
 					}
 				}
-				if (sock_ptr->IsSocket() && evt & EPOLLIN) {
+				if (sock_ptr->IsSocket() && (evt & EPOLLIN)) {
 					//有新的可读数据
 					if (sock_ptr->IsSelect(FD_ACCEPT)) {
 						sock_ptr->Trigger(FD_ACCEPT, 0);
@@ -258,7 +339,7 @@ protected:
 						}
 					}
 				}
-				if (sock_ptr->IsSocket() && evt & EPOLLOUT) {
+				if (sock_ptr->IsSocket() && (evt & EPOLLOUT)) {
 					//有新的可写数据
 					if (sock_ptr->IsSelect(FD_CONNECT)) {
 						if (nErrorCode == 0) {
@@ -300,8 +381,8 @@ class EPollServer
 , public SocketManager<TSocketSet>
 {
 public:
-	typedef typename SocketSet::Socket Socket;
 	typedef TSocketSet SocketSet;
+	typedef typename SocketSet::Socket Socket;
 	typedef SocketManager<SocketSet> SockManager;
 	typedef SelectListen<T,TService,TBase,Socket> Base;
 public:
