@@ -370,6 +370,8 @@ public:
 		sock_ptr->Select(evt);
 	}
 
+	inline void RemoveSocket(SocketEx* sock_ptr) {}
+
 protected:
 	//
 	virtual void OnRun()
@@ -566,14 +568,48 @@ class EventService : public TBase
 public:
 	typedef TEvent Event;
 protected:
-	Queue<Event> queue_;
+	//Queue<Event> queue_;
+	std::vector<Event> queue_;
+	std::mutex mutex_;
+	//std::condition_variable cv_;
 public:
+	EventService()
+	{
+		queue_.reserve(1024);
+	}
 
 	inline void Post(const Event& evt) {
-		queue_.push(evt);
+		std::lock_guard<std::mutex> lock(mutex_);
+		queue_.emplace_back(evt);
+	}
+
+	inline void RemoveSocket(SocketEx* sock_ptr) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		for(int i = queue_.size() - 1; i >= 0; i--)
+		{
+			const Event& evt = queue_[i];
+			if (IsSocketEvent(sock_ptr, evt)) {
+				queue_.erase(queue_.begin() + i);
+			}
+		}
 	}
 
 protected:
+
+	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
+		return false;
+	}
+
+	inline bool Pop(Event& evt) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		if (!queue_.empty()) {
+			evt = queue_[0];
+			queue_.erase(queue_.begin());
+			return true;
+		}
+		return false;
+	}
+
 	virtual void OnEvent(const Event& evt)
 	{
 		
@@ -581,10 +617,10 @@ protected:
 
 	virtual void OnRunOnce()
 	{
-		Event evt;
 		for(size_t i = 0, j = queue_.size(); i < j; i++)
 		{
-			if (queue_.pop(evt)) {
+			Event evt;
+			if (Pop(evt)) {
 				OnEvent(evt);
 			}
 		}
@@ -654,9 +690,9 @@ public:
 
 	inline void PostDelay(const Event& evt, size_t mills = 0, size_t repeat = 0) {
 		if(mills) {
-			Base::queue_.push(DelayEvent(evt,mills,repeat));
+			Base::Post(DelayEvent(evt,mills,repeat));
 		} else {
-			Base::queue_.push(DelayEvent(evt));
+			Base::Post(DelayEvent(evt));
 		}
 	}
 
@@ -672,15 +708,15 @@ protected:
 		DelayEvent evt;
 		for(size_t i = 0, j = Base::queue_.size(); i < j; i++)
 		{
-			if (Base::queue_.pop(evt)) {
+			if (Base::Pop(evt)) {
 				if(evt.IsPoint()) {
 					OnEvent(evt);
 					evt.Update();
 					if(evt.IsRepeat()) {
-						Base::queue_.push(evt);
+						Base::Post(evt);
 					}
 				} else {
-					Base::queue_.push(evt);
+					Base::Post(evt);
 				}
 			} else {
 				break;
@@ -799,6 +835,7 @@ public:
 				TSocket* t_sock_ptr = sock_ptrs_[i];
 				if (t_sock_ptr) {
 					sock_ptr->DetachService(this);
+					Service::RemoveSocket(sock_ptr);
 					sock_count_--;
 					sock_ptrs_[i] = NULL;
 					return i;
@@ -824,6 +861,7 @@ public:
 					if (!sock_ptrs_[i]->IsSocket()) {
 						sock_ptr = sock_ptrs_[i];
 						sock_ptr->DetachService(this);
+						Service::RemoveSocket(sock_ptr);
 						sock_count_--;
 						sock_ptrs_[i] = NULL;
 						return i;
@@ -850,12 +888,27 @@ public:
 				}
 				sock_ptr->DetachService(this);
 				sock_ptrs_[i] = NULL;
+				Service::RemoveSocket(sock_ptr);
 			}
 		}
 		sock_count_ = 0;
 	}
 
 protected:
+	//
+	inline bool IsSocketExist(Socket* sock_ptr) {
+		if(!sock_ptr) {
+			return false;
+		}
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(sock_ptrs_[i]==sock_ptr) {
+				return true;
+			}
+		}
+		return false;
+	}
 	//
 	virtual void OnIdle(int nErrorCode)
 	{
@@ -1283,6 +1336,7 @@ protected:
 		u_short port = pT->GetPort();
 		if(port != 0) {
 			pT->Open();
+			pT->SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
 			pT->Bind(addr, port);
 			pT->Listen();
 			return true;

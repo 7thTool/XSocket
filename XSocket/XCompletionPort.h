@@ -410,8 +410,9 @@ protected:
 			return;
 		}
 		if (dwTransfer == IOCP_OPERATION_TRYRECEIVE) { //
+			std::unique_lock<std::mutex> lock(mutex_);
 			SocketEx* sock_ptr = (SocketEx*)Key;
-			if(sock_ptr) {
+			if(IsSocketExist(sock_ptr)) {
 				if (!sock_ptr->IsSelect(FD_READ)) {
 					sock_ptr->Select(FD_READ);
 					sock_ptr->Trigger(FD_READ, 0);
@@ -420,8 +421,9 @@ protected:
 			return;
 		}
 		if (dwTransfer == IOCP_OPERATION_TRYSEND) { //
+			std::unique_lock<std::mutex> lock(mutex_);
 			SocketEx* sock_ptr = (SocketEx*)Key;
-			if(sock_ptr) {
+			if(IsSocketExist(sock_ptr)) {
 				if (!sock_ptr->IsSelect(FD_WRITE)) {
 					sock_ptr->Select(FD_WRITE);
 					sock_ptr->Trigger(FD_WRITE, 0);
@@ -452,7 +454,7 @@ protected:
 		if (Pos > 0 && Pos <= uFD_SETSize) {
 			std::unique_lock<std::mutex> lock(mutex_);
 			Socket *sock_ptr = sock_ptrs_[Pos - 1];
-			lock.unlock();
+			//lock.unlock();
 			if (!bStatus) {
 				if (sock_ptr) {
 					if (sock_ptr->IsSelect(FD_ACCEPT)) {

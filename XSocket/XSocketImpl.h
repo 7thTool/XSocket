@@ -488,6 +488,13 @@ public:
 
 protected:
 	//
+	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
+		if(evt.dst == sock_ptr) {
+			return true;
+		}
+		return false;
+	}
+	//
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.dst) {

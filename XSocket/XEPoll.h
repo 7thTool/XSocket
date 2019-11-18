@@ -305,10 +305,13 @@ protected:
 		if (nfds > 0) {
 			for (i = 0; i < nfds; ++i)
 			{
+				std::unique_lock<std::mutex> lock(Base::mutex_);
 				struct epoll_event event = events[i];
 				TSocket *sock_ptr = (TSocket *)event.data.ptr;
+				if(!Base::IsSocketExist(sock_ptr)) {
+					continue;
+				}
 				unsigned int evt = event.events;
-				ASSERT(sock_ptr);
 				int fd = *sock_ptr;
 				int nErrorCode = 0;
 				//参考NGIX逻辑...
