@@ -301,8 +301,10 @@ private:
 		Queue& operator=(const Queue<Ty>&) = delete;
 		~Queue() { 
 #ifdef _DEBUG
-			std::lock_guard<std::mutex> lock(mutex_);
-			assert(queue_.empty()); 
+			//std::lock_guard<std::mutex> lock(mutex_);
+			if(!queue_.empty()) {
+				PRINTF("Queue is not empty, size=%u\n", queue_.size());
+			}
 #endif
 		}
 
@@ -1427,7 +1429,7 @@ public:
 	}
 	virtual ~SelectClient()
 	{
-		Base::Stop();
+		
 	}
 
 protected:
@@ -1457,7 +1459,7 @@ public:
 
 	~SelectServer()
 	{
-		Stop();
+		
 	}
 
 	bool Start()
@@ -1494,7 +1496,7 @@ public:
 	}
 	virtual ~SelectUdpClient()
 	{
-		Base::Stop();
+		
 	}
 
 protected:
@@ -1516,7 +1518,7 @@ public:
 	}
 	virtual ~SelectUdpServer()
 	{
-		Base::Stop();
+		
 	}
 
 protected:
