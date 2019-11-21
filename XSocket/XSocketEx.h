@@ -786,6 +786,7 @@ protected:
 	u_short sock_count_;
 	std::shared_ptr<Socket> sock_ptrs_[uFD_SETSize];
 	u_short sock_idle_next_;
+	std::mutex mutex_;
 public:
 	SocketSet()
 	{
