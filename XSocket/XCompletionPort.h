@@ -335,16 +335,16 @@ public:
 		Base::Stop();
 	}
 
-	void AsyncSelect(SocketEx* sock_ptr, int evt) {
+	inline void AsyncSelect(int pos, int evt) {
 		if(evt & FD_READ) {
-			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)sock_ptr, NULL);
+			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(pos + 1), NULL);
 		}
 		if(evt & FD_WRITE) {
-			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)sock_ptr, NULL);
+			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(pos + 1), NULL);
 		}
 	}
 	
-	int AddSocket(Socket* sock_ptr, int evt = 0)
+	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		int i;
@@ -362,7 +362,7 @@ public:
 					} else {
 						PRINTF("CreateIoCompletionPort Error:%d\n", ::GetLastError());
 					}
-					AsyncSelect(sock_ptr, evt);
+					AsyncSelect(i, evt);
 					return i;
 				} else {
 					//测试可不可以增加Socket，返回true表示可以增加
@@ -409,28 +409,6 @@ protected:
 			PRINTF("GetQueuedCompletionStatus Eixt\n");
 			return;
 		}
-		if (dwTransfer == IOCP_OPERATION_TRYRECEIVE) { //
-			std::unique_lock<std::mutex> lock(mutex_);
-			SocketEx* sock_ptr = (SocketEx*)Key;
-			if(IsSocketExist(sock_ptr)) {
-				if (!sock_ptr->IsSelect(FD_READ)) {
-					sock_ptr->Select(FD_READ);
-					sock_ptr->Trigger(FD_READ, 0);
-				}
-			}
-			return;
-		}
-		if (dwTransfer == IOCP_OPERATION_TRYSEND) { //
-			std::unique_lock<std::mutex> lock(mutex_);
-			SocketEx* sock_ptr = (SocketEx*)Key;
-			if(IsSocketExist(sock_ptr)) {
-				if (!sock_ptr->IsSelect(FD_WRITE)) {
-					sock_ptr->Select(FD_WRITE);
-					sock_ptr->Trigger(FD_WRITE, 0);
-				}
-			}
-			return;
-		}
 		int Pos = Key;
 		// if(!bStatus) {
 		//	PRINTF("GetQueuedCompletionStatus Error:%d \n", ::GetLastError());
@@ -453,22 +431,35 @@ protected:
 		// } 
 		if (Pos > 0 && Pos <= uFD_SETSize) {
 			std::unique_lock<std::mutex> lock(mutex_);
-			Socket *sock_ptr = sock_ptrs_[Pos - 1];
-			//lock.unlock();
+			std::shared_ptr<Socket> sock_ptr = sock_ptrs_[Pos - 1];
+			lock.unlock();
+			if (dwTransfer == IOCP_OPERATION_TRYRECEIVE) { //
+				if(sock_ptr) {
+					if (!sock_ptr->IsSelect(FD_READ)) {
+						sock_ptr->Select(FD_READ);
+						sock_ptr->Trigger(FD_READ, 0);
+					}
+				}
+				return;
+			}
+			if (dwTransfer == IOCP_OPERATION_TRYSEND) { //
+				if(sock_ptr) {
+					if (!sock_ptr->IsSelect(FD_WRITE)) {
+						sock_ptr->Select(FD_WRITE);
+						sock_ptr->Trigger(FD_WRITE, 0);
+					}
+				}
+				return;
+			}
 			if (!bStatus) {
 				if (sock_ptr) {
-					if (sock_ptr->IsSelect(FD_ACCEPT)) {
+					if (sock_ptr->IsListenSocket()) {
 						int nErrorCode = GetLastError();
 						sock_ptr->Trigger(FD_ACCEPT, nErrorCode);
-						if (nErrorCode == 0) {
-							sock_ptr->RemoveSelect(FD_ACCEPT);
-						}
 					} else if (sock_ptr->IsSelect(FD_CONNECT)) {
+						sock_ptr->RemoveSelect(FD_CONNECT);
 						int nErrorCode = GetLastError();
 						sock_ptr->Trigger(FD_CONNECT, nErrorCode);
-						if (nErrorCode == 0) {
-							sock_ptr->RemoveSelect(FD_CONNECT);
-						}
 					} else {
 						int nErrorCode = GetLastError();
 						sock_ptr->Trigger(FD_CLOSE, nErrorCode);
@@ -514,8 +505,8 @@ protected:
 							NULL,
 							0);
 						if(sock_ptr->IsSelect(FD_CONNECT)) {
-							sock_ptr->Trigger(FD_CONNECT, sock_ptr->GetLastError());
 							sock_ptr->RemoveSelect(FD_CONNECT);
+							sock_ptr->Trigger(FD_CONNECT, sock_ptr->GetLastError());
 						}
 						if (sock_ptr->IsSocket()) {
 							if (sock_ptr->IsSelect(FD_WRITE)) {
@@ -532,8 +523,9 @@ protected:
 						lpOverlapped->NumberOfBytesReceived = dwTransfer;
 						if (dwTransfer) {
 							sock_ptr->Trigger(FD_READ, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesReceived, 0);
-							sock_ptr->Trigger(FD_READ, 0); //继续投递接收操作
-							//sock_ptr->Trigger(FD_WRITE, 0);
+							if (sock_ptr->IsSocket()) {
+								sock_ptr->Trigger(FD_READ, 0); //继续投递接收操作
+							}
 						} else {
 							PRINTF("GetQueuedCompletionStatus Recv Error:%d WSAError:%d\n", ::GetLastError(), sock_ptr->GetLastError());
 							sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
@@ -545,8 +537,9 @@ protected:
 						lpOverlapped->NumberOfBytesSended = dwTransfer;
 						if (dwTransfer) {
 							sock_ptr->Trigger(FD_WRITE, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesSended, 0);
-							sock_ptr->Trigger(FD_WRITE, 0); //继续投递接收操作
-							//sock_ptr->Trigger(FD_READ, 0); //继续投递接收操作
+							if (sock_ptr->IsSocket()) {
+								sock_ptr->Trigger(FD_WRITE, 0); //继续投递接收操作
+							}
 						} else {
 							PRINTF("GetQueuedCompletionStatus Send Error:%d WSAError:%d\n", ::GetLastError(), sock_ptr->GetLastError());
 							sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());

@@ -157,7 +157,7 @@ public:
 		epoll_ctl(m_epfd,EPOLL_CTL_MOD,fd,&event);
 	}
 	
-	int AddSocket(TSocket* sock_ptr, int evt = 0)
+	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(Base::mutex_);
 		int i;
@@ -171,7 +171,7 @@ public:
 					sock_ptr->SocketEx::Select(evt);
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
-					event.data.ptr = (void *)sock_ptr;
+					event.data.ptr = (void *)sock_ptr.get();
 					//LT(默认)，LT+EPOLLONESHOT最可靠
 					//ET，EPOLLET最高效,ET+EPOLLONESHOT高效可靠
 					event.events = 0 
@@ -211,24 +211,24 @@ public:
 		return -1;
 	}
 
-	int RemoveSocket(TSocket* sock_ptr)
+	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
 	{
-		ASSERT(sock_ptr);
 		//std::unique_lock<std::mutex> lock(Base::mutex_);
 		int i;
 		for (i=0;i<uFD_SETSize;i++)
 		{
 			if(Base::sock_ptrs_[i]==sock_ptr) {
 				std::unique_lock<std::mutex> lock(Base::mutex_);
-				TSocket* t_sock_ptr = Base::sock_ptrs_[i];
+				std::shared_ptr<Socket> t_sock_ptr = Base::sock_ptrs_[i];
 				if (t_sock_ptr) {
+					Base::sock_count_--;
+					Base::sock_ptrs_[i].reset();
+					lock.unlock();
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
-					event.data.ptr = (void *)sock_ptr;
+					event.data.ptr = (void *)sock_ptr.get();
 					epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);
 					sock_ptr->DetachService(this);
-					Base::sock_count_--;
-					Base::sock_ptrs_[i] = NULL;
 					return i;
 				} else {
 					return i;
@@ -237,58 +237,6 @@ public:
 			}
 		}
 		return -1;
-	}
-
-	int RemoveInvalidSocket(Socket* & sock_ptr)
-	{
-		//std::unique_lock<std::mutex> lock(Base::mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
-		{
-			if(Base::sock_ptrs_[i]) {
-				std::unique_lock<std::mutex> lock(Base::mutex_);
-				TSocket* t_sock_ptr = Base::sock_ptrs_[i];
-				if (t_sock_ptr) {
-					if (!Base::sock_ptrs_[i]->IsSocket()) {
-						sock_ptr = Base::sock_ptrs_[i];
-						/*int fd = *sock_ptr;
-						struct epoll_event event = {0};
-						event.data.ptr = (void *)sock_ptr;
-						epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);*/
-						sock_ptr->DetachService(this);
-						Base::sock_count_--;
-						Base::sock_ptrs_[i] = NULL;
-						return i;
-						break;
-					}
-				}
-			}
-		}
-		return -1;
-	}
-
-	void RemoveAllSocket(bool bClose = false)
-	{
-		std::unique_lock<std::mutex> lock(Base::mutex_);
-		int i;
-		for (i = 0; i < uFD_SETSize; i++)
-		{
-			if (Base::sock_ptrs_[i]) {
-				TSocket* sock_ptr = Base::sock_ptrs_[i];
-				if (sock_ptr->IsSocket()) {
-					int fd = *sock_ptr;
-					struct epoll_event event = {0};
-					event.data.ptr = (void*)sock_ptr;
-					epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);
-					if (bClose) {
-						sock_ptr->Close();
-					}
-				}
-				sock_ptr->DetachService(this);
-				Base::sock_ptrs_[i] = NULL;
-			}
-		}
-		Base::sock_count_ = 0;
 	}
 
 protected:
@@ -307,8 +255,8 @@ protected:
 			{
 				std::unique_lock<std::mutex> lock(Base::mutex_);
 				struct epoll_event event = events[i];
-				TSocket *sock_ptr = (TSocket *)event.data.ptr;
-				if(!Base::IsSocketExist(sock_ptr)) {
+				std::shared_ptr<Socket> sock_ptr = Base::FindSocket((Socket *)event.data.ptr);
+				if(!sock_ptr) {
 					continue;
 				}
 				unsigned int evt = event.events;
@@ -345,12 +293,12 @@ protected:
 				if (sock_ptr->IsSocket() && (evt & EPOLLOUT)) {
 					//有新的可写数据
 					if (sock_ptr->IsSelect(FD_CONNECT)) {
+						sock_ptr->RemoveSelect(FD_CONNECT);
 						if (nErrorCode == 0) {
 							int nOptLen = sizeof(nErrorCode);
 							sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, (void *)&nErrorCode, nOptLen);
 						}
 						sock_ptr->Trigger(FD_CONNECT, nErrorCode);
-						sock_ptr->RemoveSelect(FD_CONNECT);
 					} 
 					if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_WRITE)) {
 						sock_ptr->Trigger(FD_WRITE, 0);

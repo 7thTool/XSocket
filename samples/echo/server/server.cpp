@@ -109,19 +109,15 @@ protected:
 };
 
 class server 
-	: public XSocket::SelectServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet>
+	: public XSocket::SelectServer<XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet>
 {
-	typedef XSocket::SelectServer<server,XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet> Base;
+	typedef XSocket::SelectServer<XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet> Base;
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{
 
 	}
-
-	inline int GetMaxSocketCount() { return DEFAULT_MAX_FD_SETSIZE; }
-	inline const char* GetAddress() { return DEFAULT_IP; }
-	inline u_short GetPort() { return DEFAULT_PORT; }
-
+	
 	bool OnChar(char c)
 	{
 		switch(c)
@@ -176,7 +172,7 @@ int main()
 	XSocket::InitNetEnv();
 
 	server *s = new server();
-	s->Start();
+	s->Start(DEFAULT_IP, DEFAULT_PORT);
 	getchar();
 	s->Stop();
 	delete s;

@@ -81,6 +81,7 @@ int SocketEx::Close()
 {
 	if(IsSocket()) {
 		PRINTF("Close Socket\n");
+		m_lEvent = 0;
 		return XSocket::Close(Detach());
 	}
 	return 0;

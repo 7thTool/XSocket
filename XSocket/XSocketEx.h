@@ -366,9 +366,9 @@ public:
 		return stop_flag_;
 	}
 
-	virtual void AsyncSelect(SocketEx* sock_ptr, int evt) {
-		sock_ptr->Select(evt);
-	}
+#ifdef USE_EPOLL
+	virtual void AsyncSelect(SocketEx* sock_ptr, int evt) {}
+#endif//
 
 	inline void RemoveSocket(SocketEx* sock_ptr) {}
 
@@ -419,144 +419,6 @@ protected:
 };
 
 /*!
- *	@brief ConnectSocket 模板定义.
- *
- *	封装ConnectSocket，适用于客户端连接Socket
- */
-template<class TBase = SocketEx>
-class ConnectSocket : public TBase
-{
-	typedef ConnectSocket<TBase> This;
-	typedef TBase Base;
-protected:
-	bool m_bConnected;
-	unsigned long m_ConnectTime;
-	unsigned long m_ConnectTimeOut;
-
-public:
-	ConnectSocket():Base(), m_bConnected(false), m_ConnectTime(0), m_ConnectTimeOut(0) {}
-	//virtual ~SocketConnectTimeOut() {}
-
-	int Close()
-	{
-		int rlt = Base::Close();
-		m_bConnected = false;
-		m_ConnectTime = 0;
-		return rlt;
-	}
-
-	bool IsConnecting()
-	{
-		if(IsConnected()) {
-			return false;
-		}
-		return m_ConnectTime;
-	}
-
-	bool IsConnected()
-	{
-		return m_bConnected;
-	}
-
-	void SetConnectTimeOut(unsigned long TimeOut)
-	{
-		m_ConnectTimeOut = TimeOut;
-	}
-
-	unsigned long GetConnectTimeOut()
-	{
-		return m_ConnectTimeOut;
-	}
-
-	bool IsConnectTimeOut() 
-	{ 
-		if(m_ConnectTimeOut && (Tick() >= (m_ConnectTime + m_ConnectTimeOut))) {
-			return true;
-		}
-		return false;
-	}
-
-	unsigned long GetConnectTime()
-	{
-		return m_ConnectTime;
-	}
-
-protected:
-	virtual void OnIdle(int nErrorCode)
-	{
-		Base::OnIdle(nErrorCode);
-
-		//ASSERT(IsConnectSocket());
-		if(Base::IsSelect(FD_CONNECT) && m_ConnectTimeOut) {
-			if(IsConnectTimeOut()) {
-				OnConnect(ETIMEDOUT);
-			}
-		}
-	}
-
-	virtual void OnRole(int nRole)
-	{
-		Base::OnRole(nRole);
-
-		//ASSERT(nRole==SOCKET_ROLE_CONNECT);
-		m_ConnectTime = Tick();
-	}
-
-	virtual void OnConnect(int nErrorCode)
-	{
-		Base::OnConnect(nErrorCode);
-
-		if(!nErrorCode) {
-			m_bConnected = true;
-			m_ConnectTime = Tick() - m_ConnectTime; //记住连接耗时
-			Base::Select(FD_READ|FD_WRITE|FD_OOB);
-		}
-	}
-};
-
-/*!
- *	@brief WorkSocket 模板定义.
- *
- *	封装WorkSocket，适用于服务端工作Socket
- */
-template<class TBase = SocketEx>
-class WorkSocket : public TBase
-{
-	typedef TBase Base;
-public:
-	WorkSocket():Base()
-	{
-
-	}
-
-protected:
-	//
-	virtual void OnAttachService(Service* pSvr)
-	{
-		
-	}
-};
-
-/*!
- *	@brief ListenSocket 模板定义.
- *
- *	封装ListenSocket，适用于服务端监听Socket
- */
-template<class TBase = SocketEx>
-class ListenSocket : public TBase
-{
-	typedef TBase Base;
-public:
-	ListenSocket():Base()
-	{
-
-	}
-
-protected:
-};
-
-
-/*!
  *	@brief EventService 定义.
  *
  *	封装EventService，实现事件服务框架
@@ -583,6 +445,8 @@ public:
 		queue_.emplace_back(evt);
 	}
 
+protected:
+	//
 	inline void RemoveSocket(SocketEx* sock_ptr) {
 		std::unique_lock<std::mutex> lock(mutex_);
 		for(int i = queue_.size() - 1; i >= 0; i--)
@@ -593,9 +457,6 @@ public:
 			}
 		}
 	}
-
-protected:
-
 	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
 		return false;
 	}
@@ -766,6 +627,143 @@ protected:
 
 typedef ThreadServiceT<Service> ThreadService;
 
+/*!
+ *	@brief ConnectSocket 模板定义.
+ *
+ *	封装ConnectSocket，适用于客户端连接Socket
+ */
+template<class TBase = SocketEx>
+class ConnectSocket : public TBase
+{
+	typedef ConnectSocket<TBase> This;
+	typedef TBase Base;
+protected:
+	bool m_bConnected;
+	unsigned long m_ConnectTime;
+	unsigned long m_ConnectTimeOut;
+
+public:
+	ConnectSocket():Base(), m_bConnected(false), m_ConnectTime(0), m_ConnectTimeOut(0) {}
+	//virtual ~SocketConnectTimeOut() {}
+
+	int Close()
+	{
+		int rlt = Base::Close();
+		m_bConnected = false;
+		m_ConnectTime = 0;
+		return rlt;
+	}
+
+	bool IsConnecting()
+	{
+		if(IsConnected()) {
+			return false;
+		}
+		return m_ConnectTime;
+	}
+
+	bool IsConnected()
+	{
+		return m_bConnected;
+	}
+
+	void SetConnectTimeOut(unsigned long TimeOut)
+	{
+		m_ConnectTimeOut = TimeOut;
+	}
+
+	unsigned long GetConnectTimeOut()
+	{
+		return m_ConnectTimeOut;
+	}
+
+	bool IsConnectTimeOut() 
+	{ 
+		if(m_ConnectTimeOut && (Tick() >= (m_ConnectTime + m_ConnectTimeOut))) {
+			return true;
+		}
+		return false;
+	}
+
+	unsigned long GetConnectTime()
+	{
+		return m_ConnectTime;
+	}
+
+protected:
+	virtual void OnIdle(int nErrorCode)
+	{
+		Base::OnIdle(nErrorCode);
+
+		//ASSERT(IsConnectSocket());
+		if(Base::IsSelect(FD_CONNECT) && m_ConnectTimeOut) {
+			if(IsConnectTimeOut()) {
+				OnConnect(ETIMEDOUT);
+			}
+		}
+	}
+
+	virtual void OnRole(int nRole)
+	{
+		Base::OnRole(nRole);
+
+		//ASSERT(nRole==SOCKET_ROLE_CONNECT);
+		m_ConnectTime = Tick();
+	}
+
+	virtual void OnConnect(int nErrorCode)
+	{
+		Base::OnConnect(nErrorCode);
+
+		if(!nErrorCode) {
+			m_bConnected = true;
+			m_ConnectTime = Tick() - m_ConnectTime; //记住连接耗时
+			Base::Select(FD_READ|FD_WRITE|FD_OOB);
+		}
+	}
+};
+
+/*!
+ *	@brief WorkSocket 模板定义.
+ *
+ *	封装WorkSocket，适用于服务端工作Socket
+ */
+template<class TBase = SocketEx>
+class WorkSocket : public TBase
+{
+	typedef TBase Base;
+public:
+	WorkSocket():Base()
+	{
+
+	}
+
+protected:
+	//
+	virtual void OnAttachService(Service* pSvr)
+	{
+		
+	}
+};
+
+/*!
+ *	@brief ListenSocket 模板定义.
+ *
+ *	封装ListenSocket，适用于服务端监听Socket
+ */
+template<class TBase = SocketEx>
+class ListenSocket : public TBase
+{
+	typedef TBase Base;
+public:
+	ListenSocket():Base()
+	{
+
+	}
+
+protected:
+};
+
 //////////////////////////////////////////////////////////////////////////
 
 //DECLARE_HANDLE(HSOCKEX);		// An HSOCK	Handle
@@ -786,21 +784,26 @@ public:
 	//static const u_short SOCKET_SETSIZE = uFD_SETSize;
 protected:
 	u_short sock_count_;
-	Socket* sock_ptrs_[uFD_SETSize];
+	std::shared_ptr<Socket> sock_ptrs_[uFD_SETSize];
 	u_short sock_idle_next_;
-	std::mutex mutex_;
 public:
 	SocketSet()
 	{
 		sock_count_ = 0;
-		memset(sock_ptrs_,0,sizeof(sock_ptrs_));
+		//memset(sock_ptrs_,0,sizeof(sock_ptrs_));
 		sock_idle_next_ = 0;
+	}
+
+	void Stop()
+	{
+		Service::Stop();
+		RemoveAllSocket(true);
 	}
 
 	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
 	inline size_t GetSocketCount() { return sock_count_; }
 
-	int AddSocket(Socket* sock_ptr, int evt = 0)
+	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		int i;
@@ -823,7 +826,7 @@ public:
 		return -1;
 	}
 
-	int RemoveSocket(Socket* sock_ptr)
+	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
 	{
 		ASSERT(sock_ptr);
 		//std::unique_lock<std::mutex> lock(mutex_);
@@ -832,12 +835,13 @@ public:
 		{
 			if(sock_ptrs_[i]==sock_ptr) {
 				std::unique_lock<std::mutex> lock(mutex_);
-				TSocket* t_sock_ptr = sock_ptrs_[i];
+				std::shared_ptr<Socket> t_sock_ptr = sock_ptrs_[i];
 				if (t_sock_ptr) {
+					sock_ptrs_[i].reset();
+					sock_count_--;
+					lock.unlock();
 					sock_ptr->DetachService(this);
 					Service::RemoveSocket(sock_ptr);
-					sock_count_--;
-					sock_ptrs_[i] = NULL;
 					return i;
 				} else {
 					return i;
@@ -847,8 +851,8 @@ public:
 		}
 		return -1;
 	}
-
-	int RemoveInvalidSocket(Socket* & sock_ptr)
+	
+	/*int RemoveInvalidSocket(std::shared_ptr<Socket> & sock_ptr)
 	{
 		//std::unique_lock<std::mutex> lock(mutex_);
 		int i;
@@ -856,14 +860,14 @@ public:
 		{
 			if(sock_ptrs_[i]) {
 				std::unique_lock<std::mutex> lock(mutex_);
-				TSocket* t_sock_ptr = sock_ptrs_[i];
+				std::shared_ptr<Socket> t_sock_ptr = sock_ptrs_[i];
 				if (t_sock_ptr) {
-					if (!sock_ptrs_[i]->IsSocket()) {
-						sock_ptr = sock_ptrs_[i];
+					if (!t_sock_ptr->IsSocket() && !t_sock_ptr->IsSelect(-1)) {
+						sock_ptrs_[i].reset();
+						sock_count_--;
+						sock_ptr = t_sock_ptr;
 						sock_ptr->DetachService(this);
 						Service::RemoveSocket(sock_ptr);
-						sock_count_--;
-						sock_ptrs_[i] = NULL;
 						return i;
 						break;
 					}
@@ -871,60 +875,61 @@ public:
 			}
 		}
 		return -1;
-	}
-
+	}*/
+protected:
+	//
 	void RemoveAllSocket(bool bClose = false)
 	{
-		std::unique_lock<std::mutex> lock(mutex_);
 		int i;
 		for (i=0;i<uFD_SETSize;i++)
 		{
 			if (sock_ptrs_[i]) {
-				TSocket* sock_ptr = sock_ptrs_[i];
+				std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
+				sock_ptrs_[i].reset();
 				if (sock_ptr->IsSocket()) {
 					if (bClose) {
 						sock_ptr->Close();
 					}
 				}
 				sock_ptr->DetachService(this);
-				sock_ptrs_[i] = NULL;
-				Service::RemoveSocket(sock_ptr);
+				Service::RemoveSocket(sock_ptr.get());
 			}
 		}
 		sock_count_ = 0;
 	}
 
-protected:
-	//
-	inline bool IsSocketExist(Socket* sock_ptr) {
+	inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
 		if(!sock_ptr) {
 			return false;
 		}
 		int i;
 		for (i=0;i<uFD_SETSize;i++)
 		{
-			if(sock_ptrs_[i]==sock_ptr) {
-				return true;
+			if(sock_ptrs_[i].get()==sock_ptr) {
+				return sock_ptrs_[i];
 			}
 		}
-		return false;
+		return nullptr;
 	}
+
+protected:
 	//
 	virtual void OnIdle(int nErrorCode)
 	{
-		//std::unique_lock<std::mutex> lock(mutex_);
 		int next = sock_idle_next_, next_end = sock_idle_next_ + 20;
 		sock_idle_next_ = next_end % uFD_SETSize;
 		for (; next < next_end; next++)
 		{
 			int i = next % uFD_SETSize;
 			if (sock_ptrs_[i]) {
-				std::unique_lock<std::mutex> lock(mutex_);
-				TSocket* sock_ptr = sock_ptrs_[i];
+				std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
 				if (sock_ptr) {
 					if (!sock_ptr->IsSocket()) {
-						//
+						if(!sock_ptr->IsSelect(-1)) {
+							sock_ptrs_[i].reset(); //自动移除
+						}
 					} else if(sock_ptr->IsSelect(FD_IDLE)) {
+						sock_ptr->RemoveSelect(FD_IDLE);
 						sock_ptr->Trigger(FD_IDLE, Tick());
 					}
 				}
@@ -1004,7 +1009,7 @@ public:
 		return nullptr;
 	}
 
-	int AddSocket(Socket* sock_ptr, int evt = 0)
+	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
 		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
@@ -1020,7 +1025,7 @@ public:
 		return -1;
 	}
 
-	int RemoveSocket(Socket* sock_ptr)
+	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
 	{
 		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
@@ -1033,7 +1038,7 @@ public:
 		return -1;
 	}
 
-	int RemoveInvalidSocket(Socket* & sock_ptr)
+	/*int RemoveInvalidSocket(std::shared_ptr<Socket> & sock_ptr)
 	{
 		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
@@ -1053,7 +1058,7 @@ public:
 		{
 			sockset_ptrs_[i]->RemoveAllSocket(bClose);
 		}
-	}
+	}*/
 
 protected:
 };
@@ -1119,10 +1124,10 @@ protected:
 			nfds = select(maxfds, NULL, &writefds, &exceptfds, &tv);
 			if (nfds > 0) {
 				if (FD_ISSET(fd, &writefds)) {
+					Base::RemoveSelect(FD_CONNECT);
 					int nErrorCode = 0;
 					Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
 					Base::Trigger(FD_CONNECT, nErrorCode);
-					Base::RemoveSelect(FD_CONNECT);
 					if (Base::IsSocket() && Base::IsSelect(FD_WRITE)) {
 						Base::Trigger(FD_WRITE, 0);
 					}
@@ -1246,7 +1251,8 @@ protected:
 			{
 				if (Base::sock_ptrs_[i]) {
 					lock.lock();
-					Socket *sock_ptr = Base::sock_ptrs_[i];
+					std::shared_ptr<Socket> sock_ptr = Base::sock_ptrs_[i];
+					lock.unlock();
 					if (sock_ptr) {
 						if (FD_ISSET(*sock_ptr, &readfds)) {
 							if (sock_ptr->IsListenSocket()) {
@@ -1267,17 +1273,17 @@ protected:
 						}
 						if (FD_ISSET(*sock_ptr, &writefds)) {
 							if (sock_ptr->IsSelect(FD_CONNECT)) {
+								sock_ptr->RemoveSelect(FD_CONNECT);
 								int nErrorCode = 0;
 								sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, &nErrorCode, sizeof(nErrorCode));
 								sock_ptr->Trigger(FD_CONNECT, nErrorCode);
-								sock_ptr->RemoveSelect(FD_CONNECT);
 								if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_WRITE)) {
 									sock_ptr->Trigger(FD_WRITE, 0);
 								}
 								if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_READ)) {
 									sock_ptr->Trigger(FD_READ, 0);
 								}
-							} else {
+							} else if(sock_ptr->IsSelect(FD_WRITE)) {
 								sock_ptr->Trigger(FD_WRITE, 0);
 							}
 						}
@@ -1291,7 +1297,6 @@ protected:
 							sock_ptr->Trigger(FD_CLOSE, nErrorCode);
 						}
 					}
-					lock.unlock();
 				}
 			}
 		} else if (nfds == 0) {
@@ -1307,103 +1312,60 @@ protected:
  *
  *	封装SelectManager，实现对select模型管理监听Socket连接，依赖SelectSocket
  */
-template<class T, class TService, class TBase = ListenSocket<SocketEx>, class TWorkSocket = WorkSocket<SocketEx>>
+template<class TService, class TBase = ListenSocket<SocketEx>>
 class SelectListen : public SelectSocket<TService,TBase>
 {
 	typedef SelectSocket<TService,TBase> Base;
 public:
 	typedef TService Service;
-	typedef TWorkSocket SockWorker;
-protected:
-	std::vector<SockWorker*> sock_ptrs_;
+	std::string address_;
+	u_short port_;
 public:
 	SelectListen() : Base()
 	{
 		
 	}
 
-	inline const char* GetAddress() { return nullptr; }
-	inline u_short GetPort() { return 0; }
+	bool Start(const char* address, u_short port)
+	{
+		address_ = address;
+		port_ = port;
+		return Base::Start();
+	}
 
 protected:
 	//
 	virtual bool OnInit()
 	{
-		T* pT = static_cast<T*>(this);
-		//服务初始化，获取配置信息，启动服务
-		sock_ptrs_.reserve(pT->GetMaxSocketCount());
-		const char* addr = pT->GetAddress();
-		u_short port = pT->GetPort();
-		if(port != 0) {
-			pT->Open();
-			pT->SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-			pT->Bind(addr, port);
-			pT->Listen();
-			return true;
+		if(port_ <= 0) {
+			return false;
 		}
-
-		return false;
+		Base::Open();
+		Base::SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
+		Base::Bind(address_.c_str(), port_);
+		Base::Listen();
+		return true;
 	}
 
 	virtual void OnTerm()
 	{
-		T* pT = static_cast<T*>(this);
 		//服务结束运行，释放资源
-		if(pT->IsSocket()) {
+		if(Base::IsSocket()) {
 #ifndef WIN32
-			pT->ShutDown();
+			Base::ShutDown();
 #endif
-			pT->Close();
+			Base::Close();
 		}
-		pT->RemoveAllSocket(true);
-		for (size_t i = 0; i < sock_ptrs_.size(); i++)
-		{
-			DeletePeer(sock_ptrs_[i]);
-		}
-		sock_ptrs_.clear();
-	}
-
-	virtual SockWorker* NewPeer()
-	{
-		return new SockWorker();
-	}
-
-	virtual void DeletePeer(SockWorker* sock_ptr)
-	{
-		delete sock_ptr;
-	}
-
-	virtual void OnAddPeer(SockWorker* sock_ptr)
-	{
-		sock_ptrs_.push_back(sock_ptr);
-	}
-
-	virtual void OnRemovePeer(SockWorker* sock_ptr)
-	{
-		sock_ptrs_.erase(std::find(sock_ptrs_.begin(),sock_ptrs_.end(),sock_ptr));
 	}
 
 protected:
 	//
-	virtual void OnIdle(int nErrorCode)
-	{
-		Base::OnIdle(nErrorCode);
-
-		T* pT = static_cast<T*>(this);
-		SockWorker* sock_ptr = NULL;
-		if (pT->RemoveInvalidSocket(sock_ptr) >= 0) {
-			OnRemovePeer(sock_ptr);
-			DeletePeer(sock_ptr);
-		}
-	}
-
 	virtual void OnAccept(int nErrorCode)
 	{
 		if(nErrorCode) {
 			return Base::OnAccept(nErrorCode);
 		}
 
-		T* pT = static_cast<T*>(this);
 		//bool bConitnue = false;
 		//do {
 		//	bConitnue = false;
@@ -1433,35 +1395,6 @@ protected:
 				}
 			}
 		//} while (bConitnue);
-	}
-
-	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) 
-	{
-		T* pT = static_cast<T*>(this);
-				//测试下还能不能再接收SOCKET
-				if(pT->AddSocket(NULL) < 0) {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
-					XSocket::Close(Sock);
-					return;
-				}
-				SockWorker* sock_ptr = NewPeer();
-				sock_ptr->Attach(Sock,SOCKET_ROLE_WORK);
-				
-	#ifdef WIN32
-				sock_ptr->IOCtl(FIONBIO, 1);//设为非阻塞模式
-	#else
-				int flags = sock_ptr->IOCtl(F_GETFL,(u_long)0); 
-				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
-				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
-	#endif//
-				int pos = pT->AddSocket(sock_ptr, FD_READ|FD_WRITE|FD_OOB);
-				if(pos >= 0) {
-					OnAddPeer(sock_ptr);
-				} else {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
-					sock_ptr->Close();
-					DeletePeer(sock_ptr);
-				}
 	}
 };
 
@@ -1495,16 +1428,16 @@ protected:
  *
  *	封装SelectServer，实现对select模型管理监听Socket连接，依赖SelectSet/SelectManager
  */
-template<class T, class TService, class TBase, class TSocketSet>
+template<class TService, class TBase, class TSocketSet>
 class SelectServer 
-: public SelectListen<T,TService,TBase,typename TSocketSet::Socket>
+: public SelectListen<TService,TBase>
 , public SocketManager<TSocketSet>
 {
 public:
 	typedef TSocketSet SocketSet;
 	typedef typename SocketSet::Socket Socket;
 	typedef SocketManager<SocketSet> SockManager;
-	typedef SelectListen<T,TService,TBase,Socket> Base;
+	typedef SelectListen<TService,TBase> Base;
 public:
 	SelectServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
 	{
@@ -1516,9 +1449,9 @@ public:
 		
 	}
 
-	bool Start()
+	bool Start(const char* address, u_short port)
 	{
-		if(!Base::Start()) {
+		if(!Base::Start(address, port)) {
 			return false;
 		}
 		if(!SockManager::Start()) {
@@ -1531,6 +1464,35 @@ public:
 	{
 		SockManager::Stop();
 		Base::Stop();
+	}
+
+protected:
+	//
+	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) 
+	{
+				//测试下还能不能再接收SOCKET
+				if(SockManager::AddSocket(NULL) < 0) {
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					XSocket::Close(Sock);
+					return;
+				}
+				std::shared_ptr<Socket> sock_ptr = std::make_shared<Socket>();
+				sock_ptr->Attach(Sock,SOCKET_ROLE_WORK);
+				
+	#ifdef WIN32
+				sock_ptr->IOCtl(FIONBIO, 1);//设为非阻塞模式
+	#else
+				int flags = sock_ptr->IOCtl(F_GETFL,(u_long)0); 
+				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
+				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
+	#endif//
+				int pos = SockManager::AddSocket(sock_ptr, FD_READ|FD_WRITE|FD_OOB);
+				if(pos >= 0) {
+					//
+				} else {
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					sock_ptr->Close();
+				}
 	}
 };
 
