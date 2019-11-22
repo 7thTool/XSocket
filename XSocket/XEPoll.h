@@ -28,12 +28,15 @@ namespace XSocket {
  *
  *	封装EPollSocket
  */
-template<class TBase = SocketEx>
+template<class TSocketSet, class TBase = SocketEx>
 class EPollSocket : public TBase
 {
-public:
 	typedef TBase Base;
 public:
+	typedef TSocketSet SocketSet;
+public:
+	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
+
 	EPollSocket():Base()
 	{
 		
@@ -55,7 +58,7 @@ public:
 				break;
 			case EWOULDBLOCK:
 			case EINTR:
-				Service::service()->AsyncSelect(this, FD_WRITE);
+				service()->AsyncSelect(this, FD_WRITE);
 				break;
 			default:
 				break;
@@ -75,7 +78,7 @@ public:
 				break;
 			case EWOULDBLOCK:
 			case EINTR:
-				Service::service()->AsyncSelect(this, FD_READ);
+				service()->AsyncSelect(this, FD_READ);
 				break;
 			default:
 				break;

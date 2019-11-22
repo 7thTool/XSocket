@@ -44,19 +44,19 @@ typedef XSocket::SelectSocketSet<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSock
 #ifndef USE_UDP
 class worker
 #ifdef USE_EPOLL
-	: public XSocket::SampleEvtSocketImpl<WorkSocketSet,XSocket::WorkSocket<XSocket::EPollSocket<XSocket::SocketEx>>>
+	: public XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::EPollSocket<WorkSocketSet,XSocket::SocketEx>>>
 #elif defined(USE_IOCP)
-	: public XSocket::SampleEvtSocketImpl<WorkSocketSet,XSocket::WorkSocket<XSocket::CompletionPortSocket<XSocket::SocketEx>>>
+	: public XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::CompletionPortSocket<WorkSocketSet,XSocket::SocketEx>>>
 #else
-	: public XSocket::SampleEvtSocketImpl<WorkSocketSet,XSocket::WorkSocket<XSocket::SocketEx>>
+	: public XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::SelectSocket<WorkSocketSet,XSocket::SocketEx>>>
 #endif
 {
 #ifdef USE_EPOLL
-	typedef XSocket::SampleEvtSocketImpl<WorkSocketSet,XSocket::WorkSocket<XSocket::EPollSocket<XSocket::SocketEx>>> Base;
+	typedef XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::EPollSocket<WorkSocketSet,XSocket::SocketEx>>> Base;
 #elif defined(USE_IOCP)
-	typedef XSocket::SampleEvtSocketImpl<WorkSocketSet,XSocket::WorkSocket<XSocket::CompletionPortSocket<XSocket::SocketEx>>> Base;
+	typedef XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::CompletionPortSocket<WorkSocketSet,XSocket::SocketEx>>> Base;
 #else
-	typedef XSocket::SampleEvtSocketImpl<WorkSocketSet,XSocket::WorkSocket<XSocket::SocketEx>> Base;
+	typedef XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::SelectSocket<WorkSocketSet,XSocket::SocketEx>>> Base;
 #endif
 protected:
 	

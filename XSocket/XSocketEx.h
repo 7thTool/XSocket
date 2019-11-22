@@ -366,10 +366,6 @@ public:
 		return stop_flag_;
 	}
 
-#ifdef USE_EPOLL
-	virtual void AsyncSelect(SocketEx* sock_ptr, int evt) {}
-#endif//
-
 	inline void RemoveSocket(SocketEx* sock_ptr) {}
 
 protected:
@@ -1065,19 +1061,19 @@ protected:
 };
 
 /*!
- *	@brief SelectSocket 模板定义.
+ *	@brief SelectSvrSocket 模板定义.
  *
- *	封装SelectSocket，实现对select模型管理一个客户端连接Socket
+ *	封装SelectSvrSocket，实现对select模型管理一个客户端连接Socket
  */
 template<class TService = ThreadService, class TBase = SocketEx>
-class SelectSocket : public TBase, public TService
+class SelectOneSocket : public TBase, public TService
 {
-	typedef SelectSocket<TService,TBase> This;
+	typedef SelectOneSocket<TService,TBase> This;
 	typedef TBase Base;
 public:
 	typedef TService Service;
 public:
-	SelectSocket() : Base()
+	SelectOneSocket() : Base()
 	{
     	
 	}
@@ -1186,6 +1182,26 @@ protected:
 				Base::Trigger(FD_CLOSE, GetLastError());
 			}
 		}
+	}
+};
+
+/*!
+ *	@brief SelectSocket 模板定义.
+ *
+ *	封装SelectSocket，实现对select模型管理一个客户端连接Socket
+ */
+template<class TSocketSet, class TBase = SocketEx>
+class SelectSocket : public TBase
+{
+	typedef TBase Base;
+public:
+	typedef TSocketSet SocketSet;
+public:
+	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
+
+	SelectSocket() : Base()
+	{
+    	
 	}
 };
 
@@ -1314,9 +1330,9 @@ protected:
  *	封装SelectManager，实现对select模型管理监听Socket连接，依赖SelectSocket
  */
 template<class TService, class TBase = ListenSocket<SocketEx>>
-class SelectListen : public SelectSocket<TService,TBase>
+class SelectListen : public SelectOneSocket<TService,TBase>
 {
-	typedef SelectSocket<TService,TBase> Base;
+	typedef SelectOneSocket<TService,TBase> Base;
 public:
 	typedef TService Service;
 	std::string address_;
@@ -1407,9 +1423,9 @@ protected:
  *	封装SelectClient，实现对select模型管理一个客户端Tcp Socket
  */
 template<class TService = ThreadService, class TBase = ConnectSocket<SocketEx>> 
-class SelectClient : public SelectSocket<TService,TBase>
+class SelectClient : public SelectOneSocket<TService,TBase>
 {
-	typedef SelectSocket<TService,TBase> Base;
+	typedef SelectOneSocket<TService,TBase> Base;
 public:
 	SelectClient():Base()
 	{
@@ -1503,9 +1519,9 @@ protected:
  *	封装SelectUdpClient，实现对select模型管理一个客户端Udp Socket
  */
 template<class TService = ThreadService, class TBase = SocketEx> 
-class SelectUdpClient : public SelectSocket<TService,TBase>
+class SelectUdpClient : public SelectOneSocket<TService,TBase>
 {
-	typedef SelectSocket<TService,TBase> Base;
+	typedef SelectOneSocket<TService,TBase> Base;
 public:
 	SelectUdpClient():Base()
 	{
@@ -1525,9 +1541,9 @@ protected:
  *	封装SelectUdpServer，实现对select模型管理一个服务端Udp Socket
  */
 template<class TService = ThreadService, class TBase = SocketEx>
-class SelectUdpServer : public SelectSocket<TService,TBase>
+class SelectUdpServer : public SelectOneSocket<TService,TBase>
 {
-	typedef SelectSocket<TService,TBase> Base;
+	typedef SelectOneSocket<TService,TBase> Base;
 public:
 	SelectUdpServer():Base()
 	{

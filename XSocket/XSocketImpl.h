@@ -456,18 +456,20 @@ template<class TBase, u_short uMaxBufSize = 8*1024>
 class SampleSvrSocketImpl : public SampleSocketImpl<TBase,uMaxBufSize>
 {
 	typedef SampleSocketImpl<TBase,uMaxBufSize> Base;
+public:
+	typedef typename Base::SocketSet SocketSet;
 protected:
-	Service* service_ptr_ = nullptr;
+	SocketSet* service_ptr_ = nullptr;
 public:
 	//
-	inline Service* GetService() { return service_ptr_; }
+	inline SocketSet* this_service() { return service_ptr_; }
 
 protected:
 	//
 	virtual void OnAttachService(Service* pSvr)
 	{
 		Base::OnAttachService(pSvr);
-		service_ptr_ = (Service*)pSvr;
+		service_ptr_ = dynamic_cast<SocketSet*>(pSvr);
 	}
 	virtual void OnDeatchService(Service* pSvr)
 	{
@@ -508,21 +510,20 @@ protected:
  *
  *	封装SampleEvtSocketImpl，增加事件服务接口，实现简单的流式发送/接收（写入/读取）网络架构
  */
-template<class TEventService, class TBase, u_short uMaxBufSize = 8*1024>
+template<class TBase, u_short uMaxBufSize = 8*1024>
 class SampleEvtSocketImpl : public SampleSvrSocketImpl<TBase,uMaxBufSize>
 {
 	typedef SampleSvrSocketImpl<TBase,uMaxBufSize> Base;
 public:
-	typedef TEventService EventService;
-	typedef typename TEventService::Event Event;
+	typedef typename Base::SocketSet EvtSocketSet;
+	typedef typename EvtSocketSet::Event Event;
 public:
-	inline EventService* GetService() { return dynamic_cast<EventService*>(Base::GetService()); }
 
 	inline void Post(const Event& evt) {
 		// if(!evt.dst) {
 		// 	evt.dst = this;
 		// }
-		GetService()->Post(evt);
+		this_service()->Post(evt);
 	}
 };
 

@@ -64,10 +64,12 @@ typedef struct _PER_IO_OPERATION_DATA
  *
  *	封装CompletionPortSocket
  */
-template<class TBase = SocketEx>
+template<class TSocketSet, class TBase = SocketEx>
 class CompletionPortSocket : public TBase
 {
 	typedef TBase Base;
+public:
+	typedef TSocketSet SocketSet;
 protected:
 	LPFN_ACCEPTEX lpfnAcceptEx;
 	LPFN_GETACCEPTEXSOCKADDRS lpfnGetAcceptExSockaddrs;
@@ -75,6 +77,8 @@ protected:
 	PER_IO_OPERATION_DATA m_SendOverlapped;
 	PER_IO_OPERATION_DATA m_ReceiveOverlapped;
 public:
+	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
+
 	CompletionPortSocket():Base()
 	{
 		memset(&m_SendOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
