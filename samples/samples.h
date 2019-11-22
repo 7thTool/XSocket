@@ -47,6 +47,7 @@
 #define USE_EPOLLET
 #endif//
 #endif//
+#define USE_WEBSOCKET
 
 #define DEFAULT_IP		"127.0.0.1"
 #define DEFAULT_PORT	6666
@@ -154,7 +155,7 @@
 #endif//
 #define DEFAULT_MULTICAST_PORT	12345
 
-#define DEFAULT_CLIENT_COUNT 5
+#define DEFAULT_CLIENT_COUNT 1
  
 #define DEFAULT_FD_SETSIZE 1024
 #define DEFAULT_MAX_FD_SETSIZE 20000
