@@ -19,23 +19,9 @@
 #define _H_XPROXYSOCKETEX_H_
 
 #include "XSocketEx.h"
+#include "XCodec.h"
 
 namespace XSocket {
-
-//////////////////////////////////////////////////////////////////////////
-
-/*!
- *	@brief ProxyHelper 模板定义.
- *
- *	代理帮助类ProxyHelper
- */
-class ProxyHelper
-{
-public:
-	static int Base64Encode(const char *pbSrcData, int nSrcLen, char* szDest,int nDestLen);
-};
-
-//////////////////////////////////////////////////////////////////////////
 
 /*!
  *	@brief 代理类型.
@@ -467,7 +453,7 @@ public:
 					//} else {
 					//	snprintf(szAuth, 1024, "%s", m_ProxyInfo.szUser);
 					//}
-					ProxyHelper::Base64Encode(szAuth, strlen(szAuth), szBase64Encode, 1024);
+					Base64Encode(szAuth, strlen(szAuth), szBase64Encode, 1024);
 
 					strcat(Buf, "Authorization: Basic ");
 					strcat(Buf, szBase64Encode);

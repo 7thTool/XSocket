@@ -61,7 +61,7 @@ size_t websocket_parser_execute(websocket_parser *parser, const websocket_parser
                 parser->offset      = 0;
                 parser->length      = 0;
                 parser->mask_offset = 0;
-                parser->flags       = (websocket_flags) (CC & WS_OP_MASK);
+                parser->flags       = CC & WS_OP_MASK;
                 if(CC & (1<<7)) {
                     parser->flags |= WS_FIN;
                 }
@@ -188,7 +188,7 @@ uint8_t websocket_decode(char * dst, const char * src, size_t len, const char ma
     return (uint8_t) ((i + mask_offset) % 4);
 }
 
-size_t websocket_calc_frame_size(size_t flags, size_t data_len) {
+size_t websocket_calc_frame_size(int flags, size_t data_len) {
     size_t size = data_len + 2; // body + 2 bytes of head
     if(data_len >= 126) {
         if(data_len > 0xFFFF) {
@@ -204,7 +204,7 @@ size_t websocket_calc_frame_size(size_t flags, size_t data_len) {
     return size;
 }
 
-size_t websocket_build_frame(char * frame, size_t flags, const char mask[4], const char * data, size_t data_len) {
+size_t websocket_build_frame(char * frame, int flags, const char mask[4], const char * data, size_t data_len) {
     size_t body_offset = 0;
     frame[0] = 0;
     frame[1] = 0;
@@ -236,9 +236,7 @@ size_t websocket_build_frame(char * frame, size_t flags, const char mask[4], con
         body_offset = 10;
     }
     if(flags & WS_HAS_MASK) {
-        if(mask != NULL) {
-            memcpy(&frame[body_offset], mask, 4);
-        }
+        memcpy(&frame[body_offset], mask, 4);
         websocket_decode(&frame[body_offset + 4], data, data_len, &frame[body_offset], 0);
         body_offset += 4;
     } else {

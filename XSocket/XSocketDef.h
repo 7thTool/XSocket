@@ -201,6 +201,11 @@ typedef struct  tagPROXYINFO
 #define ASSERT assert
 #endif//
 
+#ifndef ENSURE
+#include <assert.h>
+#define ENSURE assert
+#endif//
+
 #ifndef PRINTF
 #if 1
 #define PRINTF(format,...) printf(format, ##__VA_ARGS__)
