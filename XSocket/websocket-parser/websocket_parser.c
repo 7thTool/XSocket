@@ -50,10 +50,10 @@ void websocket_parser_settings_init(websocket_parser_settings *settings) {
     memset(settings, 0, sizeof(*settings));
 }
 
-size_t websocket_parser_execute(websocket_parser *parser, const websocket_parser_settings *settings, const char *data, size_t len) {
+uint64_t websocket_parser_execute(websocket_parser *parser, const websocket_parser_settings *settings, const char *data, uint64_t len) {
     const char * p;
     const char * end = data + len;
-    size_t frame_offset = 0;
+    uint64_t frame_offset = 0;
 
     for(p = data; p != end; p++) {
         switch(parser->state) {
@@ -170,8 +170,8 @@ size_t websocket_parser_execute(websocket_parser *parser, const websocket_parser
     return GET_NPARSED();
 }
 
-void websocket_parser_decode(char * dst, const char * src, size_t len, websocket_parser * parser) {
-    size_t i = 0;
+void websocket_parser_decode(char * dst, const char * src, uint64_t len, websocket_parser * parser) {
+    uint64_t i = 0;
     for(; i < len; i++) {
         dst[i] = src[i] ^ parser->mask[(i + parser->mask_offset) % 4];
     }
@@ -179,8 +179,8 @@ void websocket_parser_decode(char * dst, const char * src, size_t len, websocket
     parser->mask_offset = (uint8_t) ((i + parser->mask_offset) % 4);
 }
 
-uint8_t websocket_decode(char * dst, const char * src, size_t len, const char mask[4], uint8_t mask_offset) {
-    size_t i = 0;
+uint8_t websocket_decode(char * dst, const char * src, uint64_t len, const char mask[4], uint8_t mask_offset) {
+    uint64_t i = 0;
     for(; i < len; i++) {
         dst[i] = src[i] ^ mask[(i + mask_offset) % 4];
     }
@@ -188,8 +188,8 @@ uint8_t websocket_decode(char * dst, const char * src, size_t len, const char ma
     return (uint8_t) ((i + mask_offset) % 4);
 }
 
-size_t websocket_calc_frame_size(int flags, size_t data_len) {
-    size_t size = data_len + 2; // body + 2 bytes of head
+uint64_t websocket_calc_frame_size(int flags, uint64_t data_len) {
+    uint64_t size = data_len + 2; // body + 2 bytes of head
     if(data_len >= 126) {
         if(data_len > 0xFFFF) {
             size += 8;
@@ -204,8 +204,8 @@ size_t websocket_calc_frame_size(int flags, size_t data_len) {
     return size;
 }
 
-size_t websocket_build_frame(char * frame, int flags, const char mask[4], const char * data, size_t data_len) {
-    size_t body_offset = 0;
+uint64_t websocket_build_frame_header(char * frame, int flags, const char mask[4], uint64_t data_len) {
+    uint64_t body_offset = 0;
     frame[0] = 0;
     frame[1] = 0;
     if(flags & WS_FIN) {
@@ -237,11 +237,18 @@ size_t websocket_build_frame(char * frame, int flags, const char mask[4], const 
     }
     if(flags & WS_HAS_MASK) {
         memcpy(&frame[body_offset], mask, 4);
-        websocket_decode(&frame[body_offset + 4], data, data_len, &frame[body_offset], 0);
         body_offset += 4;
+    }
+
+    return body_offset;
+}
+
+uint64_t websocket_build_frame(char * frame, int flags, const char mask[4], const char * data, uint64_t data_len) {
+    uint64_t body_offset = websocket_build_frame_header(frame, flags, mask, data_len);
+    if(flags & WS_HAS_MASK) {
+        websocket_decode(&frame[body_offset], data, data_len, &frame[body_offset-4], 0);
     } else {
         memcpy(&frame[body_offset], data, data_len);
     }
-
     return body_offset + data_len;
 }

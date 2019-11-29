@@ -210,35 +210,35 @@ void SocketEx::OnRole(int nRole)
 void SocketEx::OnReceive(int nErrorCode)
 {
 	if(nErrorCode) {
-		OnClose(nErrorCode);
+		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnSend(int nErrorCode)
 {
 	if(nErrorCode) {
-		OnClose(nErrorCode);
+		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnOOB(int nErrorCode)
 {
 	if(nErrorCode) {
-		OnClose(nErrorCode);
+		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnAccept(int nErrorCode)
 {
 	if(nErrorCode) {
-		OnClose(nErrorCode);
+		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnConnect(int nErrorCode)
 {
 	if(nErrorCode) {
-		OnClose(nErrorCode);
+		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 

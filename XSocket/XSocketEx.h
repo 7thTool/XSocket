@@ -105,7 +105,13 @@ public:
 	inline bool IsSelectRead() { return IsSelect(FD_READ|FD_OOB|FD_ACCEPT); }
 	inline bool IsSelectWrite() { return IsSelect(FD_WRITE|FD_CONNECT); }
 
-	inline void Trigger(int evt, int nErrorCode) { 
+	inline void Trigger(int evt, int nErrorCode) {
+		if(evt == FD_IDLE) {
+			OnIdle(nErrorCode);
+		}
+		if(!IsSocket()) { 
+			return;
+		}
 		switch (evt)
 		{
 		case FD_READ:
@@ -126,15 +132,18 @@ public:
 		case FD_CLOSE:
 			OnClose(nErrorCode);
 			break;
-		case FD_IDLE:
-			OnIdle(nErrorCode);
-			break;
+		// case FD_IDLE:
+		// 	OnIdle(nErrorCode);
+		// 	break;
 		default:
 			break;
 		}
 	}
 	
 	inline void Trigger(int evt, const char* lpBuf, int nBufLen, int nFlags) { 
+		if(!IsSocket()) { 
+			return;
+		}
 		switch (evt)
 		{
 		case FD_READ:

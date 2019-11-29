@@ -481,19 +481,21 @@ protected:
 					{	
 					case IOCP_OPERATION_ACCEPT:
 					{
-						sock_ptr->SetSockOpt(
-							SOL_SOCKET
-							, SO_UPDATE_ACCEPT_CONTEXT
-							, (char*)&(lpOverlapped->Sock)
-							, sizeof(lpOverlapped->Sock));
-						SOCKADDR_IN *lpRemoteAddr = NULL, *lpLocalAddr = NULL;
-						int nRemoteAddrLen = sizeof(SOCKADDR_IN), nLocalAddrLen = sizeof(SOCKADDR_IN);
-						GetAcceptExSockaddrs(lpOverlapped->Buffer.buf, 0, 
-							sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
-							(LPSOCKADDR*)&lpLocalAddr, &nLocalAddrLen,
-							(LPSOCKADDR*)&lpRemoteAddr, &nRemoteAddrLen);
-						//sprintf(pClientComKey->sIP, "%d", addrClient->sin_port );	//cliAdd.sin_port );
-						sock_ptr->Trigger(FD_ACCEPT, (const char*)&lpRemoteAddr, nRemoteAddrLen, (int)lpOverlapped->Sock);
+						if(sock_ptr->IsSelect(FD_ACCEPT)) {
+							sock_ptr->SetSockOpt(
+								SOL_SOCKET
+								, SO_UPDATE_ACCEPT_CONTEXT
+								, (char*)&(lpOverlapped->Sock)
+								, sizeof(lpOverlapped->Sock));
+							SOCKADDR_IN *lpRemoteAddr = NULL, *lpLocalAddr = NULL;
+							int nRemoteAddrLen = sizeof(SOCKADDR_IN), nLocalAddrLen = sizeof(SOCKADDR_IN);
+							GetAcceptExSockaddrs(lpOverlapped->Buffer.buf, 0, 
+								sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
+								(LPSOCKADDR*)&lpLocalAddr, &nLocalAddrLen,
+								(LPSOCKADDR*)&lpRemoteAddr, &nRemoteAddrLen);
+							//sprintf(pClientComKey->sIP, "%d", addrClient->sin_port );	//cliAdd.sin_port );
+							sock_ptr->Trigger(FD_ACCEPT, (const char*)&lpRemoteAddr, nRemoteAddrLen, (int)lpOverlapped->Sock);
+						}
 						if (sock_ptr->IsSocket()) {
 							if (sock_ptr->IsSelect(FD_ACCEPT)) {
 								sock_ptr->Trigger(FD_ACCEPT, 0);
@@ -526,7 +528,9 @@ protected:
 					{
 						lpOverlapped->NumberOfBytesReceived = dwTransfer;
 						if (dwTransfer) {
-							sock_ptr->Trigger(FD_READ, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesReceived, 0);
+							if (sock_ptr->IsSelect(FD_READ)) {
+								sock_ptr->Trigger(FD_READ, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesReceived, 0);
+							}
 							if (sock_ptr->IsSocket()) {
 								sock_ptr->Trigger(FD_READ, 0); //继续投递接收操作
 							}
@@ -540,7 +544,9 @@ protected:
 					{
 						lpOverlapped->NumberOfBytesSended = dwTransfer;
 						if (dwTransfer) {
-							sock_ptr->Trigger(FD_WRITE, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesSended, 0);
+							if (sock_ptr->IsSelect(FD_WRITE)) {
+								sock_ptr->Trigger(FD_WRITE, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesSended, 0);
+							}
 							if (sock_ptr->IsSocket()) {
 								sock_ptr->Trigger(FD_WRITE, 0); //继续投递接收操作
 							}

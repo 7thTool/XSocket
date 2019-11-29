@@ -49,6 +49,7 @@ enum
 	SOCKET_PACKET_FLAG_RESPONSE		= 0X00200000,	//是发送包的回应包
 	SOCKET_PACKET_FLAG_CONTINUE		= 0X00400000,	//是还要继续收包
 	SOCKET_PACKET_FLAG_HEARTBEAT	= 0X00800000,	//是心跳包
+	SOCKET_PACKET_FLAG_TEXT			= 0X40000000,	//文本
 	SOCKET_PACKET_FLAG_TEMPBUF		= 0X80000000,	//临时内存，不能引用buf指针
 };
 
@@ -264,9 +265,9 @@ protected:
 		}
 	}
 
-	void OnClose(int nErrorCode)
+	void OnRole(int nRole)
 	{
-		Base::OnClose(nErrorCode);
+		Base::OnRole(nRole);
 		m_nRecvLen = 0;
 		m_pRecvBuf = NULL;
 		m_nRecvBufLen = 0;
@@ -307,16 +308,40 @@ public:
 		
 	}
 
-	int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 
 		m_SendBuffer.insert(m_SendBuffer.end(),lpBuf,lpBuf+nBufLen);
 
-		if(!Base::IsSelect(FD_WRITE)) {
-			Base::Select(FD_WRITE);
-		}
+		return SendBufDirect(0, nFlags);
+	}
 
+	inline char* SendBuf(int nBufLen)
+	{
+		//std::lock_guard<std::mutex> lock(m_SendSection);
+
+		int nOldBufLen = m_SendBuffer.size();
+		m_SendBuffer.resize(nOldBufLen+nBufLen);
+		return (char*)(m_SendBuffer.c_str() + nOldBufLen);
+	}
+
+	inline SampleBuffer& SendBuf()
+	{
+		return m_SendBuffer;
+	}
+
+	inline int SendBufDirect(int nShrink, int nFlags = 0)
+	{
+		if(nShrink > 0) {
+			m_SendBuffer.resize(m_SendBuffer.size()-nShrink);
+		}
+		int nBufLen = m_SendBuffer.size();
+		if(Base::IsSocket()) {
+			if(!Base::IsSelect(FD_WRITE)) {
+				Base::Select(FD_WRITE);
+			}
+		}
 		return nBufLen;
 	}
 
@@ -435,9 +460,9 @@ protected:
 
 protected:
 	//
-	virtual void OnClose(int nErrorCode)
+	virtual void OnRole(int nRole)
 	{
-		Base::OnClose(nErrorCode);
+		Base::OnRole(nRole);
 		
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 
@@ -683,9 +708,9 @@ public:
 // 		m_SendPackList.pop();
 // 	}
 
-// 	void OnClose(int nErrorCode)
+// 	void OnRole(int nRole)
 // 	{
-// 		Base::OnClose(nErrorCode);
+// 		Base::OnRole(nRole)
 		
 // 		std::unique_lock<std::mutex> LockSend(m_SendSection);
 // 		while (!m_SendPackList.empty())
@@ -888,9 +913,9 @@ protected:
 		} while(bConitnue);
 	}
 
-	virtual void OnClose(int nErrorCode)
+	virtual void OnRole(int nRole)
 	{
-		Base::OnClose(nErrorCode);
+		Base::OnRole(nRole)
 		m_nSendLen = 0;
 		m_pSendBuf = NULL;
 		m_nSendBufLen = 0;
@@ -1026,9 +1051,9 @@ protected:
 
 protected:
 	//
-	virtual void OnClose(int nErrorCode)
+	virtual void OnRole(int nRole)
 	{
-		Base::OnClose(nErrorCode);
+		Base::OnRole(nRole)
 		
 		//std::unique_lock<std::mutex> LockSend(m_SendSection);
 

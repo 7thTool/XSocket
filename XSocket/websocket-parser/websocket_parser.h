@@ -54,13 +54,12 @@ enum {
     WS_OP_CLOSE    = 0x8,
     WS_OP_PING     = 0x9,
     WS_OP_PONG     = 0xA,
-    WS_OP_MASK     = 0xF,
-
-    // marks
-    WS_FINAL_FRAME = 0x10,
-    WS_FIN  = WS_FINAL_FRAME,
-    WS_HAS_MASK = 0x20,
 };
+
+#define WS_OP_MASK 0xF
+#define WS_FINAL_FRAME 0x10
+#define WS_FIN WS_FINAL_FRAME
+#define WS_HAS_MASK 0x20
 
 typedef int (*websocket_data_cb) (websocket_parser*, const char * at, size_t length);
 typedef int (*websocket_cb) (websocket_parser*);
@@ -87,25 +86,28 @@ struct websocket_parser_settings {
 
 void websocket_parser_init(websocket_parser *parser);
 void websocket_parser_settings_init(websocket_parser_settings *settings);
-size_t websocket_parser_execute(
+uint64_t websocket_parser_execute(
     websocket_parser * parser,
     const websocket_parser_settings *settings,
     const char * data,
-    size_t len
+    uint64_t len
 );
 
 // Apply XOR mask (see https://tools.ietf.org/html/rfc6455#section-5.3) and store mask's offset
-void websocket_parser_decode(char * dst, const char * src, size_t len, websocket_parser * parser);
+void websocket_parser_decode(char * dst, const char * src, uint64_t len, websocket_parser * parser);
 
 // Apply XOR mask (see https://tools.ietf.org/html/rfc6455#section-5.3) and return mask's offset
-uint8_t websocket_decode(char * dst, const char * src, size_t len, char mask[4], uint8_t mask_offset);
+uint8_t websocket_decode(char * dst, const char * src, uint64_t len, char mask[4], uint8_t mask_offset);
 #define websocket_encode(dst, src, len, mask, mask_offset) websocket_decode(dst, src, len, mask, mask_offset)
 
 // Calculate frame size using flags and data length
-size_t websocket_calc_frame_size(int flags, size_t data_len);
+uint64_t websocket_calc_frame_size(int flags, uint64_t data_len);
+
+// Create string representation of frame header
+uint64_t websocket_build_frame_header(char * frame, int flags, const char mask[4], uint64_t data_len);
 
 // Create string representation of frame
-size_t websocket_build_frame(char * frame, int flags, const char mask[4], const char * data, size_t data_len);
+uint64_t websocket_build_frame(char * frame, int flags, const char mask[4], const char * data, uint64_t data_len);
 
 #define websocket_parser_get_opcode(p) (p->flags & WS_OP_MASK)
 #define websocket_parser_has_mask(p) (p->flags & WS_HAS_MASK)
