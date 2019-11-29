@@ -1,6 +1,8 @@
 #ifndef _H_SAMPLES_H_
 #define _H_SAMPLES_H_
 
+#define USE_ZLIB
+
 //////////////////////////////////////////////////////////////////////////
 //IPV4->IPV6
 //映射项 功能说明 IPv4 IPv6

@@ -317,24 +317,19 @@ public:
 		return SendBufDirect(0, nFlags);
 	}
 
-	inline char* SendBuf(int nBufLen)
+	inline char* SendBuf(int nExpandLen)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 
 		int nOldBufLen = m_SendBuffer.size();
-		m_SendBuffer.resize(nOldBufLen+nBufLen);
+		m_SendBuffer.resize(nOldBufLen+nExpandLen);
 		return (char*)(m_SendBuffer.c_str() + nOldBufLen);
 	}
 
-	inline SampleBuffer& SendBuf()
+	inline int SendBufDirect(int nShrinkLen, int nFlags = 0)
 	{
-		return m_SendBuffer;
-	}
-
-	inline int SendBufDirect(int nShrink, int nFlags = 0)
-	{
-		if(nShrink > 0) {
-			m_SendBuffer.resize(m_SendBuffer.size()-nShrink);
+		if(nShrinkLen > 0) {
+			m_SendBuffer.resize(m_SendBuffer.size()-nShrinkLen);
 		}
 		int nBufLen = m_SendBuffer.size();
 		if(Base::IsSocket()) {

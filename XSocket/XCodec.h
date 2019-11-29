@@ -2,6 +2,14 @@
 #define _H_XCODEC_H_
 
 #include "XSocketDef.h"
+#ifdef USE_ZLIB
+#include <zlib.h>
+#endif
+#ifdef USE_OPENSSL
+#include <openssl/rand.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+#endif
 
 namespace XSocket {
 
@@ -424,6 +432,18 @@ void
         uint32_t            BufferSize,     // [in]
         SHA1_HASH*          Digest          // [in]
     );
+
+
+#ifdef USE_ZLIB
+/* Compress gzip data */
+/* data 原数据 ndata 原数据长度 zdata 压缩后数据 nzdata 压缩后长度 */
+int gzcompress(Bytef *data, uLong ndata,
+               Bytef *zdata, uLong *nzdata);
+/* Uncompress gzip data */
+/* zdata 数据 nzdata 原数据长度 data 解压后数据 ndata 解压后长度 */
+int gzdecompress(Byte *zdata, uLong nzdata,
+                 Byte *data, uLong *ndata);
+#endif
 
 }
 
