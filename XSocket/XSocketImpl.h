@@ -192,6 +192,9 @@ protected:
 		m_nRecvLen += nBufLen;
 		int nParseBufLen = m_nRecvLen;
 		int nParseFlags = ParseBuf(m_pRecvBuf, nParseBufLen);
+		if(!nParseFlags) {
+			Base::Trigger(FD_CLOSE, Base::GetLastError());
+		}
 		if (SOCKET_PACKET_FLAG_COMPLETE & nParseFlags) {
 			OnRecvBuf(m_pRecvBuf, nParseBufLen, nParseFlags);
 		} else {

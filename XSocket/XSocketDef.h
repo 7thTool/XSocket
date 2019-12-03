@@ -70,6 +70,22 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#ifndef stricmp
+#define stricmp strcasecmp 
+#endif//stricmp
+
+#ifndef wcsicmp
+#define wcsicmp wcscasecmp 
+#endif//wcsicmp
+
+#ifndef strnicmp
+#define strnicmp strncasecmp 
+#endif//strnicmp
+
+#ifndef wcsnicmp
+#define wcsnicmp wcsncasecmp 
+#endif//wcsnicmp
+
 #ifndef SOCKET
 typedef int SOCKET;
 #endif//SOCKET
@@ -149,22 +165,6 @@ typedef unsigned char byte;
 //#ifndef vsprintf
 //#define vsprintf vsnprintf
 //#endif//vsprintf
-
-#ifndef stricmp
-#define stricmp strcasecmp 
-#endif//stricmp
-
-#ifndef wcsicmp
-#define wcsicmp wcscasecmp 
-#endif//wcsicmp
-
-#ifndef strnicmp
-#define strnicmp strncasecmp 
-#endif//strnicmp
-
-#ifndef wcsnicmp
-#define wcsnicmp wcsncasecmp 
-#endif//wcsnicmp
 
 /*!
  *	@brief 代理类型.

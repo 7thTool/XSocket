@@ -20,6 +20,7 @@
 
 #include "XSocketImpl.h"
 #include "XCodec.h"
+#include "http-parser/http_parser.h"
 
 namespace XSocket {
 
@@ -50,7 +51,6 @@ protected:
 public:
 	ProxyImpl()
 	{
-
 	}
 
 	inline void ResetProxyInfo()
@@ -106,7 +106,7 @@ public:
 
 	inline PROXYTYPE IsProxy()
 	{
-		return m_ProxyInfo.eType!=PROXYTYPE_NONE;
+		return m_ProxyInfo.eType;
 	}
 
 	inline bool IsProxyOK()
@@ -121,7 +121,7 @@ public:
 
 	int Connect(const char* lpszHostAddress, unsigned short nHostPort, PPROXYINFO pProxy = NULL)
 	{
-		SetProxy(lpszHostAddress, nHostPort, pProxy);
+		SetProxyInfo(lpszHostAddress, nHostPort, pProxy);
 		if (IsProxy()) {
 			return Base::Connect(GetProxyIp(), GetProxyPort());
 		} else {
@@ -208,9 +208,9 @@ protected:
 				byProxyState = PROXY_STATE_NONE;
 				PRINTF("[%d]\r\n%*s", nBufLen, nBufLen, lpBuf);
 				if (strnicmp(lpBuf,"HTTP/",5)==0 && strnicmp(lpBuf+nBufLen-4,("\r\n\r\n"),4)==0) {
-					char* pEnd = strstr(lpBuf, "\r\n");
+					const char* pEnd = strstr(lpBuf, "\r\n");
 					if(pEnd) {
-						char* pStart = strstr(Buf, " ");
+						const char* pStart = strstr(lpBuf, " ");
 						if (pStart) {
 							pStart++;
 							if(pStart<pEnd) {
@@ -422,7 +422,8 @@ protected:
 					//} else {
 					//	snprintf(szAuth, 1024, "%s", m_ProxyInfo.szUser);
 					//}
-					Base64Encode(szAuth, strlen(szAuth), szBase64Encode, 1024);
+					int nBase64EncodeLen = 1024;
+					Base64Encode((const byte*)szAuth, strlen(szAuth), szBase64Encode, &nBase64EncodeLen);
 
 					strcat(Buf, "Authorization: Basic ");
 					strcat(Buf, szBase64Encode);
@@ -467,10 +468,10 @@ protected:
 			return;
 		}
 		Base::Select(FD_READ);
-		if (!ProxyHandler::IsProxyOK()) {
+		if (!IsProxyOK()) {
 			SendProxy();
 		} else {
-			Base::OnConnect(ProxyHandler::IsProxyOK()?0:ECONNABORTED);
+			Base::OnConnect(IsProxyOK()?0:ECONNABORTED);
 		}
 	}
 };
@@ -487,18 +488,17 @@ class ProxydImpl : public TBase
 	typedef ProxydImpl<TBase> This;
 	typedef TBase Base;
 protected:
-	byte		m_ProxyType:3 = 0; //代理类型
-	byte		m_ProxyState:5 = PROXY_STATE_NONE;	//代理状态
+	byte m_ProxyType:3; //代理类型
+	byte m_ProxyState:5;	//代理状态
 
 public:
-	ProxydImpl()
+	ProxydImpl():m_ProxyType(PROXYTYPE_NONE),m_ProxyState(PROXY_STATE_NONE)
 	{
-
 	}
 
 	inline bool IsProxyOK()
 	{
-		return m_ProxyType!=0 && m_ProxyState==PROXY_STATE_OK;
+		return m_ProxyType!=PROXYTYPE_NONE && m_ProxyState==PROXY_STATE_OK;
 	}
 
 	inline bool IsInProxy()
@@ -532,7 +532,7 @@ protected:
 							sockAddr.sin_family = AF_INET;
 							sockAddr.sin_port = *(u_short*)&lpBuf[2];
 							sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)(lpBuf+9)));
-							OnProxy(const SOCKADDR_IN& addr);
+							OnProxy(sockAddr);
 							return SOCKET_PACKET_FLAG_COMPLETE;
 						} else {
 							return SOCKET_PACKET_FLAG_PENDING;
@@ -543,7 +543,7 @@ protected:
 						sockAddr.sin_family = AF_INET;
 						sockAddr.sin_port = *(u_short*)&lpBuf[2];
 						sockAddr.sin_addr.s_addr = *(u_long*)&lpBuf[4];
-						OnProxy(const SOCKADDR_IN& addr);
+						OnProxy(sockAddr);
 						return SOCKET_PACKET_FLAG_COMPLETE;
 					}
 				}
@@ -556,15 +556,34 @@ protected:
 			break;
 			default:
 			{
-				/*if(nBufLen > 7) {
-					sscanf();
+				PPROXYINFO proxyInfo = {0};
+				http_parser_settings settings = {0};
+				http_parser parser = {0};
+				settings.on_message_begin = [](http_parser *parser) { return 0; };
+				settings.on_url = [](http_parser* parser, const char *at, size_t length) { return 0; };
+				settings.on_status = [](http_parser* parser, const char *at, size_t length) { return 0; };
+				settings.on_header_field = [](http_parser* parser, const char *at, size_t length) { return 0; };
+				settings.on_header_value = [](http_parser* parser, const char *at, size_t length) { return 0; };
+  				settings.on_headers_complete = [](http_parser *parser) { return 0; };
+				settings.on_body = [] (http_parser* parser, const char *at, size_t length) { return 0; };
+				settings.on_message_complete = [](http_parser* parser) { return 0; };
+				http_parser_init(&parser, HTTP_REQUEST);
+				parser.data = this;
+				int nParsed = http_parser_execute(&parser, &settings, lpBuf, nBufLen);
+				if(nParsed < 0) {
+					//
+				} else {
+					if(!m_ProxyType) {
+						return SOCKET_PACKET_FLAG_PENDING;
+					}
+					return SOCKET_PACKET_FLAG_COMPLETE;
 				}
-				m_ProxyType = PROXYTYPE_HTTP10;*/
 			}
 			break;
 			}
 			return 0;
 		}
+		char Buf[1024] = {0};
 		switch(m_ProxyType)
 		{
 		case PROXYTYPE_SOCKS4:
@@ -599,69 +618,71 @@ protected:
 							return SOCKET_PACKET_FLAG_PENDING;
 						}
 						if(lpBuf[1] == 0x02) {
-							m_ProxyState++;
+							Buf[0] = 0x05;
 							if(lpBuf[2] == 0x02) {
-								//auth
+								//收到使用密码登录
+								m_ProxyState = 2;
+								Buf[1] == 0x02;
+								Base::SendBuf(Buf, 2);
 							} else {
-
+								//不使用密码登录
+								m_ProxyState = 1;
+								Base::SendBuf(Buf, 1);
 							}
 							return SOCKET_PACKET_FLAG_COMPLETE;
 						}
 					}
 					break;
-				case 3:
+				case 1:
 					{
-						byProxyState++;
-
-						char nUserLen = (char)strlen(m_ProxyInfo.szUser);
-						char nPwdLen = (char)strlen(m_ProxyInfo.szPwd);
-						Buf[0] = 0x05;
-						Buf[1] = nUserLen;
-						nBufLen = 2;
-						memcpy(Buf + nBufLen, m_ProxyInfo.szUser, nUserLen);
-						nBufLen += nUserLen;
-						Buf[nBufLen] = nPwdLen;
-						nBufLen += 1;
-						memcpy(Buf + nBufLen, m_ProxyInfo.szPwd, nPwdLen);
-						nBufLen += nPwdLen;
-						ret = Base::SendBuf(Buf, nBufLen);
+						if(nBufLen < (4 + 1)) {
+							return SOCKET_PACKET_FLAG_PENDING;
+						}
+						if(lpBuf[3] == 0x01) {
+							if(nBufLen < (4 + 4 + 2)) {
+								return SOCKET_PACKET_FLAG_PENDING;
+							}
+							SOCKADDR_IN sockAddr = {0};
+							sockAddr.sin_family = AF_INET;
+							sockAddr.sin_addr.s_addr = *(u_long*)&lpBuf[4];
+							sockAddr.sin_port = *(u_short*)&lpBuf[8];
+							OnProxy(sockAddr);
+							return SOCKET_PACKET_FLAG_COMPLETE;
+						} else {
+							int addr_len = lpBuf[4];
+							if(nBufLen < (4 + 1 + addr_len + 2)) {
+								return SOCKET_PACKET_FLAG_PENDING;
+							}
+							char* addr = (char*)lpBuf + 4 + 1;
+							SOCKADDR_IN sockAddr = {0};
+							sockAddr.sin_family = AF_INET;
+							char c = addr[addr_len];
+							addr[addr_len] = 0;
+							sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)(addr)));
+							addr[addr_len] = c;
+							sockAddr.sin_port = *(u_short*)&lpBuf[4 + addr_len];
+							OnProxy(sockAddr);
+							return SOCKET_PACKET_FLAG_COMPLETE;
+						}
 					}
 					break;
-				case 5:
+				case 2:
 					{
-						byProxyState++;
-
-						const char* lpszHostAddress = m_szHost;
-						int nHostAddress = strlen(lpszHostAddress);
-						SOCKADDR_IN sockAddr = {0};
-						sockAddr.sin_addr.s_addr = inet_addr(lpszHostAddress);
-						if (sockAddr.sin_addr.s_addr == INADDR_NONE) {
-							//不用DNS解析，代理服务器会解析
-							/*LPHOSTENT lpHostent = gethostbyname(lpszHostAddress);
-							if (lpHostent) {
-							sockAddr.sin_addr.s_addr = ((LPIN_ADDR)lpHostent->h_addr)->s_addr;
-							}*/
+						if(nBufLen < (1 + 1)) {
+							return SOCKET_PACKET_FLAG_PENDING;
 						}
-						sockAddr.sin_port = H2N(m_nPort);
-
-						Buf[0] = 0x05;
-						Buf[1] = 0x01;
-						Buf[2] = 0x00;
-						Buf[3] = (sockAddr.sin_addr.s_addr!=INADDR_NONE ? 0x01 : 0x03);
-						nBufLen = 4;
-						if (sockAddr.sin_addr.s_addr != INADDR_NONE) {
-							memcpy(Buf + nBufLen, &sockAddr.sin_addr.s_addr, sizeof(sockAddr.sin_addr.s_addr));
-							nBufLen += sizeof(sockAddr.sin_addr.s_addr);
-						} else {
-							Buf[nBufLen] = (char)strlen(lpszHostAddress);
-							nBufLen += 1;
-							memcpy(Buf + nBufLen, lpszHostAddress, nHostAddress);
-							nBufLen += nHostAddress;
+						int user_len = lpBuf[1];
+						if(nBufLen < (1 + 1 + user_len + 1)) {
+							return SOCKET_PACKET_FLAG_PENDING;
 						}
-						memcpy(Buf + nBufLen, &sockAddr.sin_port, sizeof(sockAddr.sin_port));
-						nBufLen += sizeof(sockAddr.sin_port);
-
-						ret = Base::SendBuf(Buf, nBufLen);
+						const char* user = lpBuf + 1 + 1;
+						int pwd_len = lpBuf[1 + 1 + user_len];
+						if(nBufLen < (1 + 1 + user_len + 1 + pwd_len)) {
+							return SOCKET_PACKET_FLAG_PENDING;
+						}
+						const char* pwd = user + user_len + 1;
+						OnAuth(user, user_len, pwd, pwd_len);
+						return SOCKET_PACKET_FLAG_COMPLETE;
 					}
 					break;
 				default:
@@ -672,43 +693,18 @@ protected:
 		case PROXYTYPE_HTTP10:
 		case PROXYTYPE_HTTP11:
 			{
-				// byProxyState++;
-
-				// const char* lpszHostAddress = m_szHost;
-				// int nHostAddress = strlen(lpszHostAddress);
-
-				// sprintf(Buf, "CONNECT %s:%d HTTP/1.%d\r\nHost: %s:%d\r\n",
-				// 	lpszHostAddress, m_nPort, /*m_ProxyInfo.nType == PROXYTYPE_HTTP10 ? 0 : */1, lpszHostAddress, m_nPort);
-
-				// if (m_ProxyInfo.bAuth)
-				// {
-				// 	char szAuth[1024] = {0};
-				// 	char szBase64Encode[1024] = {0};
-				// 	//char nNameLen = (char)strlen(m_ProxyInfo.szUser);
-				// 	//char nPwdLen = (char)strlen(m_ProxyInfo.szPwd);
-				// 	//if (m_ProxyInfo.szPwd[0]) {
-				// 		snprintf(szAuth, 1024, "%s:%s", m_ProxyInfo.szUser, m_ProxyInfo.szPwd);
-				// 	//} else {
-				// 	//	snprintf(szAuth, 1024, "%s", m_ProxyInfo.szUser);
-				// 	//}
-				// 	Base64Encode(szAuth, strlen(szAuth), szBase64Encode, 1024);
-
-				// 	strcat(Buf, "Authorization: Basic ");
-				// 	strcat(Buf, szBase64Encode);
-				// 	strcat(Buf, "\r\n");
-				// 	strcat(Buf, "Proxy-Authorization: Basic ");
-				// 	strcat(Buf, szBase64Encode);
-				// 	strcat(Buf, "\r\n");
-				// }
-
-				// strcat(Buf, "\r\n");
-
-				// nBufLen = strlen(Buf);
-				// ret = Base::SendBuf(Buf, nBufLen);
+				
 			}
 			break;
 		}
+		m_ProxyType = PROXYTYPE_NONE;
+		m_ProxyState = PROXY_STATE_NONE;
 		return 0;
+	}
+
+	virtual void OnAuth(const char* user, int user_len, const char* pwd, int pwd_len)
+	{
+
 	}
 
 	virtual void OnProxy(const SOCKADDR_IN& addr)
@@ -754,77 +750,15 @@ protected:
 				//       o  X'03' to X'7F' IANA ASSIGNED
 				//       o  X'80' to X'FE' RESERVED FOR PRIVATE METHODS
 				//       o  X'FF' NO ACCEPTABLE METHODS
-				// switch (m_ProxyState) 
-				// {
-				// case 1:
-				// 	{
-				// 		m_ProxyState++;
-
-				// 		Buf[0] = 0x05;
-				// 		Buf[1] = (m_ProxyInfo.bAuth ? 0x02 : 0x01);
-				// 		Buf[2] = (m_ProxyInfo.bAuth ? 0x02 : 0x00);
-				// 		nBufLen = (m_ProxyInfo.bAuth ? 4 : 3);
-				// 		ret = Base::SendBuf(Buf, nBufLen);
-				// 	}
-				// 	break;
-				// case 3:
-				// 	{
-				// 		m_ProxyState++;
-
-				// 		char nUserLen = (char)strlen(m_ProxyInfo.szUser);
-				// 		char nPwdLen = (char)strlen(m_ProxyInfo.szPwd);
-				// 		Buf[0] = 0x05;
-				// 		Buf[1] = nUserLen;
-				// 		nBufLen = 2;
-				// 		memcpy(Buf + nBufLen, m_ProxyInfo.szUser, nUserLen);
-				// 		nBufLen += nUserLen;
-				// 		Buf[nBufLen] = nPwdLen;
-				// 		nBufLen += 1;
-				// 		memcpy(Buf + nBufLen, m_ProxyInfo.szPwd, nPwdLen);
-				// 		nBufLen += nPwdLen;
-				// 		ret = Base::SendBuf(Buf, nBufLen);
-				// 	}
-				// 	break;
-				// case 5:
-				// 	{
-				// 		m_ProxyState++;
-
-				// 		const char* lpszHostAddress = m_szHost;
-				// 		int nHostAddress = strlen(lpszHostAddress);
-				// 		SOCKADDR_IN sockAddr = {0};
-				// 		sockAddr.sin_addr.s_addr = inet_addr(lpszHostAddress);
-				// 		if (sockAddr.sin_addr.s_addr == INADDR_NONE) {
-				// 			//不用DNS解析，代理服务器会解析
-				// 			/*LPHOSTENT lpHostent = gethostbyname(lpszHostAddress);
-				// 			if (lpHostent) {
-				// 			sockAddr.sin_addr.s_addr = ((LPIN_ADDR)lpHostent->h_addr)->s_addr;
-				// 			}*/
-				// 		}
-				// 		sockAddr.sin_port = H2N(m_nPort);
-
-				// 		Buf[0] = 0x05;
-				// 		Buf[1] = 0x01;
-				// 		Buf[2] = 0x00;
-				// 		Buf[3] = (sockAddr.sin_addr.s_addr!=INADDR_NONE ? 0x01 : 0x03);
-				// 		nBufLen = 4;
-				// 		if (sockAddr.sin_addr.s_addr != INADDR_NONE) {
-				// 			memcpy(Buf + nBufLen, &sockAddr.sin_addr.s_addr, sizeof(sockAddr.sin_addr.s_addr));
-				// 			nBufLen += sizeof(sockAddr.sin_addr.s_addr);
-				// 		} else {
-				// 			Buf[nBufLen] = (char)strlen(lpszHostAddress);
-				// 			nBufLen += 1;
-				// 			memcpy(Buf + nBufLen, lpszHostAddress, nHostAddress);
-				// 			nBufLen += nHostAddress;
-				// 		}
-				// 		memcpy(Buf + nBufLen, &sockAddr.sin_port, sizeof(sockAddr.sin_port));
-				// 		nBufLen += sizeof(sockAddr.sin_port);
-
-				// 		ret = Base::SendBuf(Buf, nBufLen);
-				// 	}
-				// 	break;
-				// default:
-				// 	break;
-				// }
+				if(!nErrorCode) {
+					Buf[0] = 0x05;
+					Buf[1] = 0x00;
+					Base::SendBuf(Buf,2);
+				} else {
+					Buf[0] = 0x05;
+					Buf[1] = 0x02; //???
+					Base::SendBuf(Buf,2);
+				}
 			}
 			break;
 		case PROXYTYPE_HTTP10:
@@ -834,18 +768,18 @@ protected:
 			}
 			break;
 		}
-		return 0;
+		if(nErrorCode) {
+			m_ProxyType = PROXYTYPE_NONE;
+			m_ProxyState = PROXY_STATE_NONE;
+			Base::Trigger(FD_CLOSE, ECONNABORTED);
+		}
 	}
 
 	//解析数据包
 	virtual int ParseBuf(const char* lpBuf, int & nBufLen) 
 	{ 
 		if(!IsProxyOK()) {
-			int ret = ReceiveProxy(lpBuf, nBufLen);
-			if(ret & SOCKET_PACKET_FLAG_COMPLETE) {
-				SendProxy();
-			}
-			return ret;
+			return ReceiveProxy(lpBuf, nBufLen);
 		}
 		return Base::ParseBuf(lpBuf, nBufLen);
 	}
