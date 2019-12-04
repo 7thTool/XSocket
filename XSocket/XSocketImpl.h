@@ -548,6 +548,10 @@ public:
 		// }
 		Base::this_service()->Post(evt);
 	}
+	
+	virtual void OnEvent(const Event& evt)
+	{
+	}
 };
 
 // /*!

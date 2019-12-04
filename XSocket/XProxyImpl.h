@@ -45,7 +45,7 @@ class ProxyImpl : public TBase
 protected:
 	byte		m_ProxyState;	//代理状态
 	PROXYINFO	m_ProxyInfo;	//代理
-	char 		m_szHost[260];	//服务器的地址
+	char 		m_szHost[256];	//服务器的地址
 	u_short 	m_nPort;		//服务器的端口
 
 public:
@@ -705,6 +705,54 @@ protected:
 	virtual void OnAuth(const char* user, int user_len, const char* pwd, int pwd_len)
 	{
 
+	}
+	
+	virtual void OnAuthDone(int nErrorCode)
+	{
+		if(nErrorCode) {
+			OnProxyDone(nErrorCode);
+			return;
+		}
+		char Buf[1024] = {0};
+		switch(m_ProxyType)
+		{
+		case PROXYTYPE_SOCKS4:
+		case PROXYTYPE_SOCKS4A:
+			{
+				ASSERT(0);
+			}
+			break;
+		case PROXYTYPE_SOCKS5:
+			{
+				// SOCKS 5
+				// -------------------------------------------------------------------------------------------
+				// The client connects to the server, and sends a version identifier/method selection message:
+				//                +----+----------+----------+
+				//                |VER | NMETHODS | METHODS  |
+				//                +----+----------+----------+
+				//                | 1  |    1     | 1 to 255 |
+				//                +----+----------+----------+
+				//
+				// The values currently defined for METHOD are:
+				//
+				//       o  X'00' NO AUTHENTICATION REQUIRED
+				//       o  X'01' GSSAPI
+				//       o  X'02' USERNAME/PASSWORD
+				//       o  X'03' to X'7F' IANA ASSIGNED
+				//       o  X'80' to X'FE' RESERVED FOR PRIVATE METHODS
+				//       o  X'FF' NO ACCEPTABLE METHODS
+				Buf[0] = 0x05;
+				Buf[1] = 0x00;
+				Base::SendBuf(Buf,2);
+			}
+			break;
+		case PROXYTYPE_HTTP10:
+		case PROXYTYPE_HTTP11:
+			{
+				
+			}
+			break;
+		}
 	}
 
 	virtual void OnProxy(const SOCKADDR_IN& addr)

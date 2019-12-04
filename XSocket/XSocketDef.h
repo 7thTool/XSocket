@@ -189,11 +189,11 @@ enum PROXYTYPE
 typedef struct  tagPROXYINFO
 {
 	PROXYTYPE eType; 
-	char szHost[260];
+	char szHost[256];
 	u_short nPort;
 	bool bAuth;
-	char szUser[260];
-	char szPwd[260];
+	char szUser[256];
+	char szPwd[256];
 }PROXYINFO,*PPROXYINFO;
 
 #ifndef ASSERT
