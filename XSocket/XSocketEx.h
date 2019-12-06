@@ -893,7 +893,7 @@ public:
 					sock_count_--;
 					lock.unlock();
 					sock_ptr->DetachService(this);
-					Service::RemoveSocket(sock_ptr);
+					Service::RemoveSocket(sock_ptr.get());
 					return i;
 				} else {
 					return i;
