@@ -251,9 +251,10 @@ void SocketEx::OnClose(int nErrorCode)
 #else
 	PRINTF("%u::OnClose:%d\n", m_Sock, nErrorCode);
 #endif//
-	if(IsSocket()) {
-		Close();
-	}
+	//ASSERT(!IsSocket());
+	// if(IsSocket()) {
+	// 	Close();
+	// }
 }
 
 ///

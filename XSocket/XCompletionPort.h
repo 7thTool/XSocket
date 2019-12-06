@@ -65,7 +65,7 @@ typedef struct _PER_IO_OPERATION_DATA
  *	封装CompletionPortSocket
  */
 template<class TSocketSet, class TBase = SocketEx>
-class CompletionPortSocket : public TBase
+class CompletionPortSocketT : public TBase
 {
 	typedef TBase Base;
 public:
@@ -79,13 +79,13 @@ protected:
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
-	CompletionPortSocket():Base()
+	CompletionPortSocketT():Base()
 	{
 		memset(&m_SendOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
 		memset(&m_ReceiveOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
 	}
 
-	virtual ~CompletionPortSocket()
+	virtual ~CompletionPortSocketT()
 	{
 		
 	}
@@ -283,14 +283,14 @@ public:
 
 
 /*!
- *	@brief ListenSocket 模板定义.
+ *	@brief ListenSocketT 模板定义.
  *
- *	封装ListenSocket，适用于服务端监听Socket
+ *	封装ListenSocketT，适用于服务端监听Socket
  */
 template<class TBase = SocketEx, u_short uAddrSize = 256>
-class CompletionPortListenSocket : public ListenSocket<TBase>
+class CompletionPortListenSocketT : public ListenSocketT<TBase>
 {
-	typedef ListenSocket<TBase> Base;
+	typedef ListenSocketT<TBase> Base;
 protected:
 	char addr_[uAddrSize];
 	int addrlen_ = uAddrSize;
@@ -306,16 +306,16 @@ protected:
  *	封装CompletionPortSocketSet，实现对CompletionPort模型封装，最多管理uFD_SETSize数Socket
  */
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class CompletionPortSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
+class CompletionPortSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
 {
-	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
+	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
 protected:
 	HANDLE m_hIocp;
 public:
-	CompletionPortSocketSet()
+	CompletionPortSocketSetT()
 	{
 		SYSTEM_INFO SystemInfo = {0};
 		GetSystemInfo(&SystemInfo);
@@ -323,7 +323,7 @@ public:
 		ASSERT(m_hIocp!=INVALID_HANDLE_VALUE);
 	}
 
-	~CompletionPortSocketSet()
+	~CompletionPortSocketSetT()
 	{
 		if(m_hIocp!=INVALID_HANDLE_VALUE) {
 			CloseHandle(m_hIocp);

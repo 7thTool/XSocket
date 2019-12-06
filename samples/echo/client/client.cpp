@@ -23,34 +23,34 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::DelayEventService<Event,XSocket::ThreadService> ClientService;
+typedef XSocket::DelayEventServiceT<Event,XSocket::ThreadService> ClientService;
 
 class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	: public XSocket::SelectClient<ClientService,XSocket::SampleSocketImpl<XSocket::ConnectSocket<XSocket::SocketEx>>>
+	: public XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>
 #else
-	: public SocketExImpl<client,SampleSocketArchitectureImpl<ProxyConnectHandler<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > >
+	: public SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectUdpClient<SampleSocketArchitectureImpl<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > >
+	: public SocketExT<client,SelectUdpClient<SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
 #else
-	: public SocketExImpl<client,SampleSocketArchitectureImpl<SampleSocketArchitecture<ConnectSocket<SocketEx> > > >
+	: public SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > >
 #endif//USE_MANAGER
 #endif//USE_UDP
 {
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	typedef XSocket::SelectClient<ClientService,XSocket::SampleSocketImpl<XSocket::ConnectSocket<XSocket::SocketEx>>> Base;
+	typedef XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>> Base;
 #else
-	typedef SocketExImpl<client,SampleSocketArchitectureImpl<ProxyConnectHandler<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > > Base;
+	typedef SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	typedef SocketExImpl<client,SelectUdpClient<SampleSocketArchitectureImpl<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > > Base;
+	typedef SocketExT<client,SelectUdpClient<SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
 #else
-	typedef SocketExImpl<client,SampleSocketArchitectureImpl<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > Base;
+	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > Base;
 #endif//USE_MANAGER
 #endif//USE_UDP
 #ifdef USE_MANAGER

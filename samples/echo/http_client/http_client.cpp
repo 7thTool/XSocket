@@ -69,19 +69,19 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::DelayEventService<Event,XSocket::ThreadService> ClientService;
+typedef XSocket::DelayEventServiceT<Event,XSocket::ThreadService> ClientService;
 
 class client
 #ifndef USE_MANAGER
-	: public XSocket::SelectClient<ClientService,XSocket::HttpImpl<XSocket::SampleSocketImpl<XSocket::ConnectSocket<XSocket::SocketEx>>>>
+	: public XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::HttpSocketT<XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>>
 #else
-	: public SocketExImpl<client,SampleSocketArchitectureImpl<ProxyConnectHandler<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > >
+	: public SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
 #endif//USE_MANAGER
 {
 #ifndef USE_MANAGER
-	typedef XSocket::SelectClient<ClientService,XSocket::HttpImpl<XSocket::SampleSocketImpl<XSocket::ConnectSocket<XSocket::SocketEx>>>> Base;
+	typedef XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::HttpSocketT<XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>> Base;
 #else
-	typedef SocketExImpl<client,SampleSocketArchitectureImpl<ProxyConnectHandler<SampleSocketArchitecture<ConnectSocket<SocketEx> > > > > Base;
+	typedef SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
 #endif//USE_MANAGER
 protected:
 	//std::once_flag start_flag_;
@@ -149,7 +149,7 @@ protected:
 	{
 		SendWebSocketBuf("hello.", 6, WS_OP_TEXT|WS_FINAL_FRAME);
 	}
-	virtual void OnMessage(const char* lpBuf, int nBufLen, int nFlags)
+	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		PRINTF("%-79s\n", lpBuf);
 		SendWebSocketBuf("hello.", 6, WS_FINAL_FRAME|WS_OP_TEXT);
@@ -173,9 +173,9 @@ protected:
 
 #ifdef USE_MANAGER
 #ifdef USE_EPOLL
-class manager : public EPollManager<client,DEFAULT_FD_SETSIZE>
+class manager : public EPollManagerT<client,DEFAULT_FD_SETSIZE>
 #else
-class manager : public SelectManager<client,DEFAULT_FD_SETSIZE>
+class manager : public SelectManagerT<client,DEFAULT_FD_SETSIZE>
 #endif//
 #else
 class manager : public XSocket::ThreadService

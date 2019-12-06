@@ -29,32 +29,32 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::SampleEventService<XSocket::DelayEventService<Event,XSocket::ThreadService>> WorkService;
+typedef XSocket::SimpleEventServiceT<XSocket::DelayEventServiceT<Event,XSocket::ThreadService>> WorkService;
 //typedef XSocket::ThreadService WorkService;
 
 #ifdef USE_EPOLL
-typedef XSocket::EPollSocketSet<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef XSocket::EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #elif defined(USE_IOCP)
-typedef XSocket::CompletionPortSocketSet<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef XSocket::CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #else
-typedef XSocket::SelectSocketSet<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef XSocket::SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #endif//
 
 class worker
 #ifdef USE_EPOLL
-	: public XSocket::HttpImpl<XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::EPollSocket<WorkSocketSet,XSocket::SocketEx>>>>
+	: public XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::EPollSocketT<WorkSocketSet,XSocket::SocketEx>>>>>
 #elif defined(USE_IOCP)
-	: public XSocket::HttpImpl<XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::CompletionPortSocket<WorkSocketSet,XSocket::SocketEx>>>>
+	: public XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::CompletionPortSocketT<WorkSocketSet,XSocket::SocketEx>>>>>
 #else
-	: public XSocket::HttpImpl<XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::SelectSocket<WorkSocketSet,XSocket::SocketEx>>>>
+	: public XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::SelectSocketT<WorkSocketSet,XSocket::SocketEx>>>>>
 #endif
 {
 #ifdef USE_EPOLL
-	typedef XSocket::HttpImpl<XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::EPollSocket<WorkSocketSet,XSocket::SocketEx>>>> Base;
+	typedef XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::EPollSocketT<WorkSocketSet,XSocket::SocketEx>>>>> Base;
 #elif defined(USE_IOCP)
-	typedef XSocket::HttpImpl<XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::CompletionPortSocket<WorkSocketSet,XSocket::SocketEx>>>> Base;
+	typedef XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::CompletionPortSocketT<WorkSocketSet,XSocket::SocketEx>>>>> Base;
 #else
-	typedef XSocket::HttpImpl<XSocket::SampleEvtSocketImpl<XSocket::WorkSocket<XSocket::SelectSocket<WorkSocketSet,XSocket::SocketEx>>>> Base;
+	typedef XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::SelectSocketT<WorkSocketSet,XSocket::SocketEx>>>>> Base;
 #endif
 public:
 	worker()
@@ -87,7 +87,7 @@ protected:
 	}
 
 #ifdef USE_WEBSOCKET
-	virtual void OnMessage(const char* lpBuf, int nBufLen, int nFlags)
+	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
 			auto body = request_.GetBody();
 			SendWebSocketBuf(body.first, body.second, WS_OP_TEXT);
@@ -98,9 +98,9 @@ protected:
 };
 
 class server 
-	: public XSocket::SelectServer<XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet>
+	: public XSocket::SelectServerT<XSocket::ThreadService,XSocket::SocketExImpl<server,XSocket::ListenSocketT<XSocket::SocketEx>>,WorkSocketSet>
 {
-	typedef XSocket::SelectServer<XSocket::ThreadService,XSocket::ListenSocket<XSocket::SocketEx>,WorkSocketSet> Base;
+	typedef XSocket::SelectServerT<XSocket::ThreadService,XSocket::SocketExImpl<server,XSocket::ListenSocketT<XSocket::SocketEx>>,WorkSocketSet> Base;
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{

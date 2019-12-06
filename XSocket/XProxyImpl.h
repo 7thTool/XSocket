@@ -33,14 +33,14 @@ namespace XSocket {
 #define PROXY_STATE_OK		0XFF	//!< 代理成功
 
 /*!
- *	@brief ProxyImpl 模板定义.
+ *	@brief ProxySocketT 模板定义.
  *
- *	封装ProxyImpl，实现连接代理
+ *	封装ProxySocketT，实现连接代理
  */
 template<class TBase>
-class ProxyImpl : public TBase
+class ProxySocketT : public TBase
 {
-	typedef ProxyImpl<TBase> This;
+	typedef ProxySocketT<TBase> This;
 	typedef TBase Base;
 protected:
 	byte		m_ProxyState;	//代理状态
@@ -49,7 +49,7 @@ protected:
 	u_short 	m_nPort;		//服务器的端口
 
 public:
-	ProxyImpl()
+	ProxySocketT()
 	{
 	}
 
@@ -251,7 +251,7 @@ protected:
 				byProxyState++;
 
 				const char* lpszHostAddress = m_szHost;
-				int nHostAddress = strlen(lpszHostAddress);
+				int nHostAddress = strlen(lpszHostAddress) + 1;
 
 				// SOCKS 4
 				// ---------------------------------------------------------------------------
@@ -454,7 +454,9 @@ protected:
 		if(!IsProxyOK()) {
 			int ret = ReceiveProxy(lpBuf, nBufLen);
 			if(ret & SOCKET_PACKET_FLAG_COMPLETE) {
-				SendProxy();
+				if(!IsProxyOK()) {
+					SendProxy();
+				}
 			}
 			return ret;
 		}
@@ -478,21 +480,21 @@ protected:
 
 
 /*!
- *	@brief ProxydImpl 模板定义.
+ *	@brief ProxydSocketT 模板定义.
  *
- *	封装ProxydImpl，实现代理服务端逻辑
+ *	封装ProxydSocketT，实现代理服务端逻辑
  */
 template<class TBase>
-class ProxydImpl : public TBase
+class ProxydSocketT : public TBase
 {
-	typedef ProxydImpl<TBase> This;
+	typedef ProxydSocketT<TBase> This;
 	typedef TBase Base;
 protected:
 	byte m_ProxyType:3; //代理类型
 	byte m_ProxyState:5;	//代理状态
 
 public:
-	ProxydImpl():m_ProxyType(PROXYTYPE_NONE),m_ProxyState(PROXY_STATE_NONE)
+	ProxydSocketT():m_ProxyType(PROXYTYPE_NONE),m_ProxyState(PROXY_STATE_NONE)
 	{
 	}
 
@@ -504,6 +506,14 @@ public:
 	inline bool IsInProxy()
 	{
 		return m_ProxyType!=PROXYTYPE_NONE && m_ProxyState!=PROXY_STATE_OK;
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		m_ProxyType = PROXYTYPE_NONE;
+		m_ProxyState = PROXY_STATE_NONE;
+		return ret;
 	}
 
 protected:
@@ -523,7 +533,7 @@ protected:
 				//# of bytes:   1    1      2              4           variable       1
 				if(nBufLen < 9) {
 					return SOCKET_PACKET_FLAG_PENDING;
-				} else if(nBufLen >= 9) {
+				} else {
 					//byte CD = lpBuf[1];
 					if(nBufLen > 9) {
 						if(lpBuf[nBufLen-1]==0 /* && lpBuf[4] = 0 && lpBuf[5] = 0 && lpBuf[6] = 0 && lpBuf[7] != 0*/) {
@@ -757,7 +767,7 @@ protected:
 
 	virtual void OnProxy(const SOCKADDR_IN& addr)
 	{
-
+		
 	}
 
 	virtual void OnProxyDone(int nErrorCode)
@@ -771,7 +781,7 @@ protected:
 				if(!nErrorCode) {
 					Buf[0] = 0x00;
 					Buf[1] = 0x5A;
-					Base::SendBuf(Buf,2);
+					Base::SendBuf(Buf,9);
 				} else {
 					Buf[0] = 0x00;
 					Buf[1] = 0x00;
@@ -817,8 +827,6 @@ protected:
 			break;
 		}
 		if(nErrorCode) {
-			m_ProxyType = PROXYTYPE_NONE;
-			m_ProxyState = PROXY_STATE_NONE;
 			Base::Trigger(FD_CLOSE, ECONNABORTED);
 		}
 	}

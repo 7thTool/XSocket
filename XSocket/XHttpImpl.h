@@ -60,17 +60,17 @@ namespace XSocket {
 	};
 
 /*!
- *	@brief HttpImpl 定义.
+ *	@brief HttpSocketT 定义.
  *
- *	封装HttpImpl，实现Http/Websocket收发数据功能
+ *	封装HttpSocketT，实现Http/Websocket收发数据功能
  */
 template<class TBase>
-class HttpImpl : public TBase
+class HttpSocketT : public TBase
 {
-	typedef HttpImpl<TBase> This;
+	typedef HttpSocketT<TBase> This;
 	typedef TBase Base;
 public:
-	HttpImpl(http_parser_type type = HTTP_BOTH)
+	HttpSocketT(http_parser_type type = HTTP_BOTH)
 	{
 			settings_.on_message_begin = &This::on_message_begin;
 			settings_.on_url = &This::on_url;
@@ -98,7 +98,7 @@ public:
 #endif
 	}
 
-	~HttpImpl() 
+	~HttpSocketT() 
 	{
 		
 	}
@@ -150,19 +150,19 @@ protected:
 	{
 
 	}
-	virtual void OnMessage(const char* lpBuf, int nBufLen, int nFlags)
+	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
 
 	}
-	virtual void OnClose()
+	virtual void OnWSClose()
 	{
-		Base::Close();
+		Base::Trigger(FD_CLOSE, 0);
 	}
-	virtual void OnPing()
+	virtual void OnWSPing()
 	{
 		//Pong();
 	}
-	virtual void OnPong()
+	virtual void OnWSPong()
 	{
 		//
 	}
@@ -641,18 +641,18 @@ protected:
 					switch (GetOPCode())
 					{
 					case WS_OP_CLOSE:
-						OnClose();
+						OnWSClose();
 						break;
 					case WS_OP_PING:
-						OnPing();
+						OnWSPing();
 						break;
 					case WS_OP_PONG:
-						OnPong();
+						OnWSPong();
 						break;
 					case WS_OP_TEXT:
 						nFlags |= SOCKET_PACKET_FLAG_TEXT;
 					default:
-						OnMessage(body.first, body.second, nFlags);
+						OnWSMessage(body.first, body.second, nFlags);
 						break;
 					}
 				}

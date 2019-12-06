@@ -29,7 +29,7 @@ namespace XSocket {
  *	封装EPollSocket
  */
 template<class TSocketSet, class TBase = SocketEx>
-class EPollSocket : public TBase
+class EPollSocketT : public TBase
 {
 	typedef TBase Base;
 public:
@@ -37,12 +37,12 @@ public:
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
-	EPollSocket():Base()
+	EPollSocketT():Base()
 	{
 		
 	}
 
-	virtual ~EPollSocket()
+	virtual ~EPollSocketT()
 	{
 		
 	}
@@ -111,20 +111,20 @@ public:
  *	封装EPollSocketSet，实现epoll模型
  */
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class EPollSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
+class EPollSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
 {
-	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
+	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
 protected:
 	int m_epfd;
 public:
-	EPollSocketSet():m_epfd(0)
+	EPollSocketSetT():m_epfd(0)
 	{
 		m_epfd = epoll_create(uFD_SETSize);
 	}
-	~EPollSocketSet() 
+	~EPollSocketSetT() 
 	{
 		if (m_epfd) {
 			close(m_epfd);

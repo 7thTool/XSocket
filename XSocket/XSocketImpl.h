@@ -87,6 +87,18 @@ public:
 
 	}
 
+	inline int Close()
+	{
+		int ret = Base::Close();
+		m_nRecvLen = 0;
+		m_pRecvBuf = NULL;
+		m_nRecvBufLen = 0;
+		m_nSendLen = 0;
+		m_pSendBuf = NULL;
+		m_nSendBufLen = 0;
+		return ret;
+	}
+
 protected:
 	//
 	//解析数据包
@@ -267,38 +279,27 @@ protected:
 			m_nSendBufLen = 0;
 		}
 	}
-
-	void OnRole(int nRole)
-	{
-		Base::OnRole(nRole);
-		m_nRecvLen = 0;
-		m_pRecvBuf = NULL;
-		m_nRecvBufLen = 0;
-		m_nSendLen = 0;
-		m_pSendBuf = NULL;
-		m_nSendBufLen = 0;
-	}
 };
 
 /*!
- *	@brief SampleSocketImpl 定义.
+ *	@brief SimpleSocketT 定义.
  *
- *	封装SampleSocketImpl，实现简单的流式发送/接收（写入/读取）网络架构
+ *	封装SimpleSocketT，实现简单的流式发送/接收（写入/读取）网络架构
  */
 template<class TBase, u_short uMaxBufSize = 8*1024>
-class SampleSocketImpl : public SocketWrapper<TBase>
+class SimpleSocketT : public SocketWrapper<TBase>
 {
 	typedef SocketWrapper<TBase> Base;
 protected:
-	typedef std::string SampleBuffer;
-	SampleBuffer m_RecvBuffer;
-	SampleBuffer m_SendBuffer;
-	SampleBuffer m_PrepareSendBuffer;
+	typedef std::string SimpleBuffer;
+	SimpleBuffer m_RecvBuffer;
+	SimpleBuffer m_SendBuffer;
+	SimpleBuffer m_PrepareSendBuffer;
 	//std::mutex m_SendSection;
 	//std::mutex m_RecvSection;
 
 public:
-	SampleSocketImpl()
+	SimpleSocketT()
 	{
 		m_RecvBuffer.reserve(uMaxBufSize);
 		m_RecvBuffer.resize(uMaxBufSize);
@@ -306,9 +307,20 @@ public:
 		m_PrepareSendBuffer.reserve(uMaxBufSize);
 	}
 
-	virtual ~SampleSocketImpl()
+	virtual ~SimpleSocketT()
 	{
 		
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		//std::unique_lock<std::mutex> lock(m_SendSection);
+
+		m_PrepareSendBuffer.clear();
+		m_SendBuffer.clear();
+		//lock.unlock();
+		return ret;
 	}
 
 	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
@@ -455,30 +467,17 @@ protected:
 	{
 		Base::OnSendBuf(lpBuf, nBufLen);
 	}
-
-protected:
-	//
-	virtual void OnRole(int nRole)
-	{
-		Base::OnRole(nRole);
-		
-		//std::unique_lock<std::mutex> lock(m_SendSection);
-
-		m_PrepareSendBuffer.clear();
-		m_SendBuffer.clear();
-		//lock.unlock();
-	}
 };
 
 /*!
- *	@brief SampleSvrSocketImpl 定义.
+ *	@brief SimpleSvrSocketT 定义.
  *
- *	封装SampleSvrSocketImpl，增加服务对象，实现简单的流式发送/接收（写入/读取）网络架构
+ *	封装SimpleSvrSocketT，增加服务对象，实现简单的流式发送/接收（写入/读取）网络架构
  */
 template<class TBase, u_short uMaxBufSize = 8*1024>
-class SampleSvrSocketImpl : public SampleSocketImpl<TBase,uMaxBufSize>
+class SimpleSvrSocketT : public SimpleSocketT<TBase,uMaxBufSize>
 {
-	typedef SampleSocketImpl<TBase,uMaxBufSize> Base;
+	typedef SimpleSocketT<TBase,uMaxBufSize> Base;
 public:
 	typedef typename Base::SocketSet SocketSet;
 protected:
@@ -501,12 +500,12 @@ protected:
 };
 
 /*!
- *	@brief SampleEventService 定义.
+ *	@brief SimpleEventService 定义.
  *
- *	封装SampleEventService，实现简单事件分发
+ *	封装SimpleEventService，实现简单事件分发
  */
 template<class TBase = Service>
-class SampleEventService : public TBase
+class SimpleEventServiceT : public TBase
 {
 public:
 	typedef typename TBase::Event Event;
@@ -529,14 +528,14 @@ protected:
 };
 
 /*!
- *	@brief SampleEvtSocketImpl 定义.
+ *	@brief SimpleEvtSocketT 定义.
  *
- *	封装SampleEvtSocketImpl，增加事件服务接口，实现简单的流式发送/接收（写入/读取）网络架构
+ *	封装SimpleEvtSocketT，增加事件服务接口，实现简单的流式发送/接收（写入/读取）网络架构
  */
 template<class TBase, u_short uMaxBufSize = 8*1024>
-class SampleEvtSocketImpl : public SampleSvrSocketImpl<TBase,uMaxBufSize>
+class SimpleEvtSocketT : public SimpleSvrSocketT<TBase,uMaxBufSize>
 {
-	typedef SampleSvrSocketImpl<TBase,uMaxBufSize> Base;
+	typedef SimpleSvrSocketT<TBase,uMaxBufSize> Base;
 public:
 	typedef typename Base::SocketSet EvtSocketSet;
 	typedef typename EvtSocketSet::Event Event;
@@ -555,12 +554,12 @@ public:
 };
 
 // /*!
-//  *	@brief SocketArchitectureImpl 定义.
+//  *	@brief SocketArchitectureT 定义.
 //  *
-//  *	封装SocketArchitectureImpl，实现块状的数据包式的发送/接收（写入/读取）网络架构
+//  *	封装SocketArchitectureT，实现块状的数据包式的发送/接收（写入/读取）网络架构
 //  */
 // template<class TBase, u_short uMaxBufSize = 1024>
-// class SocketArchitectureImpl : public TBase
+// class SocketArchitectureT : public TBase
 // {
 // 	typedef TBase Base;
 // protected:
@@ -580,15 +579,43 @@ public:
 // 	std::mutex m_RecvSection;
 
 // public:
-// 	SocketArchitectureImpl()
+// 	SocketArchitectureT()
 // 	{
 		
 // 	}
 
-// 	virtual ~SocketArchitectureImpl()
+// 	virtual ~SocketArchitectureT()
 // 	{
 		
 // 	}
+
+	// inline int Close()
+	// {
+	// 	int ret = Base::Close();
+			
+	// 	std::unique_lock<std::mutex> LockSend(m_SendSection);
+	// 	while (!m_SendPackList.empty())
+	// 	{
+	// 		SABUF & saBuf = m_SendPackList.front();
+	// 		if (saBuf.nSendFlags&SOCKET_PACKET_FLAG_TEMPBUF) {
+	// 			delete []saBuf.pSendBuf;
+	// 		}
+	// 		m_SendPackList.pop();
+	// 	}
+	// 	LockSend.unlock();
+
+	// 	std::unique_lock<std::mutex> LockRecv(m_RecvSection);
+	// 	while (!m_RecvPackList.empty())
+	// 	{
+	// 		SABUF & saBuf = m_RecvPackList.front();
+	// 		if (saBuf.nSendFlags&SOCKET_PACKET_FLAG_TEMPBUF) {
+	// 			delete []saBuf.pSendBuf;
+	// 		}
+	// 		m_RecvPackList.pop();
+	// 	}
+	// 	LockRecv.unlock();
+	// 	return ret;
+	// }
 
 // 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 // 	{
@@ -709,44 +736,17 @@ public:
 // 		}
 // 		m_SendPackList.pop();
 // 	}
-
-// 	void OnRole(int nRole)
-// 	{
-// 		Base::OnRole(nRole)
-		
-// 		std::unique_lock<std::mutex> LockSend(m_SendSection);
-// 		while (!m_SendPackList.empty())
-// 		{
-// 			SABUF & saBuf = m_SendPackList.front();
-// 			if (saBuf.nSendFlags&SOCKET_PACKET_FLAG_TEMPBUF) {
-// 				delete []saBuf.pSendBuf;
-// 			}
-// 			m_SendPackList.pop();
-// 		}
-// 		LockSend.unlock();
-
-// 		std::unique_lock<std::mutex> LockRecv(m_RecvSection);
-// 		while (!m_RecvPackList.empty())
-// 		{
-// 			SABUF & saBuf = m_RecvPackList.front();
-// 			if (saBuf.nSendFlags&SOCKET_PACKET_FLAG_TEMPBUF) {
-// 				delete []saBuf.pSendBuf;
-// 			}
-// 			m_RecvPackList.pop();
-// 		}
-// 		LockRecv.unlock();
-// 	}
 // };
 
 //////////////////////////////////////////////////////////////////////////
 
 /*!
- *	@brief SampleUdpSocket 定义.
+ *	@brief SimpleUdpSocket 定义.
  *
- *	封装SampleUdpSocket，定义简单的Udp数据包网络架构
+ *	封装SimpleUdpSocket，定义简单的Udp数据包网络架构
  */
 template<class TBase = SocketEx, class SockAddrType = SOCKADDR_IN>
-class SampleUdpSocket : public TBase
+class SimpleUdpSocket : public TBase
 {
 	typedef TBase Base;
 protected:
@@ -755,7 +755,7 @@ protected:
 	int m_nSendBufLen;
 	const SockAddrType* m_pSendAddr;
 public:
-	SampleUdpSocket()
+	SimpleUdpSocket()
 		:Base()
 		,m_nSendLen(0)
 		,m_pSendBuf(NULL)
@@ -765,9 +765,19 @@ public:
 
 	}
 
-	virtual ~SampleUdpSocket()
+	virtual ~SimpleUdpSocket()
 	{
 
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		m_nSendLen = 0;
+		m_pSendBuf = NULL;
+		m_nSendBufLen = 0;
+		m_pSendAddr = NULL;
+		return ret;
 	}
 
 protected:
@@ -914,44 +924,50 @@ protected:
 			}
 		} while(bConitnue);
 	}
-
-	virtual void OnRole(int nRole)
-	{
-		Base::OnRole(nRole)
-		m_nSendLen = 0;
-		m_pSendBuf = NULL;
-		m_nSendBufLen = 0;
-		m_pSendAddr = NULL;
-	}
-
 };
 
 /*!
- *	@brief SampleUdpSocketImpl 定义.
+ *	@brief SimpleUdpSocketT 定义.
  *
- *	封装SampleUdpSocketImpl，实现简单的Udp数据包网络架构
+ *	封装SimpleUdpSocketT，实现简单的Udp数据包网络架构
  */
 template<class TBase, class SockAddrType = SOCKADDR_IN>
-class SampleUdpSocketImpl : public TBase
+class SimpleUdpSocketT : public TBase
 {
 	typedef TBase Base;
 protected:
-	typedef std::string SampleBuffer;
-	SampleBuffer m_RecvBuffer;
-	SampleBuffer m_SendBuffer;
-	SampleBuffer m_PrepareSendBuffer;
+	typedef std::string SimpleBuffer;
+	SimpleBuffer m_RecvBuffer;
+	SimpleBuffer m_SendBuffer;
+	SimpleBuffer m_PrepareSendBuffer;
 
 public:
-	SampleUdpSocketImpl()
+	SimpleUdpSocketT()
 	{
 		m_RecvBuffer.reserve(8*1024); //8k
 		m_SendBuffer.reserve(8*1024); //8k
 		m_PrepareSendBuffer.reserve(1024); //1k
 	}
 
-	virtual ~SampleUdpSocketImpl()
+	virtual ~SimpleUdpSocketT()
 	{
 		
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		//std::unique_lock<std::mutex> LockSend(m_SendSection);
+
+		m_PrepareSendBuffer.clear();
+		m_SendBuffer.clear();
+		//LockSend.unlock();
+
+		//std::lock_guard<std::mutex> LockRecv(m_RecvSection);
+
+		m_RecvBuffer.clear();
+		//LockRecv.unlock();
+		return ret;
 	}
 
 	int SendBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr, int nFlags = 0)
@@ -1050,40 +1066,22 @@ protected:
 	{
 		Base::OnSend(lpBuf, nBufLen, SockAddr);
 	}
-
-protected:
-	//
-	virtual void OnRole(int nRole)
-	{
-		Base::OnRole(nRole)
-		
-		//std::unique_lock<std::mutex> LockSend(m_SendSection);
-
-		m_PrepareSendBuffer.clear();
-		m_SendBuffer.clear();
-		//LockSend.unlock();
-
-		//std::lock_guard<std::mutex> LockRecv(m_RecvSection);
-
-		m_RecvBuffer.clear();
-		//LockRecv.unlock();
-	}
 };
 
 
 /*!
- *	@brief StableUdpSocketImpl 定义.
+ *	@brief StableUdpSocketT 定义.
  *
- *	封装StableUdpSocketImpl，定义基于UDP的稳定可靠传输的网络架构
+ *	封装StableUdpSocketT，定义基于UDP的稳定可靠传输的网络架构
  *  
  *  实现类似于TCP协议的超时重传，有序接受，应答确认，滑动窗口流量控制等机制，
  *	使用UDP数据包+序列号，UDP数据包+时间戳，应答确认机制。
  *	|8字节首部|最大512长度内容|=520字节。
  */
 //template<class TBase, class SockAddrType = SOCKADDR_IN>
-//class StableUdpSocketImpl : public SampleUdpSocketImpl<TBase,SockAddrType>
+//class StableUdpSocketT : public SimpleUdpSocketT<TBase,SockAddrType>
 //{
-//	typedef SampleUdpSocketImpl<TBase,SockAddrType> Base;
+//	typedef SimpleUdpSocketT<TBase,SockAddrType> Base;
 //protected:
 //	enum
 //	{
@@ -1105,18 +1103,18 @@ protected:
 //		unsigned int len:10;
 //	};
 //public:
-//	StableUdpSocketImpl()
+//	StableUdpSocketT()
 //		:Base()
 //	{
 //
 //	}
 //
-//	virtual ~StableUdpSocketImpl()
+//	virtual ~StableUdpSocketT()
 //	{
 //
 //	}
 //
-//	int Close()
+//	inline int Close()
 //	{
 //		int rlt = Base::Close();
 //		return rlt;

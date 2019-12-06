@@ -301,14 +301,59 @@ private:
 	void operator=(const SocketEx& Sock) {};
 };
 
+/*!
+ *	@brief SocketExT 模板定义.
+ *
+ *	封装SocketEx，一般用于SocketEx最终实现的包装
+ */
+template<class TBase = SocketEx>
+class SocketExT : public TBase
+{
+	typedef TBase Base;
+protected:
+	//
+	virtual void OnClose(int nErrorCode)
+	{
+		Base::OnClose(nErrorCode);
+		Base::Close();
+	}
+};
+
+/*!
+ *	@brief SocketExImpl 模板定义.
+ *
+ *	封装SocketEx，一般用于SocketEx最终实现的包装
+ */
+template<class T, class TBase = SocketEx>
+class SocketExImpl : public TBase
+{
+	typedef TBase Base;
+public:
+	SocketExImpl():Base()
+	{
+
+	}
+
+protected:
+	//
+	virtual void OnClose(int nErrorCode)
+	{
+		T* pT = static_cast<T*>(this);
+
+		Base::OnClose(nErrorCode);
+
+		pT->Close();
+	}
+};
+
 	template <class Ty>
-	class Queue
+	class QueueT
 	{
 	public:
-		Queue() { }
-		Queue(const Queue<Ty>&) = delete;
-		Queue& operator=(const Queue<Ty>&) = delete;
-		~Queue() { 
+		QueueT() { }
+		QueueT(const QueueT<Ty>&) = delete;
+		QueueT& operator=(const QueueT<Ty>&) = delete;
+		~QueueT() { 
 #ifdef _DEBUG
 			//std::lock_guard<std::mutex> lock(mutex_);
 			if(!queue_.empty()) {
@@ -429,7 +474,7 @@ protected:
  *	封装EventService，实现事件服务框架
  */
 template<class TEvent, class TBase = Service>
-class EventService : public TBase
+class EventServiceT : public TBase
 {
 	typedef TBase Base;
 public:
@@ -440,7 +485,7 @@ protected:
 	std::mutex mutex_;
 	//std::condition_variable cv_;
 public:
-	EventService()
+	EventServiceT()
 	{
 		queue_.reserve(1024);
 	}
@@ -499,16 +544,17 @@ protected:
  *	封装DealyEvent，定义延迟事件
  */
 template<class TEvent>
-class DealyEvent : public TEvent
+class DealyEventT : public TEvent
 {
+	typedef DealyEventT<TEvent> This;
 	typedef TEvent Base;
 public:
 	typedef TEvent Event;
 public:
-	DealyEvent():Base(){}
-	DealyEvent(Event evt):Base(evt){}
-	DealyEvent(Event evt, size_t _delay, size_t _repeat):Base(evt),time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
-	DealyEvent(const DealyEvent& o):Base((Event)o),time(o.time),delay(o.delay),repeat(o.repeat){}
+	DealyEventT():Base(){}
+	DealyEventT(Event evt):Base(evt){}
+	DealyEventT(Event evt, size_t _delay, size_t _repeat):Base(evt),time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
+	DealyEventT(const This& o):Base((Event)o),time(o.time),delay(o.delay),repeat(o.repeat){}
 	inline bool IsPoint()
 	{
 		if(delay.count() > 0 && repeat >= 0) {
@@ -542,12 +588,12 @@ public:
  *	封装DelayEventService，实现延迟事件服务
  */
 template<class TEvent, class TBase = Service>
-class DelayEventService : public EventService<DealyEvent<TEvent>,TBase>
+class DelayEventServiceT : public EventServiceT<DealyEventT<TEvent>,TBase>
 {
-	typedef EventService<DealyEvent<TEvent>,TBase> Base;
+	typedef EventServiceT<DealyEventT<TEvent>,TBase> Base;
 public:
 	typedef TEvent Event;
-	typedef DealyEvent<TEvent> DelayEvent;
+	typedef DealyEventT<TEvent> DelayEvent;
 public:
 	
 	inline void Post(const Event& evt) {
@@ -633,14 +679,14 @@ protected:
 typedef ThreadServiceT<Service> ThreadService;
 
 /*!
- *	@brief ConnectSocket 模板定义.
+ *	@brief ConnectSocketT 模板定义.
  *
  *	封装ConnectSocket，适用于客户端连接Socket
  */
 template<class TBase = SocketEx>
-class ConnectSocket : public TBase
+class ConnectSocketT : public TBase
 {
-	typedef ConnectSocket<TBase> This;
+	typedef ConnectSocketT<TBase> This;
 	typedef TBase Base;
 protected:
 	bool m_bConnected;
@@ -648,7 +694,7 @@ protected:
 	unsigned long m_ConnectTimeOut;
 
 public:
-	ConnectSocket():Base(), m_bConnected(false), m_ConnectTime(0), m_ConnectTimeOut(0) {}
+	ConnectSocketT():Base(), m_bConnected(false), m_ConnectTime(0), m_ConnectTimeOut(0) {}
 	//virtual ~SocketConnectTimeOut() {}
 
 	int Close()
@@ -729,16 +775,16 @@ protected:
 };
 
 /*!
- *	@brief WorkSocket 模板定义.
+ *	@brief WorkSocketT 模板定义.
  *
  *	封装WorkSocket，适用于服务端工作Socket
  */
 template<class TBase = SocketEx>
-class WorkSocket : public TBase
+class WorkSocketT : public TBase
 {
 	typedef TBase Base;
 public:
-	WorkSocket():Base()
+	WorkSocketT():Base()
 	{
 
 	}
@@ -752,16 +798,16 @@ protected:
 };
 
 /*!
- *	@brief ListenSocket 模板定义.
+ *	@brief ListenSocketT 模板定义.
  *
  *	封装ListenSocket，适用于服务端监听Socket
  */
 template<class TBase = SocketEx>
-class ListenSocket : public TBase
+class ListenSocketT : public TBase
 {
 	typedef TBase Base;
 public:
-	ListenSocket():Base()
+	ListenSocketT():Base()
 	{
 
 	}
@@ -776,12 +822,12 @@ protected:
 //////////////////////////////////////////////////////////////////////////
 
 /*!
- *	@brief SocketSet 模板定义.
+ *	@brief SocketSetT 模板定义.
  *
  *	封装SocketSet，实现最多管理uFD_SETSize数Socket
  */
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class SocketSet : public TService
+class SocketSetT : public TService
 {
 public:
 	typedef TService Service;
@@ -793,7 +839,7 @@ protected:
 	u_short sock_idle_next_;
 	std::mutex mutex_;
 public:
-	SocketSet()
+	SocketSetT()
 	{
 		sock_count_ = 0;
 		//memset(sock_ptrs_,0,sizeof(sock_ptrs_));
@@ -894,7 +940,7 @@ protected:
 				sock_ptrs_[i].reset();
 				if (sock_ptr->IsSocket()) {
 					if (bClose) {
-						sock_ptr->Close();
+						sock_ptr->Trigger(FD_CLOSE, 0);
 					}
 				}
 				sock_ptr->DetachService(this);
@@ -945,12 +991,12 @@ protected:
 };
 
 /*!
- *	@brief SocketManager 模板定义.
+ *	@brief SocketManagerT 模板定义.
  *
  *	封装SocketManager，实现对管理多个SocketSet，可以支持任意数Socket
  */
 template<class TSocketSet>
-class SocketManager
+class SocketManagerT
 {
 public:
 	typedef TSocketSet SocketSet;
@@ -959,7 +1005,7 @@ protected:
 	std::vector<SocketSet*> sockset_ptrs_;
 	size_t sockset_add_next_ = 0;
 public:
-	SocketManager(int nMaxSockSetCount)
+	SocketManagerT(int nMaxSockSetCount)
 	{
 		sockset_ptrs_.resize(nMaxSockSetCount,NULL);
 		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
@@ -969,7 +1015,7 @@ public:
 		sockset_add_next_ = 0;
 	}
 
-	~SocketManager() 
+	~SocketManagerT() 
 	{
 		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
@@ -1075,14 +1121,14 @@ protected:
  *	封装SelectSvrSocket，实现对select模型管理一个客户端连接Socket
  */
 template<class TService = ThreadService, class TBase = SocketEx>
-class SelectOneSocket : public TBase, public TService
+class SelectOneSocketT : public TBase, public TService
 {
-	typedef SelectOneSocket<TService,TBase> This;
+	typedef SelectOneSocketT<TService,TBase> This;
 	typedef TBase Base;
 public:
 	typedef TService Service;
 public:
-	SelectOneSocket() : Base()
+	SelectOneSocketT() : Base()
 	{
     	
 	}
@@ -1200,7 +1246,7 @@ protected:
  *	封装SelectSocket，实现对select模型管理一个客户端连接Socket
  */
 template<class TSocketSet, class TBase = SocketEx>
-class SelectSocket : public TBase
+class SelectSocketT : public TBase
 {
 	typedef TBase Base;
 public:
@@ -1208,7 +1254,7 @@ public:
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
-	SelectSocket() : Base()
+	SelectSocketT() : Base()
 	{
     	
 	}
@@ -1220,14 +1266,14 @@ public:
  *	封装SelectSocketSet，实现对select模型封装，最多管理uFD_SETSize数Socket
  */
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class SelectSocketSet : public SocketSet<TService,TSocket,uFD_SETSize>
+class SelectSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
 {
-	typedef SocketSet<TService,TSocket,uFD_SETSize> Base;
+	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
 public:
-	SelectSocketSet()
+	SelectSocketSetT()
 	{
 		
 	}
@@ -1338,16 +1384,16 @@ protected:
  *
  *	封装SelectManager，实现对select模型管理监听Socket连接，依赖SelectSocket
  */
-template<class TService, class TBase = ListenSocket<SocketEx>>
-class SelectListen : public SelectOneSocket<TService,TBase>
+template<class TService, class TBase = ListenSocketT<SocketEx>>
+class SelectListenT : public SelectOneSocketT<TService,TBase>
 {
-	typedef SelectOneSocket<TService,TBase> Base;
+	typedef SelectOneSocketT<TService,TBase> Base;
 public:
 	typedef TService Service;
 	std::string address_;
 	u_short port_;
 public:
-	SelectListen() : Base()
+	SelectListenT() : Base()
 	{
 		
 	}
@@ -1380,7 +1426,7 @@ protected:
 #ifndef WIN32
 			Base::ShutDown();
 #endif
-			Base::Close();
+			Base::Trigger(FD_CLOSE, 0);
 		}
 	}
 
@@ -1431,16 +1477,16 @@ protected:
  *
  *	封装SelectClient，实现对select模型管理一个客户端Tcp Socket
  */
-template<class TService = ThreadService, class TBase = ConnectSocket<SocketEx>> 
-class SelectClient : public SelectOneSocket<TService,TBase>
+template<class TService = ThreadService, class TBase = ConnectSocketT<SocketEx>> 
+class SelectClientT : public SelectOneSocketT<TService,TBase>
 {
-	typedef SelectOneSocket<TService,TBase> Base;
+	typedef SelectOneSocketT<TService,TBase> Base;
 public:
-	SelectClient():Base()
+	SelectClientT():Base()
 	{
 		
 	}
-	virtual ~SelectClient()
+	virtual ~SelectClientT()
 	{
 		
 	}
@@ -1455,22 +1501,22 @@ protected:
  *	封装SelectServer，实现对select模型管理监听Socket连接，依赖SelectSet/SelectManager
  */
 template<class TService, class TBase, class TSocketSet>
-class SelectServer 
-: public SelectListen<TService,TBase>
-, public SocketManager<TSocketSet>
+class SelectServerT 
+: public SelectListenT<TService,TBase>
+, public SocketManagerT<TSocketSet>
 {
 public:
 	typedef TSocketSet SocketSet;
 	typedef typename SocketSet::Socket Socket;
-	typedef SocketManager<SocketSet> SockManager;
-	typedef SelectListen<TService,TBase> Base;
+	typedef SocketManagerT<SocketSet> SockManager;
+	typedef SelectListenT<TService,TBase> Base;
 public:
-	SelectServer(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
+	SelectServerT(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
 	{
 		
 	}
 
-	~SelectServer()
+	~SelectServerT()
 	{
 		
 	}
@@ -1517,7 +1563,7 @@ protected:
 					//
 				} else {
 					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
-					sock_ptr->Close();
+					sock_ptr->Trigger(FD_CLOSE, 0);
 				}
 	}
 };
@@ -1528,15 +1574,15 @@ protected:
  *	封装SelectUdpClient，实现对select模型管理一个客户端Udp Socket
  */
 template<class TService = ThreadService, class TBase = SocketEx> 
-class SelectUdpClient : public SelectOneSocket<TService,TBase>
+class SelectUdpClientT : public SelectOneSocketT<TService,TBase>
 {
-	typedef SelectOneSocket<TService,TBase> Base;
+	typedef SelectOneSocketT<TService,TBase> Base;
 public:
-	SelectUdpClient():Base()
+	SelectUdpClientT():Base()
 	{
 
 	}
-	virtual ~SelectUdpClient()
+	virtual ~SelectUdpClientT()
 	{
 		
 	}
@@ -1550,15 +1596,15 @@ protected:
  *	封装SelectUdpServer，实现对select模型管理一个服务端Udp Socket
  */
 template<class TService = ThreadService, class TBase = SocketEx>
-class SelectUdpServer : public SelectOneSocket<TService,TBase>
+class SelectUdpServerT : public SelectOneSocketT<TService,TBase>
 {
-	typedef SelectOneSocket<TService,TBase> Base;
+	typedef SelectOneSocketT<TService,TBase> Base;
 public:
-	SelectUdpServer():Base()
+	SelectUdpServerT():Base()
 	{
 
 	}
-	virtual ~SelectUdpServer()
+	virtual ~SelectUdpServerT()
 	{
 		
 	}
