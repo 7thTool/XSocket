@@ -282,7 +282,7 @@ protected:
 			int base64_len = Base64EncodeGetRequiredLength(buflen, BASE64_FLAG_NOCRLF);
 			Base64Encode((const byte*)buf, buflen, (char*)base64_key, &base64_len, BASE64_FLAG_NOCRLF);
 			base64_key[base64_len] = 0; 
-			std::ostrstream ss(SendBuf(1024), 1024);
+			std::ostrstream ss(Base::SendBuf(1024), 1024);
 			ss << "GET " << path << " HTTP/1.1\r\n"
 			<< "Host: " << host << "\r\n"
 			<< "Origin: http://" << host << "\r\n"
@@ -293,7 +293,7 @@ protected:
 			<< "\r\n";
 			//std::string str = ss.str();
 			//int len = str.size();
-			SendBufDirect(1024-ss.pcount());
+			Base::SendBufDirect(1024-ss.pcount());
 			//return str;
 		}
 
@@ -312,7 +312,7 @@ protected:
 			buflen = Base64EncodeGetRequiredLength(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
 			Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, &buflen, BASE64_FLAG_NOCRLF);
 			buf[buflen] = 0;
-			std::ostrstream ss(SendBuf(1024), 1024);
+			std::ostrstream ss(Base::SendBuf(1024), 1024);
 			ss << "HTTP/1.1 101 Switching Protocols\r\n"
 			<< "Connection: Upgrade\r\n"
 			<< "Upgrade: WebSocket\r\n"
@@ -320,7 +320,7 @@ protected:
 			<< "\r\n";
 			//std::string str = ss.str();
 			//int len = str.size();
-			SendBufDirect(1024-ss.pcount());
+			Base::SendBufDirect(1024-ss.pcount());
 			//return str;
 		}
 
@@ -331,8 +331,8 @@ protected:
 				flags |= WS_HAS_MASK;
 			}
 			size_t frame_len = websocket_calc_frame_size(flags, body_len);
-			websocket_build_frame((char*)SendBuf(frame_len), flags, (char*)&mask, body, body_len);
-			SendBufDirect(0);
+			websocket_build_frame((char*)Base::SendBuf(frame_len), flags, (char*)&mask, body, body_len);
+			Base::SendBufDirect(0);
 		}
 #endif//
 		

@@ -97,7 +97,7 @@ uint64_t websocket_parser_execute(
 void websocket_parser_decode(char * dst, const char * src, uint64_t len, websocket_parser * parser);
 
 // Apply XOR mask (see https://tools.ietf.org/html/rfc6455#section-5.3) and return mask's offset
-uint8_t websocket_decode(char * dst, const char * src, uint64_t len, char mask[4], uint8_t mask_offset);
+uint8_t websocket_decode(char * dst, const char * src, uint64_t len, const char mask[4], uint8_t mask_offset);
 #define websocket_encode(dst, src, len, mask, mask_offset) websocket_decode(dst, src, len, mask, mask_offset)
 
 // Calculate frame size using flags and data length

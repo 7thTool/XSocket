@@ -2,6 +2,7 @@
 #define _H_XCODEC_H_
 
 #include "XSocketDef.h"
+#include <limits.h>
 #ifdef USE_ZLIB
 #include <zlib.h>
 #endif
