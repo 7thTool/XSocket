@@ -849,7 +849,6 @@ public:
 	void Stop()
 	{
 		Service::Stop();
-		RemoveAllSocket(true);
 	}
 
 	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
@@ -966,6 +965,12 @@ protected:
 
 protected:
 	//
+	virtual void OnTerm()
+	{
+		//Service::OnTerm();
+		RemoveAllSocket(true);
+	}
+
 	virtual void OnIdle(int nErrorCode)
 	{
 		int next = sock_idle_next_, next_end = sock_idle_next_ + 20;

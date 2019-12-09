@@ -23,9 +23,9 @@
 
 namespace XSocket {
 
-#define IOCP_OPERATION_EXIT ULONG_PTR(-1)
-#define IOCP_OPERATION_TRYRECEIVE ULONG_PTR(-2)
-#define IOCP_OPERATION_TRYSEND ULONG_PTR(-3)
+#define IOCP_OPERATION_EXIT DWORD(-1)
+#define IOCP_OPERATION_TRYRECEIVE DWORD(-2)
+#define IOCP_OPERATION_TRYSEND DWORD(-3)
 
 /*!
  *	@brief CompletionPort OVERLAPPED 定义.
@@ -93,28 +93,28 @@ public:
 	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM)
 	{
 		SOCKET Sock = WSASocket(nSockAf, nSockType, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-		DWORD dwbytes = 0;
+		DWORD dwBytes = 0;
 		do {
 			// 获取AcceptEx函数指针
-			dwbytes = 0;
+			dwBytes = 0;
 			GUID GuidAcceptEx = WSAID_ACCEPTEX;
 			if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
 							&GuidAcceptEx, sizeof(GuidAcceptEx),
-							&lpfnAccept, sizeof(lpfnAccept), &dwbytes, NULL, NULL)) {
+							&lpfnAcceptEx, sizeof(lpfnAcceptEx), &dwBytes, NULL, NULL)) {
 				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n", GetLastError());
 				break;
 			}
 			// 获取GetAcceptExSockAddrs函数指针
-			dwbytes = 0;
+			dwBytes = 0;
 			GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
 			if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
 							&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
-							&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwbytes, NULL, NULL)) {
+							&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
 				PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d\n", GetLastError());
 				break;
 			}
 			//获得ConnectEx 函数的指针
-			dwbytes = 0;
+			dwBytes = 0;
 			GUID GuidConnectEx = WSAID_CONNECTEX;
 			if (SOCKET_ERROR == WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
 				&GuidConnectEx, sizeof(GuidConnectEx ),
@@ -452,6 +452,12 @@ protected:
 						sock_ptr->Select(FD_WRITE);
 						sock_ptr->Trigger(FD_WRITE, 0);
 					}
+				}
+				return;
+			}
+			if(!lpOverlapped) {
+				if (sock_ptr) {
+					sock_ptr->Trigger(FD_CLOSE, GetLastError());
 				}
 				return;
 			}

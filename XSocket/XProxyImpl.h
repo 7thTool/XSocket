@@ -30,7 +30,7 @@ namespace XSocket {
  *	代理过程状态
  */
 #define PROXY_STATE_NONE	0		//!< 无
-#define PROXY_STATE_OK		0XFF	//!< 代理成功
+#define PROXY_STATE_OK		31		//!< 代理成功
 
 /*!
  *	@brief ProxySocketT 模板定义.
@@ -158,13 +158,12 @@ protected:
 				case 2:
 					{
 						if(nBufLen>0) {
-							byProxyState = 5;
 							if (lpBuf[0] == 0x05) {
-								//
-							}
-							if(nBufLen>1) {
-								if (lpBuf[1] == 0x02) {
-									byProxyState = 3;
+								byProxyState = 5;
+								if(nBufLen>1) {
+									if (lpBuf[1] == 0x02) {
+										byProxyState = 3;
+									}
 								}
 							}
 						}
@@ -498,6 +497,8 @@ public:
 	{
 	}
 
+	inline bool IsProxyAuthRequired() { return false; }
+
 	inline bool IsProxyOK()
 	{
 		return m_ProxyType!=PROXYTYPE_NONE && m_ProxyState==PROXY_STATE_OK;
@@ -538,22 +539,14 @@ protected:
 					if(nBufLen > 9) {
 						if(lpBuf[nBufLen-1]==0 /* && lpBuf[4] = 0 && lpBuf[5] = 0 && lpBuf[6] = 0 && lpBuf[7] != 0*/) {
 							m_ProxyType = PROXYTYPE_SOCKS4A;
-							SOCKADDR_IN sockAddr = {0};
-							sockAddr.sin_family = AF_INET;
-							sockAddr.sin_port = *(u_short*)&lpBuf[2];
-							sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)(lpBuf+9)));
-							OnProxy(sockAddr);
+							OnProxy((char*)(lpBuf+9), *(u_short*)&lpBuf[2]);
 							return SOCKET_PACKET_FLAG_COMPLETE;
 						} else {
 							return SOCKET_PACKET_FLAG_PENDING;
 						}
 					} else {
 						m_ProxyType = PROXYTYPE_SOCKS4;
-						SOCKADDR_IN sockAddr = {0};
-						sockAddr.sin_family = AF_INET;
-						sockAddr.sin_port = *(u_short*)&lpBuf[2];
-						sockAddr.sin_addr.s_addr = *(u_long*)&lpBuf[4];
-						OnProxy(sockAddr);
+						OnProxy(*(u_long*)&lpBuf[4], *(u_short*)&lpBuf[2]);
 						return SOCKET_PACKET_FLAG_COMPLETE;
 					}
 				}
@@ -591,7 +584,6 @@ protected:
 			}
 			break;
 			}
-			return 0;
 		}
 		char Buf[1024] = {0};
 		switch(m_ProxyType)
@@ -603,23 +595,6 @@ protected:
 			break;
 		case PROXYTYPE_SOCKS5:
 			{
-				// SOCKS 5
-				// -------------------------------------------------------------------------------------------
-				// The client connects to the server, and sends a version identifier/method selection message:
-				//                +----+----------+----------+
-				//                |VER | NMETHODS | METHODS  |
-				//                +----+----------+----------+
-				//                | 1  |    1     | 1 to 255 |
-				//                +----+----------+----------+
-				//
-				// The values currently defined for METHOD are:
-				//
-				//       o  X'00' NO AUTHENTICATION REQUIRED
-				//       o  X'01' GSSAPI
-				//       o  X'02' USERNAME/PASSWORD
-				//       o  X'03' to X'7F' IANA ASSIGNED
-				//       o  X'80' to X'FE' RESERVED FOR PRIVATE METHODS
-				//       o  X'FF' NO ACCEPTABLE METHODS
 				switch (m_ProxyState) 
 				{
 				case 0:
@@ -627,19 +602,23 @@ protected:
 						if(nBufLen < 3) {
 							return SOCKET_PACKET_FLAG_PENDING;
 						}
-						if(lpBuf[1] == 0x02) {
+						if(lpBuf[1] == 0x02 && lpBuf[2] == 0x02) {
+							//收到使用密码登录
+							m_ProxyState = 2;
 							Buf[0] = 0x05;
-							if(lpBuf[2] == 0x02) {
-								//收到使用密码登录
-								m_ProxyState = 2;
-								Buf[1] == 0x02;
-								Base::SendBuf(Buf, 2);
-							} else {
-								//不使用密码登录
-								m_ProxyState = 1;
-								Base::SendBuf(Buf, 1);
-							}
+							Buf[1] = 0x02;
+							Buf[2] = 0x00;
+							Base::SendBuf(Buf, 3);
 							return SOCKET_PACKET_FLAG_COMPLETE;
+						} else if(lpBuf[1] == 0x01) {
+							//不使用密码登录
+							if(!IsProxyAuthRequired()) {
+								m_ProxyState = 1;
+								Buf[0] = 0x05;
+								Buf[1] = 0x00;
+								Base::SendBuf(Buf, 2);
+								return SOCKET_PACKET_FLAG_COMPLETE;
+							}		
 						}
 					}
 					break;
@@ -691,7 +670,7 @@ protected:
 							return SOCKET_PACKET_FLAG_PENDING;
 						}
 						const char* pwd = user + user_len + 1;
-						OnAuth(user, user_len, pwd, pwd_len);
+						OnProxyAuth(user, user_len, pwd, pwd_len);
 						return SOCKET_PACKET_FLAG_COMPLETE;
 					}
 					break;
@@ -712,12 +691,12 @@ protected:
 		return 0;
 	}
 
-	virtual void OnAuth(const char* user, int user_len, const char* pwd, int pwd_len)
+	virtual void OnProxyAuth(const char* user, int user_len, const char* pwd, int pwd_len)
 	{
 
 	}
 	
-	virtual void OnAuthDone(int nErrorCode)
+	virtual void OnProxyAuthDone(int nErrorCode)
 	{
 		if(nErrorCode) {
 			OnProxyDone(nErrorCode);
@@ -734,23 +713,7 @@ protected:
 			break;
 		case PROXYTYPE_SOCKS5:
 			{
-				// SOCKS 5
-				// -------------------------------------------------------------------------------------------
-				// The client connects to the server, and sends a version identifier/method selection message:
-				//                +----+----------+----------+
-				//                |VER | NMETHODS | METHODS  |
-				//                +----+----------+----------+
-				//                | 1  |    1     | 1 to 255 |
-				//                +----+----------+----------+
-				//
-				// The values currently defined for METHOD are:
-				//
-				//       o  X'00' NO AUTHENTICATION REQUIRED
-				//       o  X'01' GSSAPI
-				//       o  X'02' USERNAME/PASSWORD
-				//       o  X'03' to X'7F' IANA ASSIGNED
-				//       o  X'80' to X'FE' RESERVED FOR PRIVATE METHODS
-				//       o  X'FF' NO ACCEPTABLE METHODS
+				m_ProxyState = 1;
 				Buf[0] = 0x05;
 				Buf[1] = 0x00;
 				Base::SendBuf(Buf,2);
@@ -765,9 +728,59 @@ protected:
 		}
 	}
 
+	virtual void OnProxy(const char* addr, u_short prot)
+	{
+		SOCKADDR_IN sockAddr = {0};
+		sockAddr.sin_family = AF_INET;
+		sockAddr.sin_port = prot;
+		sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)(addr)));
+		OnProxy(sockAddr);
+	}
+
+	inline void OnProxy(u_long ip, u_short port)
+	{
+		SOCKADDR_IN sockAddr = {0};
+		sockAddr.sin_family = AF_INET;
+		sockAddr.sin_port = port;
+		sockAddr.sin_addr.s_addr = ip;
+		OnProxy(sockAddr);
+	}
+
 	virtual void OnProxy(const SOCKADDR_IN& addr)
 	{
-		
+	}
+	
+	virtual void OnProxyDone(const SOCKADDR_IN& addr)
+	{
+		char Buf[1024] = {0};
+		switch(m_ProxyType)
+		{
+		case PROXYTYPE_SOCKS4:
+		case PROXYTYPE_SOCKS4A:
+			{
+				m_ProxyState = PROXY_STATE_OK;
+				Buf[0] = 0x00;
+				Buf[1] = 0x5A;
+				memcpy(Buf + 2, &addr.sin_addr.s_addr, sizeof(addr.sin_addr.s_addr));
+				memcpy(Buf + 2 + 4, &addr.sin_port, sizeof(addr.sin_port));
+				Base::SendBuf(Buf,9);
+			}
+			break;
+		case PROXYTYPE_SOCKS5:
+			{
+				m_ProxyState = PROXY_STATE_OK;
+				Buf[0] = 0x05;
+				Buf[1] = 0x00;
+				Base::SendBuf(Buf,2);
+			}
+			break;
+		case PROXYTYPE_HTTP10:
+		case PROXYTYPE_HTTP11:
+			{
+				
+			}
+			break;
+		}
 	}
 
 	virtual void OnProxyDone(int nErrorCode)
@@ -778,45 +791,14 @@ protected:
 		case PROXYTYPE_SOCKS4:
 		case PROXYTYPE_SOCKS4A:
 			{
-				if(!nErrorCode) {
-					Buf[0] = 0x00;
-					Buf[1] = 0x5A;
-					Base::SendBuf(Buf,9);
-				} else {
-					Buf[0] = 0x00;
-					Buf[1] = 0x00;
-					Base::SendBuf(Buf,2);
-				}
+				Buf[0] = 0x00;
+				Buf[1] = 0x00;
+				Base::SendBuf(Buf,2);
 			}
 			break;
 		case PROXYTYPE_SOCKS5:
 			{
-				// SOCKS 5
-				// -------------------------------------------------------------------------------------------
-				// The client connects to the server, and sends a version identifier/method selection message:
-				//                +----+----------+----------+
-				//                |VER | NMETHODS | METHODS  |
-				//                +----+----------+----------+
-				//                | 1  |    1     | 1 to 255 |
-				//                +----+----------+----------+
-				//
-				// The values currently defined for METHOD are:
-				//
-				//       o  X'00' NO AUTHENTICATION REQUIRED
-				//       o  X'01' GSSAPI
-				//       o  X'02' USERNAME/PASSWORD
-				//       o  X'03' to X'7F' IANA ASSIGNED
-				//       o  X'80' to X'FE' RESERVED FOR PRIVATE METHODS
-				//       o  X'FF' NO ACCEPTABLE METHODS
-				if(!nErrorCode) {
-					Buf[0] = 0x05;
-					Buf[1] = 0x00;
-					Base::SendBuf(Buf,2);
-				} else {
-					Buf[0] = 0x05;
-					Buf[1] = 0x02; //???
-					Base::SendBuf(Buf,2);
-				}
+				
 			}
 			break;
 		case PROXYTYPE_HTTP10:
@@ -826,9 +808,7 @@ protected:
 			}
 			break;
 		}
-		if(nErrorCode) {
-			Base::Trigger(FD_CLOSE, ECONNABORTED);
-		}
+		Base::Trigger(FD_CLOSE, nErrorCode);
 	}
 
 	//解析数据包
