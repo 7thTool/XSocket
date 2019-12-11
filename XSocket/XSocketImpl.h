@@ -201,6 +201,7 @@ protected:
 
 	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags) 
 	{
+		Base::OnReceive(lpBuf, nBufLen, nFlags);
 		m_nRecvLen += nBufLen;
 		int nParseBufLen = m_nRecvLen;
 		int nParseFlags = ParseBuf(m_pRecvBuf, nParseBufLen);
@@ -271,6 +272,7 @@ protected:
 
 	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
 	{
+		Base::OnSend(lpBuf, nBufLen, nFlags);
 		m_nSendLen += nBufLen;
 		if (m_nSendLen >= m_nSendBufLen) {
 			OnSendBuf(m_pSendBuf, m_nSendLen);

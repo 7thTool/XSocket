@@ -221,22 +221,11 @@ public:
 		for (i=0;i<uFD_SETSize;i++)
 		{
 			if(Base::sock_ptrs_[i]==sock_ptr) {
-				std::unique_lock<std::mutex> lock(Base::mutex_);
-				std::shared_ptr<Socket> t_sock_ptr = Base::sock_ptrs_[i];
-				if (t_sock_ptr) {
-					Base::sock_count_--;
-					Base::sock_ptrs_[i].reset();
-					lock.unlock();
-					int fd = *sock_ptr;
-					struct epoll_event event = {0};
-					event.data.ptr = (void *)sock_ptr.get();
-					epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);
-					sock_ptr->DetachService(this);
-					return i;
-				} else {
-					return i;
-				}
-				break;
+				int fd = *sock_ptr;
+				struct epoll_event event = {0};
+				event.data.ptr = (void *)sock_ptr.get();
+				epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);
+				return Base::RemoveSocketByPos(i);
 			}
 		}
 		return -1;
@@ -298,8 +287,7 @@ protected:
 					if (sock_ptr->IsSelect(FD_CONNECT)) {
 						sock_ptr->RemoveSelect(FD_CONNECT);
 						if (nErrorCode == 0) {
-							int nOptLen = sizeof(nErrorCode);
-							sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, (void *)&nErrorCode, nOptLen);
+							sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, (void *)&nErrorCode, sizeof(nErrorCode));
 						}
 						sock_ptr->Trigger(FD_CONNECT, nErrorCode);
 					} 

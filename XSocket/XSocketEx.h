@@ -189,8 +189,8 @@ protected:
 	 *	收到这个回调，说明Socket加入/离开了服务管理，接下来开始进入/退出Select事件通知处理了
 	 *	@param pSvr 服务对象指针
 	 */
-	virtual void OnAttachService(Service* pSvr){}
-	virtual void OnDetachService(Service* pSvr){}
+	virtual void OnAttachService(Service* pSvr);
+	virtual void OnDetachService(Service* pSvr);
 
 	/*!
 	 *	@brief 通知套接字无可操作状态，正在空闲或者等待中.
@@ -212,7 +212,7 @@ protected:
 	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
 	 */
 	virtual void OnReceive(int nErrorCode);
-	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags) {}
+	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags);
 	
 	/*!
 	 *	@brief 通知套接字可以调用Send发送数据.
@@ -225,7 +225,7 @@ protected:
 	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
 	 */
 	virtual void OnSend(int nErrorCode);
-	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags) {}
+	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags);
 	
 	/*!
 	 *	@brief 通知正在接收数据的套接字有带外数据，通常是紧急数据 要读取.
@@ -238,7 +238,7 @@ protected:
 	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
 	 */
 	virtual void OnOOB(int nErrorCode);
-	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags) {}
+	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags);
 
 	/*!
 	 *	@brief 通知正在监听的服务器套接字有一个连接需要调用Accept接收连接.
@@ -251,7 +251,7 @@ protected:
 	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
 	 */
 	virtual void OnAccept(int nErrorCode);
-	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) {}
+	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock);
 
 	/*!
 	 *	@brief 通知正在连接的客户端套接字连接建立完成，可能成功或者失败.
@@ -788,13 +788,6 @@ public:
 	{
 
 	}
-
-protected:
-	//
-	virtual void OnAttachService(Service* pSvr)
-	{
-		
-	}
 };
 
 /*!
@@ -885,19 +878,7 @@ public:
 		for (i=0;i<uFD_SETSize;i++)
 		{
 			if(sock_ptrs_[i]==sock_ptr) {
-				std::unique_lock<std::mutex> lock(mutex_);
-				std::shared_ptr<Socket> t_sock_ptr = sock_ptrs_[i];
-				if (t_sock_ptr) {
-					sock_ptrs_[i].reset();
-					sock_count_--;
-					lock.unlock();
-					sock_ptr->DetachService(this);
-					Service::RemoveSocket(sock_ptr.get());
-					return i;
-				} else {
-					return i;
-				}
-				break;
+				return RemoveSocketByPos(i);
 			}
 		}
 		return -1;
@@ -929,6 +910,25 @@ public:
 	}*/
 protected:
 	//
+	inline int RemoveSocketByPos(int i)
+	{
+		if (i>=0 && i<uFD_SETSize) {
+			std::unique_lock<std::mutex> lock(mutex_);
+			std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
+			if (sock_ptr) {
+				sock_ptrs_[i].reset();
+				sock_count_--;
+				lock.unlock();
+				sock_ptr->DetachService(this);
+				Service::RemoveSocket(sock_ptr.get());
+				return i;
+			} else {
+				return i;
+			}
+		}
+		return -1;
+	}
+
 	void RemoveAllSocket(bool bClose = false)
 	{
 		int i;
@@ -949,19 +949,19 @@ protected:
 		sock_count_ = 0;
 	}
 
-	inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
-		if(!sock_ptr) {
-			return false;
-		}
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
-		{
-			if(sock_ptrs_[i].get()==sock_ptr) {
-				return sock_ptrs_[i];
-			}
-		}
-		return nullptr;
-	}
+	// inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
+	// 	if(!sock_ptr) {
+	// 		return false;
+	// 	}
+	// 	int i;
+	// 	for (i=0;i<uFD_SETSize;i++)
+	// 	{
+	// 		if(sock_ptrs_[i].get()==sock_ptr) {
+	// 			return sock_ptrs_[i];
+	// 		}
+	// 	}
+	// 	return nullptr;
+	// }
 
 protected:
 	//
@@ -982,8 +982,9 @@ protected:
 				std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
 				if (sock_ptr) {
 					if (!sock_ptr->IsSocket()) {
-						if(!sock_ptr->IsSelect(-1)) {
-							sock_ptrs_[i].reset(); //自动移除
+						if(!sock_ptr->IsSelect(-1)) { 
+							//自动移除
+							RemoveSocketByPos(i);
 						}
 					} else if(sock_ptr->IsSelect(FD_IDLE)) {
 						sock_ptr->RemoveSelect(FD_IDLE);
@@ -1172,6 +1173,18 @@ protected:
 						Base::Trigger(FD_ACCEPT, 0);
 					}
 				}
+				if (FD_ISSET(fd, &exceptfds)) {
+					int nErrorCode = 0;
+					Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
+					if (nErrorCode == 0) {
+						nErrorCode = Base::GetLastError();
+					}
+					if (nErrorCode == 0) {
+						nErrorCode = ENETDOWN;
+					}
+					//SetLastError(nErrorCode);
+					Base::Trigger(FD_ACCEPT, nErrorCode);
+				}
 			}
 		} else if (Base::IsSelect(FD_CONNECT)) {
 			fd_set writefds;
@@ -1191,6 +1204,16 @@ protected:
 					if (Base::IsSocket() && Base::IsSelect(FD_READ)) {
 						Base::Trigger(FD_READ, 0);
 					}
+				}
+				if (FD_ISSET(fd, &exceptfds)) {
+					Base::RemoveSelect(FD_CONNECT);
+					int nErrorCode = 0;
+					Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
+					if (nErrorCode == 0) {
+						nErrorCode = ENETDOWN;
+					}
+					//SetLastError(nErrorCode);
+					Base::Trigger(FD_CONNECT, nErrorCode);
 				}
 			}
 		} else {
@@ -1220,26 +1243,15 @@ protected:
 						Base::Trigger(FD_WRITE, 0);
 					}
 				}
-			}
-		}
-		if (nfds > 0) {
-			if (FD_ISSET(fd, &exceptfds)) {
-				int nErrorCode = 0;
-				Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
-				if (nErrorCode == 0) {
-					nErrorCode = Base::GetLastError();
+				if (FD_ISSET(fd, &exceptfds)) {
+					int nErrorCode = 0;
+					Base::GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
+					if (nErrorCode == 0) {
+						nErrorCode = ENETDOWN;
+					}
+					//SetLastError(nErrorCode);
+					Base::Trigger(FD_CLOSE, nErrorCode);
 				}
-				if (nErrorCode == 0) {
-					nErrorCode = ENETDOWN;
-				}
-				//SetLastError(nErrorCode);
-				Base::Trigger(FD_CLOSE, nErrorCode);
-			}
-		} else if (nfds == 0) {
-			//
-		} else {
-			if (Base::IsSocket()) {
-				Base::Trigger(FD_CLOSE, GetLastError());
 			}
 		}
 	}
@@ -1365,13 +1377,23 @@ protected:
 							}
 						}
 						if (FD_ISSET(*sock_ptr, &exceptfds)) {
-							int nErrorCode = sock_ptr->GetLastError();
+							int nErrorCode = 0;
 							sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, (char *)&nErrorCode, sizeof(nErrorCode));
+							if(nErrorCode == 0) {
+								nErrorCode = sock_ptr->GetLastError();
+							}
 							if (nErrorCode == 0) {
 								nErrorCode = ENETDOWN;
 							}
-							sock_ptr->SetLastError(nErrorCode);
-							sock_ptr->Trigger(FD_CLOSE, nErrorCode);
+							//sock_ptr->SetLastError(nErrorCode);
+							if (sock_ptr->IsListenSocket()) {
+								sock_ptr->Trigger(FD_ACCEPT, nErrorCode);
+							} else if(sock_ptr->IsSelect(FD_CONNECT)) {
+								sock_ptr->RemoveSelect(FD_CONNECT);
+								sock_ptr->Trigger(FD_CONNECT, nErrorCode);
+							} else {
+								sock_ptr->Trigger(FD_CLOSE, nErrorCode);
+							}
 						}
 					}
 				}
