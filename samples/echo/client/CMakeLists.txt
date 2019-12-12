@@ -62,6 +62,5 @@ ADD_EXECUTABLE(client
     client.cpp
     ../../../XSocket/XSocket.cpp
     ../../../XSocket/XSocketEx.cpp
-    ../../../XSocket/XProxySocketEx.cpp
 )
 TARGET_LINK_LIBRARIES(client ${EXTRA_LIBS})

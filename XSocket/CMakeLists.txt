@@ -24,7 +24,6 @@ endif()
 set(SRC_LIST ${SRC_LIST} 
 ./XSocket.cpp
 ./XSocketEx.cpp
-./XProxySocketEx.cpp
 )
 
 add_library( # Sets the name of the library.

@@ -1,5 +1,4 @@
 #include "../../samples.h"
-#include "../../../XSocket/XProxySocketEx.h"
 #include "../../../XSocket/XSocketImpl.h"
 #ifdef USE_EPOLL
 #include "../../../XSocket/XEPoll.h"

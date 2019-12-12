@@ -106,6 +106,10 @@ typedef struct sockaddr_in SOCKADDR_IN;
 typedef struct sockaddr_in *PSOCKADDR_IN;
 typedef struct sockaddr_in FAR *LPSOCKADDR_IN;
 
+typedef struct sockaddr_in6 SOCKADDR_IN6;
+typedef struct sockaddr_in6 *PSOCKADDR_IN6;
+typedef struct sockaddr_in6 FAR *LPSOCKADDR_IN6;
+
 typedef struct linger LINGER;
 typedef struct linger *PLINGER;
 typedef struct linger FAR *LPLINGER;
@@ -166,35 +170,23 @@ typedef unsigned char byte;
 //#define vsprintf vsnprintf
 //#endif//vsprintf
 
-/*!
- *	@brief 代理类型.
- *
- *	定义支持的代理类型
- */
-enum PROXYTYPE
-{
-	PROXYTYPE_NONE			= 0,	//!< 不使用代理服务器
-	PROXYTYPE_SOCKS4,				//!< 使用SOCKS V4代理
-	PROXYTYPE_SOCKS4A,				//!< 使用SOCKS V4A代理
-	PROXYTYPE_SOCKS5,				//!< 使用SOCKS V5代理
-	PROXYTYPE_HTTP10,				//!< 使用HTTP V1.0代理
-	PROXYTYPE_HTTP11,				//!< 使用HTTP V1.1代理
-};
+#define SAFAMILY(sa) (&(((struct SOCKADDR_IN *)sa)->sin_family))
 
-/*!
- *	@brief 代理服务信息结构.
- *
- *	定义代理信息结构
- */
-typedef struct  tagPROXYINFO
-{
-	PROXYTYPE eType; 
-	char szHost[256];
-	u_short nPort;
-	bool bAuth;
-	char szUser[256];
-	char szPwd[256];
-}PROXYINFO,*PPROXYINFO;
+#ifndef NOIPV6
+#define SAPORT(sa)  (((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? &((struct SOCKADDR_IN6 *)sa)->sin6_port : &((struct SOCKADDR_IN *)sa)->sin_port)
+#define SAADDR(sa)  (((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? (unsigned char *)&((struct SOCKADDR_IN6 *)sa)->sin6_addr : (unsigned char *)&((struct SOCKADDR_IN *)sa)->sin_addr.s_addr)
+#define SAADDRLEN(sa) (((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? 16:4)
+#define SASOCK(sa) (((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? PF_INET6:PF_INET)
+#define SASIZE(sa) (((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? sizeof(struct SOCKADDR_IN6):sizeof(struct SOCKADDR_IN))
+#define SAISNULL(sa) (!memcmp(((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? (unsigned char *)&((struct SOCKADDR_IN6 *)sa)->sin6_addr : (unsigned char *)&((struct SOCKADDR_IN *)sa)->sin_addr.s_addr, NULLADDR,  (((struct SOCKADDR_IN *)sa)->sin_family == AF_INET6? 16:4))) 
+#else
+#define SAPORT(sa)  (&((struct SOCKADDR_IN *)sa)->sin_port)
+#define SAADDR(sa)  ((unsigned char *)&((struct SOCKADDR_IN *)sa)->sin_addr.s_addr)
+#define SAADDRLEN(sa) (4)
+#define SASOCK(sa) (PF_INET)
+#define SASIZE(sa) (sizeof(struct SOCKADDR_IN))
+#define SAISNULL(sa) (((struct SOCKADDR_IN *)sa)->sin_addr.s_addr == 0) 
+#endif
 
 #ifndef ASSERT
 #include <assert.h>

@@ -63,7 +63,6 @@ ADD_EXECUTABLE(http_server
     ../../../XSocket/XCodec.cpp
     ../../../XSocket/XSocket.cpp
     ../../../XSocket/XSocketEx.cpp
-    ../../../XSocket/XProxySocketEx.cpp
     ../../../XSocket/http-parser/http_parser.c
     #../../../XSocket/ws-parser/ws_parser.c
     ../../../XSocket/websocket-parser/websocket_parser.c

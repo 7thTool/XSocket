@@ -25,6 +25,54 @@
 namespace XSocket {
 
 /*!
+ *	@brief 代理类型.
+ *
+ *	定义支持的代理类型
+ */
+enum PROXYTYPE
+{
+	PROXYTYPE_NONE			= 0,	//!< 不使用代理服务器
+	PROXYTYPE_SOCKS4,				//!< 使用SOCKS V4代理
+	PROXYTYPE_SOCKS4A,				//!< 使用SOCKS V4A代理
+	PROXYTYPE_SOCKS5,				//!< 使用SOCKS V5代理
+	PROXYTYPE_HTTP10,				//!< 使用HTTP V1.0代理
+	PROXYTYPE_HTTP11,				//!< 使用HTTP V1.1代理
+};
+// typedef enum {
+// 	S_NOSERVICE,
+// 	S_PROXY,
+// 	S_TCPPM,
+// 	S_POP3P,
+// 	S_SOCKS4 = 4,	/* =4 */
+// 	S_SOCKS5 = 5,	/* =5 */
+// 	S_UDPPM,
+// 	S_SOCKS,
+// 	S_SOCKS45,
+// 	S_ADMIN,
+// 	S_DNSPR,
+// 	S_FTPPR,
+// 	S_SMTPP,
+// 	S_REVLI,
+// 	S_REVCO,
+// 	S_ZOMBIE
+// }PROXYSERVICE;
+
+/*!
+ *	@brief 代理服务信息结构.
+ *
+ *	定义代理信息结构
+ */
+typedef struct  tagPROXYINFO
+{
+	PROXYTYPE eType; 
+	char szHost[256];
+	u_short nPort;
+	bool bAuth;
+	char szUser[256];
+	char szPwd[256];
+}PROXYINFO,*PPROXYINFO;
+
+/*!
  *	@brief 代理状态.
  *
  *	代理过程状态
@@ -477,6 +525,59 @@ protected:
 	}
 };
 
+enum PROXY_RESULT
+{
+ALLOW,
+DENY,
+REDIRECT,
+BANDLIM,
+NOBANDLIM,
+COUNTIN,
+NOCOUNTIN,
+COUNTOUT,
+NOCOUNTOUT,
+CONNLIM,
+NOCONNLIM,
+};
+
+enum PROXY_COMMAND
+{
+CONNECT = 	0x00000001,
+BIND =		0x00000002,
+UDPASSOC =	0x00000004,
+ICMPASSOC =	0x00000008	/* reserved */,
+HTTP_GET =	0x00000100,
+HTTP_PUT =	0x00000200,
+HTTP_POST =	0x00000400,
+HTTP_HEAD =	0x00000800,
+HTTP_CONNECT =	0x00001000,
+HTTP_OTHER =	0x00008000,
+HTTP =		0x0000EF00	/* all except HTTP_CONNECT */,
+HTTPS =		HTTP_CONNECT,
+FTP_GET =		0x00010000,
+FTP_PUT =		0x00020000,
+FTP_LIST =	0x00040000,
+FTP_DATA =	0x00080000,
+FTP =		0x000F0000,
+DNSRESOLVE =	0x00100000,
+ADMIN =		0x01000000,
+};
+
+struct ProxyParam
+{
+	unsigned short http_major;
+	unsigned short http_minor;
+	unsigned int status_code : 16; /* responses only */
+	unsigned int method : 8;       /* requests only */
+	enum {
+		UNKNOWN = -1,
+		HOST,
+		PORT,
+		COUNT
+	} eat = UNKNOWN;
+	const char* at[COUNT] = { 0 };
+	size_t length[COUNT] = { 0 };
+};
 
 /*!
  *	@brief ProxydSocketT 模板定义.
@@ -587,7 +688,7 @@ protected:
 						return SOCKET_PACKET_FLAG_COMPLETE;
 					}
 				}*/
-				PPROXYINFO proxyInfo = {0};
+				ProxyParam param;
 				http_parser_settings settings = {0};
 				http_parser parser = {0};
 				//thread_local bool http_parser_thread_init = false;
@@ -605,10 +706,48 @@ protected:
 					};
 					settings.on_header_field = [](http_parser* parser, const char *at, size_t length) {  
 						PRINTF("on_header_field %.*s ", length, at);
+						ProxyParam* pParam = (ProxyParam*)parser->data;
+						if(!pParam) {
+							return 0;
+						}
+						if(strncmp(at, "Host", length) == 0) {
+							pParam->eat = ProxyParam::HOST;
+						} else {
+							pParam->eat = ProxyParam::UNKNOWN;
+						}
 						return 0; 
 					};
 					settings.on_header_value = [](http_parser* parser, const char *at, size_t length) {  
 						PRINTF("%.*s\n", length, at);
+						ProxyParam* pParam = (ProxyParam*)parser->data;
+						if(!pParam) {
+							return 0;
+						}
+						if(pParam->eat >= 0 && pParam->eat < ProxyParam::COUNT) {
+							switch(pParam->eat)
+							{
+							case ProxyParam::HOST:
+							{
+								pParam->at[pParam->eat] = at;
+								const char* port = strchr(at,':');
+								if(port) {
+									pParam->length[pParam->eat] = port - at;
+									port++;
+									pParam->at[ProxyParam::PORT] = port;
+									pParam->length[ProxyParam::PORT] = length - 1 - pParam->length[pParam->eat];
+								} else {
+									pParam->length[pParam->eat] = length;
+								}
+							}
+							break;
+							default:
+							{
+								pParam->at[pParam->eat] = at;
+								pParam->length[pParam->eat] = length;
+							}
+							break;
+							}
+						}
 						return 0; 
 					};
 					settings.on_headers_complete = [](http_parser *parser) { return 0; };
@@ -619,13 +758,31 @@ protected:
 					settings.on_message_complete = [](http_parser* parser) { return 0; };
 				//}
 				http_parser_init(&parser, HTTP_REQUEST);
-				parser.data = this;
+				parser.data = &param;
 				int nParsed = http_parser_execute(&parser, &settings, lpBuf, nBufLen);
 				if(nParsed < 0) {
 					//
 				} else {
+					param.http_major = parser.http_major;
+					param.http_minor = parser.http_minor;
+					param.status_code = parser.status_code;
+					// switch(parser.method)
+					// {
+					// case :
+					// 	break;
+					// default:
+					// 	param.method = HTTP_CONNECT;
+					// 	break;
+					// }
 					if(!m_ProxyType) {
 						return SOCKET_PACKET_FLAG_PENDING;
+					}
+					char* host = (char*)param.at[ProxyParam::HOST];
+					char* port = (char*)param.at[ProxyParam::PORT];
+					if(host && port) {
+						host[param.length[ProxyParam::HOST]] = 0;
+						port[param.length[ProxyParam::PORT]] = 0;
+						//OnProxy(host, std::atoi(port));
 					}
 					return SOCKET_PACKET_FLAG_COMPLETE;
 				}
@@ -783,7 +940,10 @@ protected:
 		case PROXYTYPE_HTTP10:
 		case PROXYTYPE_HTTP11:
 			{
-				
+				snprintf(Buf, 1024, "HTTP/1.0 200 OK\r\n"
+					"Content-Type: text/html\r\n"
+					"Connection: keep-alive\r\n"
+					"Content-Length: %d\r\n\r\n", 0);
 			}
 			break;
 		}
