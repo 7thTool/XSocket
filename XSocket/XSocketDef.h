@@ -166,6 +166,16 @@ typedef struct timeval FAR *LPTIMEVAL;
 typedef unsigned char byte;
 #endif//
 
+#ifndef isnumber
+#define isnumber(n) (n >= '0' && n <= '9')
+#endif
+
+#ifndef ishex
+#define ishex(n) ((n >= '0' && n <= '9') || (n >= 'a' && n<='f') || (n >= 'A' && n <= 'F'))
+#endif
+
+#define isallowed(n) ((n >= '0' && n <= '9') || (n >= 'a' && n <= 'z') || (n >= 'A' && n <= 'Z') || (n >= '*' && n <= '/') || n == '_')
+
 //#ifndef vsprintf
 //#define vsprintf vsnprintf
 //#endif//vsprintf
