@@ -9,6 +9,7 @@
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
+using namespace XSocket;
 
 class worker;
 
@@ -28,32 +29,32 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::SimpleEventServiceT<XSocket::DelayEventServiceT<Event,XSocket::ThreadService>> WorkService;
-//typedef XSocket::ThreadService WorkService;
+typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> WorkService;
+//typedef ThreadService WorkService;
 
 #ifdef USE_EPOLL
-typedef XSocket::EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #elif defined(USE_IOCP)
-typedef XSocket::CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #else
-typedef XSocket::SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #endif//
 
 class worker
 #ifdef USE_EPOLL
-	: public XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::EPollSocketT<WorkSocketSet,XSocket::SocketEx>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>>
 #elif defined(USE_IOCP)
-	: public XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::CompletionPortSocketT<WorkSocketSet,XSocket::SocketEx>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>>
 #else
-	: public XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::SelectSocketT<WorkSocketSet,XSocket::SocketEx>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>>
 #endif
 {
 #ifdef USE_EPOLL
-	typedef XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::EPollSocketT<WorkSocketSet,XSocket::SocketEx>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>> Base;
 #elif defined(USE_IOCP)
-	typedef XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::CompletionPortSocketT<WorkSocketSet,XSocket::SocketEx>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>> Base;
 #else
-	typedef XSocket::SocketExImpl<worker,XSocket::HttpSocketT<XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::SelectSocketT<WorkSocketSet,XSocket::SocketEx>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>> Base;
 #endif
 public:
 	worker()
@@ -80,7 +81,7 @@ public:
 	}
 protected:
 	//
-	virtual void OnMessage(const XSocket::HttpRequest& req)
+	virtual void OnMessage(const HttpRequest& req)
 	{
 		PRINTF("%79s\n", req.body_.first);
 	}
@@ -97,9 +98,9 @@ protected:
 };
 
 class server 
-	: public XSocket::SelectServerT<XSocket::ThreadService,XSocket::SocketExImpl<server,XSocket::ListenSocketT<XSocket::SocketEx>>,WorkSocketSet>
+	: public SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet>
 {
-	typedef XSocket::SelectServerT<XSocket::ThreadService,XSocket::SocketExImpl<server,XSocket::ListenSocketT<XSocket::SocketEx>>,WorkSocketSet> Base;
+	typedef SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet> Base;
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{
@@ -129,7 +130,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	XSocket::InitNetEnv();
+	Socket::Init();
 
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
@@ -137,7 +138,7 @@ int main()
 	s->Stop();
 	delete s;
 
-	XSocket::ReleaseNetEnv();
+	Socket::Term();
 
 	return 0;
 }

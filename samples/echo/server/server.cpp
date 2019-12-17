@@ -8,6 +8,7 @@
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
+using namespace XSocket;
 
 class worker;
 
@@ -34,35 +35,35 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::SimpleEventServiceT<XSocket::DelayEventServiceT<Event,XSocket::ThreadService>> WorkService;
-//typedef XSocket::ThreadService WorkService;
+typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> WorkService;
+//typedef ThreadService WorkService;
 
 #ifndef USE_UDP
 #ifdef USE_EPOLL
-typedef XSocket::EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #elif defined(USE_IOCP)
-typedef XSocket::CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #else
-typedef XSocket::SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 #endif//
 #endif//USE_UDP
 
 #ifndef USE_UDP
 class worker
 #ifdef USE_EPOLL
-	: public XSocket::SocketExImpl<worker,XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::EPollSocketT<WorkSocketSet,XSocket::SocketEx>>>>
+	: public SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>
 #elif defined(USE_IOCP)
-	: public XSocket::SocketExImpl<worker,XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::CompletionPortSocketT<WorkSocketSet,XSocket::SocketEx>>>>
+	: public SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>
 #else
-	: public XSocket::SocketExImpl<worker,XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::SelectSocketT<WorkSocketSet,XSocket::SocketEx>>>>
+	: public SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>
 #endif
 {
 #ifdef USE_EPOLL
-	typedef XSocket::SocketExImpl<worker,XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::EPollSocketT<WorkSocketSet,XSocket::SocketEx>>>> Base;
+	typedef SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>> Base;
 #elif defined(USE_IOCP)
-	typedef XSocket::SocketExImpl<worker,XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::CompletionPortSocketT<WorkSocketSet,XSocket::SocketEx>>>> Base;
+	typedef SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>> Base;
 #else
-	typedef XSocket::SocketExImpl<worker,XSocket::SimpleEvtSocketT<XSocket::WorkSocketT<XSocket::SelectSocketT<WorkSocketSet,XSocket::SocketEx>>>> Base;
+	typedef SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>> Base;
 #endif
 protected:
 	
@@ -115,9 +116,9 @@ protected:
 };
 
 class server 
-	: public XSocket::SelectServerT<XSocket::ThreadService,XSocket::SocketExImpl<server,XSocket::ListenSocketT<XSocket::SocketEx>>,WorkSocketSet>
+	: public SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet>
 {
-	typedef XSocket::SelectServerT<XSocket::ThreadService,XSocket::SocketExImpl<server,XSocket::ListenSocketT<XSocket::SocketEx>>,WorkSocketSet> Base;
+	typedef SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet> Base;
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{
@@ -142,9 +143,9 @@ public:
 };
 
 #else
-class server : public XSocket::SocketExImpl<server,XSocket::SelectUdpServerT<XSocket::ThreadService,XSocket::SimpleUdpSocketT<XSocket::SocketEx>>>
+class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<SocketEx>>>
 {
-	typedef XSocket::SocketExImpl<server,XSocket::SelectUdpServerT<XSocket::ThreadService,XSocket::SimpleUdpSocketT<XSocket::SocketEx>>> Base;
+	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<SocketEx>>> Base;
 protected:
 	std::string addr_;
 	u_short port_;
@@ -199,8 +200,8 @@ protected:
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
 	{
 		PRINTF("%.*s\n", nBufLen, lpBuf);
-		PRINTF("echo[(%s:%d)]:%.*s\n",XSocket::N2Ip(SockAddr.sin_addr.s_addr),XSocket::N2H(SockAddr.sin_port),nBufLen, lpBuf);
-		SendBuf(lpBuf,nBufLen,SockAddr,XSocket::SOCKET_PACKET_FLAG_TEMPBUF);
+		PRINTF("echo[(%s:%d)]:%.*s\n",N2Ip(SockAddr.sin_addr.s_addr),N2H(SockAddr.sin_port),nBufLen, lpBuf);
+		SendBuf(lpBuf,nBufLen,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}
 };
@@ -212,7 +213,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	XSocket::InitNetEnv();
+	Socket::Init();
 
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
@@ -220,7 +221,7 @@ int main()
 	s->Stop();
 	delete s;
 
-	XSocket::ReleaseNetEnv();
+	Socket::Term();
 
 	return 0;
 }

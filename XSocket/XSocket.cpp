@@ -19,7 +19,7 @@ size_t Tick()
 #endif//
 }
 
-long InitNetEnv()
+long Socket::Init()
 {
 #ifdef WIN32
 	WORD	Version;
@@ -36,7 +36,7 @@ long InitNetEnv()
 	return 0;
 }
 
-void ReleaseNetEnv()
+void Socket::Term()
 {
 #ifdef WIN32
 	::WSACleanup();
@@ -73,39 +73,39 @@ void ReleaseNetEnv()
 // 	return ntohll(n);
 // }
 
-u_long H2N(u_long n)
+u_long Socket::H2N(u_long n)
 {
 	return htonl(n);
 }
 
-u_long N2H(u_long n)
+u_long Socket::N2H(u_long n)
 {
 	return ntohl(n);
 }
 
-u_short H2N(u_short n)
+u_short Socket::H2N(u_short n)
 {
 	return htons(n);
 }
 
-u_short N2H(u_short n)
+u_short Socket::N2H(u_short n)
 {
 	return ntohs(n);
 }
 
-u_long Ip2N(const char* Ip)
+u_long Socket::Ip2N(const char* Ip)
 {
 	return inet_addr(Ip);
 }
 
-const char* N2Ip(u_long Ip)
+const char* Socket::N2Ip(u_long Ip)
 {
 	struct in_addr addr = {0};
 	addr.s_addr = Ip;
 	return (::inet_ntoa(addr));
 }
 
-const char* Url2Ip(const char* Url)
+const char* Socket::Url2Ip(const char* Url)
 {
 	struct hostent * lphost = NULL;
 	sockaddr_in addr = {0};
@@ -121,7 +121,7 @@ const char* Url2Ip(const char* Url)
 	return Url; 
 }
 
-u_short Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+u_short Socket::Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
 	switch (lpSockAddr->sa_family)
 	{
@@ -134,7 +134,7 @@ u_short Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	return 0;
 }
 
-u_long Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+u_long Socket::Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
 	switch (lpSockAddr->sa_family)
 	{
@@ -147,12 +147,12 @@ u_long Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	return 0;
 }
 
-int GetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints, struct addrinfo **result)
+int Socket::GetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints, struct addrinfo **result)
 {
 	return ::getaddrinfo(hostname, service, hints, result);
 }
 
-void SetAddrInfo(struct sockaddr * addr, u_short port)
+void Socket::SetAddrInfo(struct sockaddr * addr, u_short port)
 {
 	auto netType = addr->sa_family;
 	if (netType == AF_INET) {
@@ -164,22 +164,22 @@ void SetAddrInfo(struct sockaddr * addr, u_short port)
 	}
 }
 
-SOCKET Open(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
+SOCKET Socket::Open(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
 {
 	return socket(nSockAf, nSockType, nSockProtocol);
 }
 
-bool IsSocket(SOCKET Sock)
+bool Socket::IsSocket(SOCKET Sock)
 { 
 	return Sock != INVALID_SOCKET;
 }
 
-int ShutDown(SOCKET Sock, int nHow)
+int Socket::ShutDown(SOCKET Sock, int nHow)
 {
 	return shutdown(Sock, nHow);
 }
 
-int Close(SOCKET Sock)
+int Socket::Close(SOCKET Sock)
 {
 #ifdef WIN32
 	return closesocket(Sock);
@@ -192,7 +192,7 @@ int Close(SOCKET Sock)
 #endif//
 }
 
-SOCKET Accept(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
+SOCKET Socket::Accept(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 {
 #ifdef WIN32
 	return accept(Sock, lpSockAddr, lpSockAddrLen);
@@ -201,27 +201,27 @@ SOCKET Accept(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 #endif//
 }
 
-int Bind(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
+int Socket::Bind(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
 	return bind(Sock, lpSockAddr, nSockAddrLen);
 }
 
-int Connect(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
+int Socket::Connect(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
 	return connect(Sock, lpSockAddr, nSockAddrLen);
 }
 
-int Listen(SOCKET Sock, int nConnectionBacklog/* = 5*/)
+int Socket::Listen(SOCKET Sock, int nConnectionBacklog/* = 5*/)
 {
 	return listen(Sock, nConnectionBacklog);
 }
 
-int Send(SOCKET Sock, const char* lpBuf, int nBufLen, int nFlags)
+int Socket::Send(SOCKET Sock, const char* lpBuf, int nBufLen, int nFlags)
 {
 	return send(Sock, lpBuf, nBufLen, nFlags);
 }
 
-int Receive(SOCKET Sock, char* lpBuf, int nBufLen, int nFlags)
+int Socket::Receive(SOCKET Sock, char* lpBuf, int nBufLen, int nFlags)
 {
 	return recv(Sock, lpBuf, nBufLen, nFlags);
 }
@@ -286,12 +286,12 @@ int Receive(SOCKET Sock, char* lpBuf, int nBufLen, int nFlags)
 //	}
 //}
 
-int SendTo(SOCKET Sock, const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+int Socket::SendTo(SOCKET Sock, const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
 	return sendto(Sock, lpBuf, nBufLen, nFlags, lpSockAddr, nSockAddrLen);
 }
 
-int ReceiveFrom(SOCKET Sock, char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags)
+int Socket::ReceiveFrom(SOCKET Sock, char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags)
 {
 #ifdef WIN32
 	return recvfrom(Sock, lpBuf, nBufLen, nFlags, lpSockAddr, lpSockAddrLen);
@@ -300,7 +300,7 @@ int ReceiveFrom(SOCKET Sock, char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int
 #endif//
 }
 
-int IOCtl(SOCKET Sock, long lCommand, u_long* lpArgument)
+int Socket::IOCtl(SOCKET Sock, long lCommand, u_long* lpArgument)
 {
 #ifdef WIN32
 	return ioctlsocket(Sock, lCommand, lpArgument);
@@ -309,7 +309,7 @@ int IOCtl(SOCKET Sock, long lCommand, u_long* lpArgument)
 #endif//
 }
 
-int IOCtl(SOCKET Sock, long lCommand, u_long Argument)
+int Socket::IOCtl(SOCKET Sock, long lCommand, u_long Argument)
 {
 #ifdef WIN32
 	return ioctlsocket(Sock, lCommand, &Argument);
@@ -318,7 +318,7 @@ int IOCtl(SOCKET Sock, long lCommand, u_long Argument)
 #endif//
 }
 
-int GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, int* lpOptionLen)
+int Socket::GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, int* lpOptionLen)
 {
 #ifdef WIN32
 	return getsockopt(Sock, nLevel, nOptionName, (char*)lpOptionValue, lpOptionLen);
@@ -327,17 +327,17 @@ int GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, in
 #endif//
 }
 
-int GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, int nOptionLen)
+int Socket::GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, int nOptionLen)
 {
 	return GetSockOpt(Sock, nLevel, nOptionName, lpOptionValue, &nOptionLen);
 }
 
-int SetSockOpt(SOCKET Sock, int nLevel, int nOptionName, const void* lpOptionValue, int nOptionLen)
+int Socket::SetSockOpt(SOCKET Sock, int nLevel, int nOptionName, const void* lpOptionValue, int nOptionLen)
 {
 	return setsockopt(Sock, nLevel, nOptionName, (char*)lpOptionValue, nOptionLen);
 }
 
-int SetSendTimeOut(SOCKET Sock, int TimeOut)
+int Socket::SetSendTimeOut(SOCKET Sock, int TimeOut)
 {
 #ifdef WIN32
 	return SetSockOpt(Sock, SOL_SOCKET, SO_SNDTIMEO, &TimeOut, sizeof(int));
@@ -349,7 +349,7 @@ int SetSendTimeOut(SOCKET Sock, int TimeOut)
 #endif//
 }
 
-int SetRecvTimeOut(SOCKET Sock, int TimeOut)
+int Socket::SetRecvTimeOut(SOCKET Sock, int TimeOut)
 {
 #ifdef WIN32
 	return SetSockOpt(Sock, SOL_SOCKET, SO_RCVTIMEO, &TimeOut, sizeof(int));
@@ -361,7 +361,7 @@ int SetRecvTimeOut(SOCKET Sock, int TimeOut)
 #endif//
 }
 
-int GetSendTimeOut(SOCKET Sock)
+int Socket::GetSendTimeOut(SOCKET Sock)
 {
 	int TimeOut = 0;
 #ifdef WIN32
@@ -378,7 +378,7 @@ int GetSendTimeOut(SOCKET Sock)
 	return SOCKET_ERROR;
 }
 
-int GetRecvTimeOut(SOCKET Sock)
+int Socket::GetRecvTimeOut(SOCKET Sock)
 {
 	int TimeOut = 0;
 #ifdef WIN32
@@ -395,7 +395,7 @@ int GetRecvTimeOut(SOCKET Sock)
 	return SOCKET_ERROR;
 }
 
-int SetKeepAlive(SOCKET Sock, u_long onoff, u_long time)
+int Socket::SetKeepAlive(SOCKET Sock, u_long onoff, u_long time)
 {
 #ifdef WIN32
 	if (SetSockOpt(Sock, SOL_SOCKET, SO_KEEPALIVE, &onoff,  sizeof onoff) == 0) { 
@@ -440,7 +440,7 @@ int SetKeepAlive(SOCKET Sock, u_long onoff, u_long time)
 	return SOCKET_ERROR;
 }
 
-int GetPeerName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
+int Socket::GetPeerName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 {
 #ifdef WIN32
 	return getpeername(Sock, lpSockAddr, lpSockAddrLen);
@@ -449,7 +449,7 @@ int GetPeerName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 #endif//
 }
 
-int GetSockName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
+int Socket::GetSockName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 {
 #ifdef WIN32
 	return getsockname(Sock, lpSockAddr, lpSockAddrLen);
@@ -458,7 +458,7 @@ int GetSockName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 #endif//
 }
 
-int GetLastError()
+int Socket::GetLastError()
 {
 #ifdef WIN32
 	return WSAGetLastError();
@@ -467,7 +467,7 @@ int GetLastError()
 #endif//
 }
 
-void SetLastError(int nError)
+void Socket::SetLastError(int nError)
 {
 #ifdef WIN32
 	WSASetLastError(nError);
@@ -476,7 +476,7 @@ void SetLastError(int nError)
 #endif//
 }
 
-int GetErrorMessageA(int nError, char* lpszMessage, int nMessageLen)
+int Socket::GetErrorMessage(int nError, char* lpszMessage, int nMessageLen)
 {
 #ifdef WIN32
 	DWORD dwError = nError;
@@ -505,7 +505,7 @@ int GetErrorMessageA(int nError, char* lpszMessage, int nMessageLen)
 	return SOCKET_ERROR;
 }
 
-int GetErrorMessageW(int nError, wchar_t* lpszMessage, int nMessageLen)
+int Socket::GetErrorMessage(int nError, wchar_t* lpszMessage, int nMessageLen)
 {
 #ifdef WIN32
 	DWORD dwError = nError;

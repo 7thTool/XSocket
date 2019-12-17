@@ -4,6 +4,7 @@
 #ifdef USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #endif//
+using namespace XSocket;
 
 /* 测试的HTTP报文 */
 const std::string http_get_raw = "GET /favicon.ico HTTP/1.1\r\n"
@@ -68,17 +69,17 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::DelayEventServiceT<Event,XSocket::ThreadService> ClientService;
+typedef DelayEventServiceT<Event,ThreadService> ClientService;
 
 class client
 #ifndef USE_MANAGER
-	: public XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::HttpSocketT<XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>>
+	: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>>
 #else
 	: public SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
 #endif//USE_MANAGER
 {
 #ifndef USE_MANAGER
-	typedef XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::HttpSocketT<XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>> Base;
 #else
 	typedef SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
 #endif//USE_MANAGER
@@ -138,7 +139,7 @@ protected:
 
 protected:
 	//
-	virtual void OnMessage(const XSocket::HttpRequest& req)
+	virtual void OnMessage(const HttpRequest& req)
 	{
 		PRINTF("%79s\n", req.body_.first);
 	}
@@ -177,7 +178,7 @@ class manager : public EPollManagerT<client,DEFAULT_FD_SETSIZE>
 class manager : public SelectManagerT<client,DEFAULT_FD_SETSIZE>
 #endif//
 #else
-class manager : public XSocket::ThreadService
+class manager : public ThreadService
 #endif//
 {
 protected:
@@ -234,14 +235,14 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	XSocket::InitNetEnv();
+	Socket::Init();
 	
 	manager m(DEFAULT_CLIENT_COUNT);
 	m.Start();
 	getchar();
 	m.Stop();
 
-	XSocket::ReleaseNetEnv();
+	Socket::Term();
 	return 0;
 }
 

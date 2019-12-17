@@ -14,7 +14,7 @@
 namespace XSocket {
 
 SocketEx::SocketEx()
-:Socket(),m_Role(SOCKET_ROLE_NONE),m_lEvent(0)
+:Socket(),role_(SOCKET_ROLE_NONE),event_(0)
 {
 	PRINTF("new Socket %p\n", this);
 }
@@ -23,14 +23,14 @@ SocketEx::~SocketEx()
 {
 	PRINTF("delete Socket %p\n", this);
 	ASSERT(!IsSocket());
-	m_Role = SOCKET_ROLE_NONE;
-	m_lEvent = 0;
+	role_ = SOCKET_ROLE_NONE;
+	event_ = 0;
 }
 
 SOCKET SocketEx::Open(int nSockAf, int nSockType)
 {
 	int nRole = SOCKET_ROLE_NONE;
-	SOCKET Sock = XSocket::Open(nSockAf, nSockType, 0);
+	SOCKET Sock = Socket::Open(nSockAf, nSockType, 0);
 	if ((nSockAf==AF_INET&&nSockType==SOCK_DGRAM)) {
 		nRole = SOCKET_ROLE_WORK;
 #ifdef WIN32
@@ -63,7 +63,7 @@ SOCKET SocketEx::Attach(SOCKET Sock, int Role)
 	if(Role != SOCKET_ROLE_NONE) {
 		OnRole(Role);
 	}
-	m_Role = Role;
+	role_ = Role;
 	return oSock;
 }
 
@@ -81,8 +81,8 @@ int SocketEx::Close()
 {
 	if(IsSocket()) {
 		PRINTF("Close Socket %p %d\n", this, (SOCKET)*this);
-		m_lEvent = 0;
-		return XSocket::Close(Detach());
+		event_ = 0;
+		return Socket::Close(Detach());
 	}
 	return 0;
 }
@@ -141,8 +141,8 @@ int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	OnRole(SOCKET_ROLE_CONNECT);
-	m_Role = SOCKET_ROLE_CONNECT;
-	m_lEvent |= FD_CONNECT;
+	role_ = SOCKET_ROLE_CONNECT;
+	event_ |= FD_CONNECT;
 #ifdef WIN32
 	IOCtl(FIONBIO, 1);//设为非阻塞模式
 #else
@@ -153,7 +153,7 @@ int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	int rlt = Socket::Connect(lpSockAddr, nSockAddrLen);
 	//让用户在OnConnect或者OnClose响应
 	//if (rlt==0) {
-	//	m_lEvent &= ~FD_CONNECT;
+	//	event_ &= ~FD_CONNECT;
 	//}
 	return rlt;
 }
@@ -164,8 +164,8 @@ int SocketEx::Listen(int nConnectionBacklog)
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	OnRole(SOCKET_ROLE_LISTEN);
-	m_Role = SOCKET_ROLE_LISTEN;
-	m_lEvent |= FD_ACCEPT;
+	role_ = SOCKET_ROLE_LISTEN;
+	event_ |= FD_ACCEPT;
 #ifdef WIN32
 	IOCtl(FIONBIO, 1);//设为非阻塞模式
 #else
@@ -286,7 +286,7 @@ void SocketEx::OnClose(int nErrorCode)
 {
 #ifdef _DEBUG
 	char szError[1024] = {0};
-	GetErrorMessageA(nErrorCode,szError,1023);
+	GetErrorMessage(nErrorCode,szError,1023);
 	PRINTF("(%p %p %d)::OnClose:%d %s\n", Service::service(), this, (SOCKET)*this, nErrorCode, szError);
 #else
 	PRINTF("(%p %p %d)::OnClose:%d\n", Service::service(), this, (SOCKET)*this, nErrorCode);

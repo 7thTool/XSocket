@@ -37,8 +37,6 @@ namespace XSocket {
 	class SocketEx;
 	class Service;
 
-const uint32_t MAX_SOCK_COUNT =	(u_short)(-1);
-
 /*!
  *	@brief Socket 角色定义.
  *
@@ -85,7 +83,7 @@ public:
 	int SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags = 0);
 	int ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags = 0);
 
-	inline int Role() { return m_Role; }
+	inline int Role() { return role_; }
 	inline bool IsNoneRole() { return	Role()==SOCKET_ROLE_NONE; }
 	inline bool IsConnectSocket() { return Role()==SOCKET_ROLE_CONNECT; }
 	inline bool IsListenSocket() { return Role()==SOCKET_ROLE_LISTEN; }
@@ -94,13 +92,13 @@ public:
 	inline void AttachService(Service* svr) { OnAttachService(svr); }
 	inline void DetachService(Service* svr) { OnDetachService(svr); }
 	
-	inline void Select(int lEvent) { m_lEvent |= lEvent; }
-	inline void RemoveSelect(int lEvent) { m_lEvent &= ~lEvent; }
+	inline void Select(int lEvent) { event_ |= lEvent; }
+	inline void RemoveSelect(int lEvent) { event_ &= ~lEvent; }
 	inline bool IsSelect(int evt, bool all = false) {
 		if(all) {
-			return m_lEvent & evt == evt;
+			return event_ & evt == evt;
 		} 
-		return m_lEvent & evt;
+		return event_ & evt;
 	}
 	inline bool IsSelectRead() { return IsSelect(FD_READ|FD_OOB|FD_ACCEPT); }
 	inline bool IsSelectWrite() { return IsSelect(FD_WRITE|FD_CONNECT); }
@@ -295,8 +293,9 @@ protected:
 	virtual void OnClose(int nErrorCode);
 
 protected:
-	uint8_t m_Role;
-	uint8_t m_lEvent;
+	uint8_t role_:3;
+	uint8_t flags_:5;
+	uint8_t event_;
 
 private:
 	SocketEx(const SocketEx& Sock) {};
@@ -1473,7 +1472,7 @@ protected:
 			SOCKADDR_IN Addr = {0};
 			int AddrLen = sizeof(SOCKADDR_IN);
 			SOCKET Sock = Base::Accept((SOCKADDR*)&Addr, &AddrLen);
-	 		if(XSocket::IsSocket(Sock)) {
+	 		if(XSocket::Socket::IsSocket(Sock)) {
 				Base::Trigger(FD_ACCEPT, (const char*)&Addr, AddrLen, (int)Sock);
 				//bConitnue = true;
 			} else {
@@ -1574,7 +1573,7 @@ protected:
 				//测试下还能不能再接收SOCKET
 				if(SockManager::AddSocket(NULL) < 0) {
 					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
-					XSocket::Close(Sock);
+					XSocket::Socket::Close(Sock);
 					return;
 				}
 				std::shared_ptr<Socket> sock_ptr = std::make_shared<Socket>();

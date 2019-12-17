@@ -3,6 +3,7 @@
 #ifdef USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #endif//
+using namespace XSocket;
 
 class client;
 
@@ -29,18 +30,18 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef XSocket::DelayEventServiceT<Event,XSocket::ThreadService> ClientService;
+typedef DelayEventServiceT<Event,ThreadService> ClientService;
 
 class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	: public XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>
+	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketT<SocketEx>>>>
 #else
 	: public SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	: public XSocket::SocketExImpl<client,XSocket::SelectUdpClientT<ClientService,XSocket::SimpleUdpSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>
+	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketT<SocketEx>>>>
 #else
 	: public SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > >
 #endif//USE_MANAGER
@@ -48,13 +49,13 @@ class client
 {
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	typedef XSocket::SocketExImpl<client,XSocket::SelectClientT<ClientService,XSocket::SimpleSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketT<SocketEx>>>> Base;
 #else
 	typedef SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	typedef XSocket::SocketExImpl<client,XSocket::SelectUdpClientT<ClientService,XSocket::SimpleUdpSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>> Base;
+	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketT<SocketEx>>>> Base;
 #else
 	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > Base;
 #endif//USE_MANAGER
@@ -108,9 +109,9 @@ protected:
 	#endif//
 		SOCKADDR_IN Addr = {0};
 		Addr.sin_family = AF_INET;
-		Addr.sin_addr.s_addr = XSocket::Ip2N(XSocket::Url2Ip(addr_.c_str()));
-		Addr.sin_port = XSocket::H2N((u_short)port_);
-		PostBuf("hello.",6,Addr,XSocket::SOCKET_PACKET_FLAG_TEMPBUF);
+		Addr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
+		Addr.sin_port = H2N((u_short)port_);
+		PostBuf("hello.",6,Addr,SOCKET_PACKET_FLAG_TEMPBUF);
 	#endif//
 		return true;
 	}
@@ -171,7 +172,7 @@ protected:
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
 	{
 		PRINTF("say:hello.\n");
-		PostBuf("hello.",6,SockAddr,XSocket::SOCKET_PACKET_FLAG_TEMPBUF);
+		PostBuf("hello.",6,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}
 #endif//
@@ -184,7 +185,7 @@ class manager : public EPollManager<client,DEFAULT_FD_SETSIZE>
 class manager : public SelectManager<client,DEFAULT_FD_SETSIZE>
 #endif//
 #else
-class manager : public XSocket::ThreadService
+class manager : public ThreadService
 #endif//
 {
 protected:
@@ -245,14 +246,14 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	XSocket::InitNetEnv();
+	Socket::Init();
 	
 	manager m(DEFAULT_CLIENT_COUNT);
 	m.Start();
 	getchar();
 	m.Stop();
 
-	XSocket::ReleaseNetEnv();
+	Socket::Term();
 	return 0;
 }
 

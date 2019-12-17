@@ -201,7 +201,7 @@ public:
 					if (SOCKET_ERROR != epoll_ctl(m_epfd, EPOLL_CTL_ADD, fd, &event)) {
 						//return i;
 					} else {
-						PRINTF("epoll_ctl err:%d\n", XSocket::GetLastError());
+						PRINTF("epoll_ctl err:%d\n", XSocket::Socket::GetLastError());
 					}
 					return i;
 				} else {

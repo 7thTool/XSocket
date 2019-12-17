@@ -124,7 +124,7 @@ public:
 			}
 		} while(false);
 		if(!lpfnAcceptEx || !lpfnGetAcceptExSockaddrs || !lpfnConnectEx) {
-			XSocket::Close(Sock);
+			XSocket::Socket::Close(Sock);
 			return INVALID_SOCKET;
 		}
 		return Attach(Sock);
@@ -133,7 +133,7 @@ public:
 	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 	{
 		//为即将到来的Client连接事先创建好Socket，异步连接需要事先将此Socket备下，再行连接
-		SOCKET Sock = XSocket::Open(AF_INET, SOCK_STREAM, 0);
+		SOCKET Sock = XSocket::Socket::Open(AF_INET, SOCK_STREAM, 0);
 		if(Sock == INVALID_SOCKET) {
 			return INVALID_SOCKET;
 		}
@@ -146,7 +146,7 @@ public:
 		pOverlapped->Sock = Sock;
 		pOverlapped->NumberOfBytesReceived = 0;
 		//调用AcceptEx函数，地址长度需要在原有的上面加上16个字节
-		if(!lpfnAcceptEx(m_Sock, pOverlapped->Sock,
+		if(!lpfnAcceptEx((SOCKET)*this, pOverlapped->Sock,
 			pOverlapped->Buffer.buf, pOverlapped->Buffer.len, 
 			sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
 			&pOverlapped->NumberOfBytesReceived, &(pOverlapped->Overlapped))) {
@@ -200,7 +200,7 @@ public:
 		pOverlapped->Flags = 0;
 		pOverlapped->OperationType = IOCP_OPERATION_CONNECT;
 		pOverlapped->NumberOfBytesSended = 0;
-		if(lpfnConnectEx(m_Sock, 
+		if(lpfnConnectEx((SOCKET)*this, 
 			lpSockAddr, 
 			nSockAddrLen, 
 			pOverlapped->Buffer.buf,
@@ -226,7 +226,7 @@ public:
 		pOverlapped->Flags = nFlags;
 		pOverlapped->OperationType = IOCP_OPERATION_SEND;
 		pOverlapped->NumberOfBytesSended = 0;
-		int nSend = WSASend(m_Sock, 
+		int nSend = WSASend((SOCKET)*this, 
 			&pOverlapped->Buffer, 
 			1, 
 			(LPDWORD)&pOverlapped->NumberOfBytesSended, 
@@ -248,7 +248,7 @@ public:
 		pOverlapped->Flags = nFlags;
 		pOverlapped->OperationType = IOCP_OPERATION_RECEIVE;
 		pOverlapped->NumberOfBytesReceived = 0;
-		int nRecv = WSARecv(m_Sock, 
+		int nRecv = WSARecv((SOCKET)*this, 
 			&pOverlapped->Buffer, 
 			1, 
 			(LPDWORD)&pOverlapped->NumberOfBytesReceived, 
@@ -263,15 +263,15 @@ public:
 
 	inline void Select(int lEvent) {  
 		int lAsyncEvent = 0;
-		if(!(m_lEvent & FD_READ) && (lEvent & FD_READ)) {
+		if(!(event_ & FD_READ) && (lEvent & FD_READ)) {
 			lAsyncEvent |= FD_READ;
 			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)this, &m_ReceiveOverlapped.Overlapped);
 		}
-		if(!(m_lEvent & FD_WRITE) && (lEvent & FD_WRITE)) {
+		if(!(event_ & FD_WRITE) && (lEvent & FD_WRITE)) {
 			lAsyncEvent |= FD_WRITE;
 			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)this, &m_SendOverlapped.Overlapped);
 		}
-		m_lEvent |= lEvent;
+		event_ |= lEvent;
 		if(lAsyncEvent & FD_READ) {
 			OnReceive(0);
 		}
@@ -476,7 +476,7 @@ protected:
 					}
 					if(lpOverlapped->OperationType == IOCP_OPERATION_ACCEPT) {
 						if(lpOverlapped->Sock != INVALID_SOCKET) {
-							XSocket::Close(lpOverlapped->Sock);
+							XSocket::Socket::Close(lpOverlapped->Sock);
 							lpOverlapped->Sock = INVALID_SOCKET;
 						}
 					}
