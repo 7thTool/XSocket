@@ -352,12 +352,12 @@ int SetSendTimeOut(SOCKET Sock, int TimeOut)
 int SetRecvTimeOut(SOCKET Sock, int TimeOut)
 {
 #ifdef WIN32
-	return SetSockOpt(Sock, SOL_SOCKET, SO_SNDTIMEO, &TimeOut, sizeof(int));
+	return SetSockOpt(Sock, SOL_SOCKET, SO_RCVTIMEO, &TimeOut, sizeof(int));
 #else
 	struct timeval sttime;
 	sttime.tv_sec = TimeOut/1000;
 	sttime.tv_usec = 0;
-	return SetSockOpt(Sock, SOL_SOCKET, SO_SNDTIMEO, (void*)&sttime, sizeof(sttime));
+	return SetSockOpt(Sock, SOL_SOCKET, SO_RCVTIMEO, (void*)&sttime, sizeof(sttime));
 #endif//
 }
 
