@@ -164,6 +164,10 @@ protected:
 	//
 	virtual bool OnInit()
 	{
+		bool ret = Base::OnInit();
+		if(!ret) {
+			return false;
+		}
 		if(port_ <= 0) {
 			return false;
 		}
