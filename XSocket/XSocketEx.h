@@ -951,19 +951,19 @@ protected:
 		sock_count_ = 0;
 	}
 
-	// inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
-	// 	if(!sock_ptr) {
-	// 		return false;
-	// 	}
-	// 	int i;
-	// 	for (i=0;i<uFD_SETSize;i++)
-	// 	{
-	// 		if(sock_ptrs_[i].get()==sock_ptr) {
-	// 			return sock_ptrs_[i];
-	// 		}
-	// 	}
-	// 	return nullptr;
-	// }
+	inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
+		if(!sock_ptr) {
+			return false;
+		}
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(sock_ptrs_[i].get()==sock_ptr) {
+				return sock_ptrs_[i];
+			}
+		}
+		return nullptr;
+	}
 
 protected:
 	//
