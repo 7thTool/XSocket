@@ -228,6 +228,11 @@ void SocketEx::OnReceive(const char* lpBuf, int nBufLen, int nFlags)
 	PRINTF("(%p %p %d)::OnReceive:%.*s\n", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
 }
 
+void SocketEx::OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+{
+	PRINTF("(%p %p %d)::OnReceiveFrom(%s:%d): %.*s\n", Service::service(), this, (SOCKET)*this, N2Ip(Addr2Ip(lpSockAddr,nSockAddrLen)), N2H(Addr2Port(lpSockAddr,nSockAddrLen)), nBufLen, lpBuf);
+}
+
 void SocketEx::OnSend(int nErrorCode)
 {
 	if(nErrorCode) {
@@ -238,6 +243,11 @@ void SocketEx::OnSend(int nErrorCode)
 void SocketEx::OnSend(const char* lpBuf, int nBufLen, int nFlags)
 {
 	PRINTF("(%p %p %d)::OnSend:%.*s\n", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+}
+
+void SocketEx::OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+{
+	PRINTF("(%p %p %d)::OnSendTo(%s:%d):%.*s\n", Service::service(), this, (SOCKET)*this, N2Ip(Addr2Ip(lpSockAddr,nSockAddrLen)), N2H(Addr2Port(lpSockAddr,nSockAddrLen)), nBufLen, lpBuf);
 }
 
 void SocketEx::OnOOB(int nErrorCode)

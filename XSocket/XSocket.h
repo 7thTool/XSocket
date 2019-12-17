@@ -44,9 +44,13 @@ namespace XSocket {
 	u_short H2N(u_short n);
 	u_short N2H(u_short n);
 
-	unsigned long Ip2N(const char* Ip);
-	const char* N2Ip(unsigned long Ip);
+	u_long Ip2N(const char* Ip);
+	const char* N2Ip(u_long Ip);
 	const char* Url2Ip(const char* Url);
+
+	u_short Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen);
+	u_long Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen);
+
 	int GetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints, struct addrinfo **result);
 	void SetAddrInfo(struct sockaddr * addr, u_short port);
 

@@ -93,12 +93,12 @@ u_short N2H(u_short n)
 	return ntohs(n);
 }
 
-unsigned long Ip2N(const char* Ip)
+u_long Ip2N(const char* Ip)
 {
 	return inet_addr(Ip);
 }
 
-const char* N2Ip(unsigned long Ip)
+const char* N2Ip(u_long Ip)
 {
 	struct in_addr addr = {0};
 	addr.s_addr = Ip;
@@ -119,6 +119,32 @@ const char* Url2Ip(const char* Url)
 	}
 	//本来就是IP地址
 	return Url; 
+}
+
+u_short Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+{
+	switch (lpSockAddr->sa_family)
+	{
+	case AF_INET:
+		return ((SOCKADDR_IN*)lpSockAddr)->sin_port;
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+u_long Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+{
+	switch (lpSockAddr->sa_family)
+	{
+	case AF_INET:
+		return ((SOCKADDR_IN*)lpSockAddr)->sin_addr.s_addr;
+		break;
+	default:
+		break;
+	}
+	return 0;
 }
 
 int GetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints, struct addrinfo **result)

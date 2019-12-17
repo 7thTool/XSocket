@@ -12,10 +12,17 @@ public:
 	client* dst = nullptr;
 	int id;
 	std::string buf;
+#ifdef USE_UDP
+	SOCKADDR_IN addr;
+#endif
 	int flags;
 
 	Event() {}
+#ifndef USE_UDP
 	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+#else
+	Event(client* d, int id, const char* buf, int len, const SOCKADDR_IN& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+#endif
 
 	// inline int get_id() { return evt; }
 	// inline const char* get_data() { return data.c_str(); }
@@ -33,7 +40,7 @@ class client
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	: public SocketExT<client,SelectUdpClient<SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
+	: public XSocket::SocketExImpl<client,XSocket::SelectUdpClientT<ClientService,XSocket::SimpleUdpSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>>
 #else
 	: public SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > >
 #endif//USE_MANAGER
@@ -47,7 +54,7 @@ class client
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	typedef SocketExT<client,SelectUdpClient<SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
+	typedef XSocket::SocketExImpl<client,XSocket::SelectUdpClientT<ClientService,XSocket::SimpleUdpSocketT<XSocket::ConnectSocketT<XSocket::SocketEx>>>> Base;
 #else
 	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > Base;
 #endif//USE_MANAGER
@@ -88,11 +95,23 @@ protected:
 		}
 	#ifndef USE_UDP
 		Open();
+		Connect(addr_.c_str(), port_);
 	#else
 		Open(AF_INET,SOCK_DGRAM);
+		Select(FD_READ);
+	#ifdef WIN32
+		IOCtl(FIONBIO, 1);//设为非阻塞模式
+	#else
+		int flags = IOCtl(F_GETFL,(u_long)0); 
+		IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
+		//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
 	#endif//
-		Connect(addr_.c_str(), port_);
-
+		SOCKADDR_IN Addr = {0};
+		Addr.sin_family = AF_INET;
+		Addr.sin_addr.s_addr = XSocket::Ip2N(XSocket::Url2Ip(addr_.c_str()));
+		Addr.sin_port = XSocket::H2N((u_short)port_);
+		PostBuf("hello.",6,Addr,XSocket::SOCKET_PACKET_FLAG_TEMPBUF);
+	#endif//
 		return true;
 	}
 
@@ -107,41 +126,31 @@ protected:
 #endif//USE_MANAGER
 
 public:
+#ifndef USE_UDP
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
 	}
+#else
+	inline void PostBuf(const char* lpBuf, int nBufLen, const SOCKADDR_IN& addr, int nFlags = 0)
+	{
+		Post(Event(this,FD_WRITE,lpBuf,nBufLen,addr,nFlags));
+	}
+#endif
 
 protected:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {
+#ifndef USE_UDP
 			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
+#else
+			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.addr,evt.flags);
+#endif
 		}
 	}
-	//
-	/*virtual void OnIdle(int nErrorCode)
-	{
-		Base::OnIdle(nErrorCode);
-
-		if (!IsConnected()) {
-			return;
-		}
-
-		char lpBuf[DEFAULT_BUFSIZE+1];
-		int nBufLen = 0;
-		int nFlags = 0;
-		nBufLen = Receive(lpBuf,DEFAULT_BUFSIZE,&nFlags);
-		if (nBufLen<=0) {
-			return;
-		}
-		lpBuf[nBufLen] = 0;
-		PRINTF("%s\n", lpBuf);
-		nBufLen = sprintf(lpBuf,"%d", ++m_incr);
-		Send(lpBuf,nBufLen,SOCKET_PACKET_FLAG_TEMPBUF);
-		PRINTF("say:%s\n", lpBuf);
-	}*/
-
+	
+#ifndef USE_UDP
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		Base::OnRecvBuf(lpBuf, nBufLen, nFlags);
@@ -158,6 +167,14 @@ protected:
 		PRINTF("say:hello.\n");
 		SendBuf("hello.",6,0);
 	}
+#else
+	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
+	{
+		PRINTF("say:hello.\n");
+		PostBuf("hello.",6,SockAddr,XSocket::SOCKET_PACKET_FLAG_TEMPBUF);
+		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
+	}
+#endif//
 };
 
 #ifdef USE_MANAGER

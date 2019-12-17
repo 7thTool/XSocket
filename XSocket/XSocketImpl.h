@@ -54,12 +54,12 @@ enum
 };
 
 /*!
- *	@brief SocketWrapper 定义.
+ *	@brief TcpSocket 定义.
  *
  *	封装SocketEx，定义对称的发送/接收（写入/读取）网络架构
  */
 template<class TBase = SocketEx>
-class SocketWrapper : public TBase
+class TcpSocket : public TBase
 {
 	typedef TBase Base;
 protected:
@@ -70,19 +70,19 @@ protected:
 	const char* m_pSendBuf;
 	int m_nSendBufLen;
 public:
-	SocketWrapper()
+	TcpSocket()
 		:Base()
 		,m_nRecvLen(0)
-		,m_pRecvBuf(NULL)
+		,m_pRecvBuf(nullptr)
 		,m_nRecvBufLen(0)
 		,m_nSendLen(0)
-		,m_pSendBuf(NULL)
+		,m_pSendBuf(nullptr)
 		,m_nSendBufLen(0)
 	{
 		
 	}
 
-	virtual ~SocketWrapper()
+	virtual ~TcpSocket()
 	{
 
 	}
@@ -91,10 +91,10 @@ public:
 	{
 		int ret = Base::Close();
 		m_nRecvLen = 0;
-		m_pRecvBuf = NULL;
+		m_pRecvBuf = nullptr;
 		m_nRecvBufLen = 0;
 		m_nSendLen = 0;
-		m_pSendBuf = NULL;
+		m_pSendBuf = nullptr;
 		m_nSendBufLen = 0;
 		return ret;
 	}
@@ -154,7 +154,7 @@ protected:
 		bool bConitnue = false;
 		do {
 			bConitnue = false;
-			char* lpBuf = NULL;
+			char* lpBuf = nullptr;
 			int nBufLen = 0;
 			if (!m_pRecvBuf) {
 				if(!PrepareRecvBuf(lpBuf,nBufLen)) {
@@ -225,7 +225,7 @@ protected:
 		bool bConitnue = false;
 		do {
 			bConitnue = false;
-			const char* lpBuf = NULL;
+			const char* lpBuf = nullptr;
 			int nBufLen = 0;
 			if (!m_pSendBuf) {
 				if(!PrepareSendBuf(lpBuf,nBufLen)) {
@@ -277,7 +277,7 @@ protected:
 		if (m_nSendLen >= m_nSendBufLen) {
 			OnSendBuf(m_pSendBuf, m_nSendLen);
 			m_nSendLen = 0;
-			m_pSendBuf = NULL;
+			m_pSendBuf = nullptr;
 			m_nSendBufLen = 0;
 		}
 	}
@@ -289,9 +289,9 @@ protected:
  *	封装SimpleSocketT，实现简单的流式发送/接收（写入/读取）网络架构
  */
 template<class TBase, u_short uMaxBufSize = 8*1024>
-class SimpleSocketT : public SocketWrapper<TBase>
+class SimpleSocketT : public TcpSocket<TBase>
 {
-	typedef SocketWrapper<TBase> Base;
+	typedef TcpSocket<TBase> Base;
 protected:
 	typedef std::string SimpleBuffer;
 	SimpleBuffer m_RecvBuffer;
@@ -345,19 +345,18 @@ public:
 
 	inline int SendBufDirect(int nShrinkLen, int nFlags = 0)
 	{
+		ASSERT(Base::IsSocket());
 		if(nShrinkLen > 0) {
 			m_SendBuffer.resize(m_SendBuffer.size()-nShrinkLen);
 		}
 		int nBufLen = m_SendBuffer.size();
-		if(Base::IsSocket()) {
-			if(!Base::IsSelect(FD_WRITE)) {
-				Base::Select(FD_WRITE);
-			}
+		if(!Base::IsSelect(FD_WRITE)) {
+			Base::Select(FD_WRITE);
 		}
 		return nBufLen;
 	}
 
-// 	int RecvBuf(char* lpBuf, int nBufLen, int* nFlags = NULL)
+// 	int RecvBuf(char* lpBuf, int nBufLen, int* nFlags = nullptr)
 // 	{
 // 		std::lock_guard<std::mutex> lock(m_RecvSection);
 // 		ASSERT(nFlags);
@@ -391,7 +390,7 @@ public:
 // 		int nFlags = 0;
 // 		do
 // 		{
-// 			int nBufLen = Receive(NULL,0,&nFlags);
+// 			int nBufLen = Receive(nullptr,0,&nFlags);
 // 			if (!(nFlags&SOCKET_PACKET_FLAG_COMPLETE)) {
 // 				break;
 // 			}
@@ -419,7 +418,7 @@ public:
 // 	}
 
 protected:
-	//SocketWrapper 实现接口
+	//TcpSocket 实现接口
 	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen)
 	{
 		//std::lock_guard<std::mutex> lock(m_RecvSection);
@@ -639,7 +638,7 @@ public:
 // 		return nBufLen;
 // 	}
 
-// 	int Receive(char* lpBuf, int nBufLen = uMaxBufSize, int* nFlags = NULL)
+// 	int Receive(char* lpBuf, int nBufLen = uMaxBufSize, int* nFlags = nullptr)
 // 	{
 // 		std::unique_lock<std::mutex> lock(m_RecvSection);
 
@@ -687,7 +686,7 @@ public:
 // 	}
 
 // protected:
-// 	//SocketWrapper 实现接口
+// 	//TcpSocket 实现接口
 // 	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen)
 // 	{
 // 		SABUF saZero = {0};
@@ -743,12 +742,12 @@ public:
 //////////////////////////////////////////////////////////////////////////
 
 /*!
- *	@brief SimpleUdpSocket 定义.
+ *	@brief UdpSocket 定义.
  *
- *	封装SimpleUdpSocket，定义简单的Udp数据包网络架构
+ *	封装UdpSocket，定义Udp套接字实现接口
  */
 template<class TBase = SocketEx, class SockAddrType = SOCKADDR_IN>
-class SimpleUdpSocket : public TBase
+class UdpSocket : public TBase
 {
 	typedef TBase Base;
 protected:
@@ -757,17 +756,17 @@ protected:
 	int m_nSendBufLen;
 	const SockAddrType* m_pSendAddr;
 public:
-	SimpleUdpSocket()
+	UdpSocket()
 		:Base()
 		,m_nSendLen(0)
-		,m_pSendBuf(NULL)
+		,m_pSendBuf(nullptr)
 		,m_nSendBufLen(0)
-		,m_pSendAddr(NULL)
+		,m_pSendAddr(nullptr)
 	{
 
 	}
 
-	virtual ~SimpleUdpSocket()
+	virtual ~UdpSocket()
 	{
 
 	}
@@ -776,9 +775,9 @@ public:
 	{
 		int ret = Base::Close();
 		m_nSendLen = 0;
-		m_pSendBuf = NULL;
+		m_pSendBuf = nullptr;
 		m_nSendBufLen = 0;
-		m_pSendAddr = NULL;
+		m_pSendAddr = nullptr;
 		return ret;
 	}
 
@@ -788,10 +787,10 @@ protected:
 	virtual int ParseBuf(const char* lpBuf, int & nBufLen, const SockAddrType & SockAddr) { return SOCKET_PACKET_FLAG_COMPLETE; }
 
 	//准备接收缓存
-	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SockAddrType* & lpSockAddr)
-	{
-		return false;
-	}
+	// virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SockAddrType* & lpSockAddr)
+	// {
+	// 	return false;
+	// }
 
 	//接收完整一个包
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
@@ -849,15 +848,29 @@ protected:
 					break;
 				}
 			} else {
-				ASSERT(nSockAddrLen==sizeof(SockAddrType));
-	#if 0
-				PRINTF("(%s:%d):%s\n",N2Ip(SockAddr.sin_addr.s_addr),N2H(SockAddr.sin_port),lpBuf);
-	#endif//
-				//int nFlags = ParseBuf(lpBuf,nBufLen,SockAddr);
-				OnRecvBuf(lpBuf,nBufLen,SockAddr);
+				OnReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&SockAddr,nSockAddrLen, 0);
 				bConitnue = Base::IsSocket();
 			}
 		} while(bConitnue);
+	}
+
+	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	{
+		ASSERT(nSockAddrLen==sizeof(SockAddrType));
+		Base::OnReceiveFrom(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags); 
+		const char* lpParseBuf = lpBuf;
+		int nParseBufLen = nBufLen;
+		do {
+			int nPacketBufLen = nParseBufLen;
+			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, *(SockAddrType*)lpSockAddr);
+			if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
+				//Base::Trigger(FD_CLOSE, Base::GetLastError());
+				break;
+			}
+			OnRecvBuf(lpParseBuf, nPacketBufLen, *(SockAddrType*)lpSockAddr);
+			lpParseBuf += nPacketBufLen;
+			nParseBufLen -= nPacketBufLen;
+		} while (nParseBufLen > 0);
 	}
 
 	virtual void OnSend(int nErrorCode)
@@ -869,7 +882,7 @@ protected:
 		bool bConitnue = false;
 		do {
 			bConitnue = false;
-			const char* lpBuf = NULL;
+			const char* lpBuf = nullptr;
 			int nBufLen = 0;
 			const SockAddrType* lpSockAddr;
 			if (!m_pSendBuf) {
@@ -882,6 +895,7 @@ protected:
 				m_nSendBufLen = nBufLen;
 				m_pSendAddr = lpSockAddr;
 			}
+			ASSERT(m_nSendLen == 0);
 			lpBuf = m_pSendBuf+m_nSendLen;
 			nBufLen = (int)(m_nSendBufLen-m_nSendLen);
 			lpSockAddr = m_pSendAddr;
@@ -909,22 +923,26 @@ protected:
 					break;
 				}
 			} else {
-				m_nSendLen += nBufLen;
-				lpBuf = m_pSendBuf;
-				nBufLen = m_nSendLen;
-				lpSockAddr = m_pSendAddr;
-				if(nBufLen>=m_nSendBufLen) {
-					OnSendBuf(lpBuf,nBufLen,*lpSockAddr);
-					m_nSendLen = 0;
-					m_pSendBuf = NULL;
-					m_nSendBufLen = 0;
-					m_pSendAddr = NULL;
-					bConitnue = Base::IsSocket(); //继续发送
-				} else {
-					ASSERT(0); //UDP 不应该发送太大的包导致发不完，建议520字节包
-				}
+				OnSendTo(lpBuf,nBufLen,(const SOCKADDR*)lpSockAddr,sizeof(SockAddrType),0);
+				bConitnue = Base::IsSocket(); //继续发送
 			}
 		} while(bConitnue);
+	}
+	
+	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	{
+		ASSERT(nSockAddrLen==sizeof(SockAddrType));
+		Base::OnSendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		m_nSendLen += nBufLen;
+		if (m_nSendLen >= m_nSendBufLen) {
+			OnSendBuf(m_pSendBuf, m_nSendLen, *(SockAddrType*)lpSockAddr);
+			m_nSendLen = 0;
+			m_pSendBuf = nullptr;
+			m_nSendBufLen = 0;
+			m_pSendAddr = nullptr;
+		} else {
+			ASSERT(0); //UDP 不应该发送太大的包导致发不完，建议520字节包
+		}
 	}
 };
 
@@ -934,21 +952,23 @@ protected:
  *	封装SimpleUdpSocketT，实现简单的Udp数据包网络架构
  */
 template<class TBase, class SockAddrType = SOCKADDR_IN>
-class SimpleUdpSocketT : public TBase
+class SimpleUdpSocketT : public UdpSocket<TBase,SockAddrType>
 {
-	typedef TBase Base;
+	typedef UdpSocket<TBase,SockAddrType> Base;
 protected:
-	typedef std::string SimpleBuffer;
-	SimpleBuffer m_RecvBuffer;
-	SimpleBuffer m_SendBuffer;
-	SimpleBuffer m_PrepareSendBuffer;
+	typedef struct tagSABuf
+	{
+		const char* pSendBuf;
+		int nSendBufLen;
+		SockAddrType SendAddr;
+		int nSendFlags;
+	}SABUF,*PSABUF;
+	std::deque<SABUF> SendBuffers_;
 
 public:
 	SimpleUdpSocketT()
 	{
-		m_RecvBuffer.reserve(8*1024); //8k
-		m_SendBuffer.reserve(8*1024); //8k
-		m_PrepareSendBuffer.reserve(1024); //1k
+		//SendBuffers_.reserve(256);
 	}
 
 	virtual ~SimpleUdpSocketT()
@@ -959,114 +979,61 @@ public:
 	inline int Close()
 	{
 		int ret = Base::Close();
-		//std::unique_lock<std::mutex> LockSend(m_SendSection);
 
-		m_PrepareSendBuffer.clear();
-		m_SendBuffer.clear();
-		//LockSend.unlock();
+		for(auto& buffer : SendBuffers_)
+		{
+			if(buffer.nSendFlags & SOCKET_PACKET_FLAG_TEMPBUF) {
+				delete []buffer.pSendBuf;
+			}
+		}
+		SendBuffers_.clear();
 
-		//std::lock_guard<std::mutex> LockRecv(m_RecvSection);
-
-		m_RecvBuffer.clear();
-		//LockRecv.unlock();
 		return ret;
 	}
 
 	int SendBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr, int nFlags = 0)
 	{
-		//std::unique_lock<std::mutex> lock(m_SendSection);
-
-		const char* pPack = NULL;
-		int nPackLen = sizeof(int) + sizeof(SockAddrType) + nBufLen;
-		pPack = (const char*)&nPackLen;
-		m_SendBuffer.insert(m_SendBuffer.end(),pPack,pPack+sizeof(int));
-		pPack = (const char*)&SockAddr;
-		m_SendBuffer.insert(m_SendBuffer.end(),pPack,pPack+sizeof(SockAddrType));
-		m_SendBuffer.insert(m_SendBuffer.end(),lpBuf,lpBuf+nBufLen);
-
+		ASSERT(Base::IsSocket());
+		SABUF buffer = {0};
+		if(nFlags & SOCKET_PACKET_FLAG_TEMPBUF) {
+			char* pNewBuf = new char[nBufLen];
+			memcpy(pNewBuf, lpBuf, nBufLen);
+			buffer.pSendBuf = pNewBuf;
+		} else {
+			buffer.pSendBuf = lpBuf;
+		}
+		buffer.nSendBufLen = nBufLen;
+		buffer.SendAddr = SockAddr;
+		buffer.nSendFlags = nFlags;
+		SendBuffers_.push_back(buffer);
+		if(!Base::IsSelect(FD_WRITE)) {
+			Base::Select(FD_WRITE);
+		}
 		return nBufLen;
 	}
 
-	int Receive(char* lpBuf, int nBufLen, SockAddrType* lpSockAddr, int* nFlags = NULL)
-	{
-		//std::unique_lock<std::mutex> lock(m_RecvSection);
-		ASSERT(nFlags);
-		int nRecvBufLen = m_RecvBuffer.size();
-		if (nRecvBufLen>0) {
-			ASSERT(nRecvBufLen>(sizeof(int)+sizeof(SockAddrType)));
-			int* pPackLen = (int*)&m_RecvBuffer[0];
-			SockAddrType* pPackAddr = (SockAddrType*)(pPackLen+1);
-			const char* pPackBuf = (const char*)(pPackAddr+1);
-			ASSERT(*pPackLen<=nRecvBufLen);
-			int nPackBufLen = (*pPackLen-(sizeof(int)+sizeof(SockAddrType)));
-			if (lpSockAddr) {
-				*lpSockAddr = *pPackAddr;
-			}
-			if (nBufLen>=nPackBufLen) {
-				nBufLen = nPackBufLen;
-				memcpy(lpBuf,pPackBuf,nBufLen);
-				m_RecvBuffer.erase(m_RecvBuffer.begin(),m_RecvBuffer.begin()+*pPackLen);
-			}
-			return nPackBufLen;
-		}
-		return 0;
-	}
-
 protected:
-	//SocketWrapper 实现接口
-	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SockAddrType* & lpSockAddr)
-	{
-		return false;
-	}
-
-	virtual void OnReceive(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr) 
-	{
-		Base::OnReceive(lpBuf, nBufLen, SockAddr);
-
-		//std::unique_lock<std::mutex> lock(m_RecvSection);
-
-		const char* pTempBuf = NULL;
-		int nPackLen = sizeof(int) + sizeof(SockAddrType) + nBufLen;
-		pTempBuf = (const char*)&nPackLen;
-		m_RecvBuffer.insert(m_RecvBuffer.end(),pTempBuf,pTempBuf+sizeof(int));
-		pTempBuf = (const char*)&SockAddr;
-		m_RecvBuffer.insert(m_RecvBuffer.end(),pTempBuf,pTempBuf+sizeof(SockAddrType));
-		m_RecvBuffer.insert(m_RecvBuffer.end(),lpBuf,lpBuf+nBufLen);
-	}
-
+	//
 	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SockAddrType* & lpSockAddr)
 	{
-		//std::unique_lock<std::mutex> lock(m_SendSection);
-
-		int nSendBufLen = m_SendBuffer.size();
-		if (nSendBufLen>0) {
-			ASSERT(nSendBufLen>sizeof(int)+sizeof(SockAddrType));
-			int nPackLen = 0;
-			int nOffset = 0;
-			do
-			{
-				nPackLen = *(int*)&m_SendBuffer[nOffset];
-				nOffset += nPackLen;
-			} while(nOffset<nSendBufLen);
-			ASSERT(nOffset==nSendBufLen);
-			m_PrepareSendBuffer.assign(m_SendBuffer.end()-nPackLen,m_SendBuffer.end());
-			m_SendBuffer.erase(m_SendBuffer.end()-nPackLen,m_SendBuffer.end());
-			int* pPackLen = (int*)&m_PrepareSendBuffer[0];
-			const SockAddrType* pPackAddr = (const SockAddrType*)(pPackLen+1);
-			const char* pPackBuf = (const char*)(pPackAddr+1);
-			lpBuf = pPackBuf;
-			nBufLen = *pPackLen-(sizeof(int)+sizeof(SockAddrType));
-			lpSockAddr = pPackAddr;
-			//lock.unlock();
+		if (!SendBuffers_.empty()) {
+			auto& buffer = SendBuffers_.front();
+			lpBuf = buffer.pSendBuf;
+			nBufLen = buffer.nSendBufLen;
+			lpSockAddr = &buffer.SendAddr;
 			return true;
 		}
-
 		return false;
 	}
 
-	virtual void OnSend(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr) 
+	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr) 
 	{
-		Base::OnSend(lpBuf, nBufLen, SockAddr);
+		Base::OnSendBuf(lpBuf, nBufLen, SockAddr);
+		auto& buffer = SendBuffers_.front();
+		if(buffer.nSendFlags & SOCKET_PACKET_FLAG_TEMPBUF) {
+			delete []buffer.pSendBuf;
+		}
+		SendBuffers_.pop_front();
 	}
 };
 

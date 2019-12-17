@@ -17,10 +17,17 @@ public:
 	worker* dst = nullptr;
 	int id;
 	std::string buf;
+#ifdef USE_UDP
+	SOCKADDR_IN addr;
+#endif
 	int flags;
 
 	Event() {}
+#ifndef USE_UDP
 	Event(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+#else
+	Event(worker* d, int id, const char* buf, int len, const SOCKADDR_IN& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+#endif
 
 	// inline int get_id() { return evt; }
 	// inline const char* get_data() { return data.c_str(); }
@@ -135,29 +142,62 @@ public:
 };
 
 #else
-class server : public SocketExT<server,SelectUdpServer<SimpleUdpSocketArchitectureT<SimpleUdpSocketArchitecture<SocketEx> > > >
+class server : public XSocket::SocketExImpl<server,XSocket::SelectUdpServerT<XSocket::ThreadService,XSocket::SimpleUdpSocketT<XSocket::SocketEx>>>
 {
-	typedef SocketExT<server,SelectUdpServer<SimpleUdpSocketArchitectureT<SimpleUdpSocketArchitecture<SocketEx> > > > Base;
+	typedef XSocket::SocketExImpl<server,XSocket::SelectUdpServerT<XSocket::ThreadService,XSocket::SimpleUdpSocketT<XSocket::SocketEx>>> Base;
+protected:
+	std::string addr_;
+	u_short port_;
 public:
+
+	bool Start(const char* address, u_short port)
+	{
+		addr_ = address;
+		port_ = port;
+		if(!Base::Start()) {
+			return false;
+		}
+		return true;
+	}
 
 protected:
 	//
-	virtual void OnIdle(int nErrorCode)
+	virtual bool OnInit()
 	{
-		Base::OnIdle(nErrorCode);
-	
-		char lpBuf[DEFAULT_BUFSIZE+1];
-		int nBufLen = 0;
-		SOCKADDR_IN SockAddr = {0};
-		int nFlags = 0;
-		nBufLen = Receive(lpBuf,DEFAULT_BUFSIZE,&SockAddr,&nFlags);
-		if (nBufLen<=0) {
-			return;
+		if(port_ <= 0) {
+			return false;
 		}
-		lpBuf[nBufLen] = 0;
-		PRINTF("%s\n", lpBuf);
-		PRINTF("echo[(%s:%d)]:%s\n",N2Ip(SockAddr.sin_addr.s_addr),N2H(SockAddr.sin_port),lpBuf);
-		Send(lpBuf,nBufLen,SockAddr);
+		Open(AF_INET,SOCK_DGRAM);
+		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
+		Bind(addr_.c_str(), port_);
+		Select(FD_READ);
+	#ifdef WIN32
+		IOCtl(FIONBIO, 1);//设为非阻塞模式
+	#else
+		int flags = IOCtl(F_GETFL,(u_long)0); 
+		IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
+		//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
+	#endif//
+		return true;
+	}
+
+	virtual void OnTerm()
+	{
+		//服务结束运行，释放资源
+		if(Base::IsSocket()) {
+#ifndef WIN32
+			Base::ShutDown();
+#endif
+			Base::Trigger(FD_CLOSE, 0);
+		}
+	}
+
+	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
+	{
+		PRINTF("%.*s\n", nBufLen, lpBuf);
+		PRINTF("echo[(%s:%d)]:%.*s\n",XSocket::N2Ip(SockAddr.sin_addr.s_addr),XSocket::N2H(SockAddr.sin_port),nBufLen, lpBuf);
+		SendBuf(lpBuf,nBufLen,SockAddr,XSocket::SOCKET_PACKET_FLAG_TEMPBUF);
+		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}
 };
 #endif//USE_UDP

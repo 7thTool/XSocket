@@ -213,6 +213,7 @@ protected:
 	 */
 	virtual void OnReceive(int nErrorCode);
 	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags);
+	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags);
 	
 	/*!
 	 *	@brief 通知套接字可以调用Send发送数据.
@@ -226,6 +227,7 @@ protected:
 	 */
 	virtual void OnSend(int nErrorCode);
 	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags);
+	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags);
 	
 	/*!
 	 *	@brief 通知正在接收数据的套接字有带外数据，通常是紧急数据 要读取.

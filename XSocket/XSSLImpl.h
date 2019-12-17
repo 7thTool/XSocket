@@ -8,12 +8,12 @@
 namespace XSocket {
 
 template<class TBase>
-class SSLImpl : public TBase
+class SSLSocketT : public TBase
 {
 	typedef TBase Base;
 public:
-    SSLImpl();
-    ~SSLImpl();
+    SSLSocketT();
+    ~SSLSocketT();
     static void setSSLCertKey(const std::string& cert, const std::string& key);
 protected:
     SSL *ssl_;
