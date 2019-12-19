@@ -71,18 +71,9 @@ public:
 };
 typedef DelayEventServiceT<Event,ThreadService> ClientService;
 
-class client
-#ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>>
-#else
-	: public SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
-#endif//USE_MANAGER
+class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>>
 {
-#ifndef USE_MANAGER
 	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>> Base;
-#else
-	typedef SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
-#endif//USE_MANAGER
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -93,7 +84,6 @@ public:
 		
 	}
 
-#ifndef USE_MANAGER
 	bool Start(const std::string& addr, u_short port)
 	{
 		addr_ = addr;
@@ -121,7 +111,6 @@ protected:
 		}
 		Base::OnTerm();
 	}
-#endif//USE_MANAGER
 
 public:
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
@@ -171,25 +160,12 @@ protected:
 	}
 };
 
-#ifdef USE_MANAGER
-#ifdef USE_EPOLL
-class manager : public EPollManagerT<client,DEFAULT_FD_SETSIZE>
-#else
-class manager : public SelectManagerT<client,DEFAULT_FD_SETSIZE>
-#endif//
-#else
 class manager : public ThreadService
-#endif//
 {
 protected:
 	client *c;
 public:
-
-#ifdef USE_MANAGER
-	manager(int nMaxSocketCount):Base(nMaxSocketCount)
-#else
 	manager(int nMaxSocketCount)
-#endif
 	{
 		
 	}
@@ -203,28 +179,17 @@ public:
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-	#ifndef USE_MANAGER
 			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
-	#else
-			c[i].Open();
-			AddSocket(&c[i]);
-			c[i].Connect(DEFAULT_IP,DEFAULT_PORT);
-	#endif//
 		}
 		return true;
 	}
 
 	virtual void OnTerm()
 	{
-	#ifdef USE_MANAGER
-		Base::OnTerm();
-		RemoveAllSocket(true);
-	#else
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
 			c[i].Stop();
 		}
-	#endif//
 		delete []c;
 	}
 };

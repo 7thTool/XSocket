@@ -143,7 +143,7 @@ typedef struct timeval FAR *LPTIMEVAL;
 #endif//SOCKET_ERROR
 
 #ifndef INVALID_SOCKET
-#define INVALID_SOCKET  0  
+#define INVALID_SOCKET  (SOCKET)(~0)  
 #endif//INVALID_SOCKET
 
 /*

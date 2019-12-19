@@ -42,19 +42,19 @@ typedef SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 
 class worker
 #ifdef USE_EPOLL
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>>>
 #elif defined(USE_IOCP)
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>>>
 #else
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>>>
 #endif
 {
 #ifdef USE_EPOLL
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>>> Base;
 #elif defined(USE_IOCP)
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>>> Base;
 #else
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>>> Base;
 #endif
 public:
 	worker()

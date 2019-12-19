@@ -95,12 +95,18 @@ public:
 		if(!Base::IsSelect(FD_WRITE) && (lEvent & FD_WRITE)) {
 			lAsyncEvent |= FD_WRITE;
 		}
+		if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
+			lAsyncEvent |= FD_ACCEPT;
+		}
 		Base::Select(lEvent);
 		if(lAsyncEvent & FD_READ) {
-			Base::Trigger(FD_READ, 0);
+			Trigger(FD_READ, 0);
 		}
 		if(lAsyncEvent & FD_WRITE) {
-			Base::Trigger(FD_WRITE, 0);
+			Trigger(FD_WRITE, 0);
+		}
+		if(lAsyncEvent & FD_ACCEPT) {
+			Trigger(FD_ACCEPT, 0);
 		}
 	}
 };
@@ -148,13 +154,13 @@ public:
 #endif//
 		//| EPOLLONESHOT
 		;
-		if (sock_ptr->IsSelect(FD_READ)) {
+		if (sock_ptr->IsSelect(FD_READ|FD_ACCEPT)) {
 			event.events |= EPOLLIN;
 		}
 		if (sock_ptr->IsSelect(FD_OOB)) {
 			event.events |= EPOLLPRI;
 		}
-		if (sock_ptr->IsSelect(FD_WRITE)) {
+		if (sock_ptr->IsSelect(FD_WRITE|FD_CONNECT)) {
 			event.events |= EPOLLOUT;
 		}
 		epoll_ctl(m_epfd,EPOLL_CTL_MOD,fd,&event);
@@ -189,13 +195,13 @@ public:
 	#endif
 					//| EPOLLONESHOT //只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
 					;
-					if(evt & FD_READ) {
+					if(evt & (FD_READ|FD_ACCEPT)) {
 						event.events |= EPOLLIN;
 					}
 					if (evt & FD_OOB) {
 						event.events |= EPOLLPRI;
 					}
-					if (evt & FD_WRITE) {
+					if (evt & (FD_WRITE|FD_CONNECT)) {
 						event.events |= EPOLLOUT;
 					}
 					if (SOCKET_ERROR != epoll_ctl(m_epfd, EPOLL_CTL_ADD, fd, &event)) {
@@ -255,17 +261,17 @@ protected:
 				int fd = *sock_ptr;
 				int nErrorCode = 0;
 				//参考NGIX逻辑...
-				//if(evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) {
-				//	PRINTF("epoll_wait error: fd=%d event=%04XD\n" , fd, evt);
-				//}
-				//if ((evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) && (evt&(EPOLLIN|EPOLLOUT))==0) {
-				//	/*
-				//	 * if the error events were returned without EPOLLIN or EPOLLOUT,
-				//	 * then add these flags to handle the events at least in one
-				//	 * active handler
-				//	 */
-				//	evt |= EPOLLIN|EPOLLOUT;
-				//}
+				if(evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) {
+					PRINTF("epoll_wait error: fd=%d event=%04XD\n" , fd, evt);
+				}
+				if ((evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) && (evt&(EPOLLIN|EPOLLOUT))==0) {
+					/*
+					 * if the error events were returned without EPOLLIN or EPOLLOUT,
+					 * then add these flags to handle the events at least in one
+					 * active handler
+					 */
+					evt |= EPOLLIN|EPOLLOUT;
+				}
 				if (sock_ptr->IsSocket() && (evt & EPOLLPRI)) {
 					//有紧急数据
 					if (sock_ptr->IsSelect(FD_OOB)) {
@@ -291,11 +297,8 @@ protected:
 						}
 						sock_ptr->Trigger(FD_CONNECT, nErrorCode);
 					} 
-					if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_WRITE)) {
+					else if (sock_ptr->IsSelect(FD_WRITE)) {
 						sock_ptr->Trigger(FD_WRITE, 0);
-					}
-					if (sock_ptr->IsSocket() && sock_ptr->IsSelect(FD_READ)) {
-						sock_ptr->Trigger(FD_READ, 0);
 					}
 				}
 // #ifndef USE_EPOLLET

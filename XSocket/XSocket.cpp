@@ -171,7 +171,7 @@ SOCKET Socket::Open(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM *
 
 bool Socket::IsSocket(SOCKET Sock)
 { 
-	return Sock != INVALID_SOCKET;
+	return Sock != 0 && Sock != INVALID_SOCKET;
 }
 
 int Socket::ShutDown(SOCKET Sock, int nHow)

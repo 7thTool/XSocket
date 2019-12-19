@@ -26,6 +26,7 @@ namespace XSocket {
 #define IOCP_OPERATION_EXIT DWORD(-1)
 #define IOCP_OPERATION_TRYRECEIVE DWORD(-2)
 #define IOCP_OPERATION_TRYSEND DWORD(-3)
+#define IOCP_OPERATION_TRYACCEPT DWORD(-4)
 
 /*!
  *	@brief CompletionPort OVERLAPPED 定义.
@@ -53,9 +54,9 @@ typedef struct _PER_IO_OPERATION_DATA
 	};
 	union
 	{
-		int			NumberOfBytesCompleted;
-		int			NumberOfBytesReceived;
-		int			NumberOfBytesSended;
+		DWORD		NumberOfBytesCompleted;
+		DWORD		NumberOfBytesReceived;
+		DWORD		NumberOfBytesSended;
 	};
 }PER_IO_OPERATION_DATA, *LPPER_IO_OPERATION_DATA;
 
@@ -71,17 +72,28 @@ class CompletionPortSocketT : public TBase
 public:
 	typedef TSocketSet SocketSet;
 protected:
-	LPFN_ACCEPTEX lpfnAcceptEx;
-	LPFN_GETACCEPTEXSOCKADDRS lpfnGetAcceptExSockaddrs;
-	LPFN_CONNECTEX lpfnConnectEx;
-	PER_IO_OPERATION_DATA m_SendOverlapped;
+	union 
+	{
+		struct 
+		{
+			LPFN_ACCEPTEX lpfnAcceptEx;
+			LPFN_GETACCEPTEXSOCKADDRS lpfnGetAcceptExSockaddrs;
+			char AccpetBuf[1];
+		};
+		struct 
+		{
+			LPFN_CONNECTEX lpfnConnectEx;
+			PER_IO_OPERATION_DATA m_SendOverlapped;
+		};
+		char Reserved[sizeof(PER_IO_OPERATION_DATA) + sizeof(LPFN_CONNECTEX)];
+	};
 	PER_IO_OPERATION_DATA m_ReceiveOverlapped;
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
 	CompletionPortSocketT():Base()
 	{
-		memset(&m_SendOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
+		memset(&Reserved,0,sizeof(Reserved));
 		memset(&m_ReceiveOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
 	}
 
@@ -127,35 +139,11 @@ public:
 			XSocket::Socket::Close(Sock);
 			return INVALID_SOCKET;
 		}
-		return Attach(Sock);
-	}
-
-	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
-	{
-		//为即将到来的Client连接事先创建好Socket，异步连接需要事先将此Socket备下，再行连接
-		SOCKET Sock = XSocket::Socket::Open(AF_INET, SOCK_STREAM, 0);
-		if(Sock == INVALID_SOCKET) {
-			return INVALID_SOCKET;
+		int nRole = SOCKET_ROLE_NONE;
+		if ((nSockAf==AF_INET&&nSockType==SOCK_DGRAM)) {
+			nRole = SOCKET_ROLE_WORK;
 		}
-
-		PER_IO_OPERATION_DATA* pOverlapped = &m_ReceiveOverlapped;
-		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
-		pOverlapped->Buffer.buf	= NULL;
-		pOverlapped->Buffer.len	= 0; //0表只连不接收、连接到来->请求完成，否则连接到来+任意长数据到来->请求完成
-		pOverlapped->OperationType = IOCP_OPERATION_ACCEPT;
-		pOverlapped->Sock = Sock;
-		pOverlapped->NumberOfBytesReceived = 0;
-		//调用AcceptEx函数，地址长度需要在原有的上面加上16个字节
-		if(!lpfnAcceptEx((SOCKET)*this, pOverlapped->Sock,
-			pOverlapped->Buffer.buf, pOverlapped->Buffer.len, 
-			sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
-			&pOverlapped->NumberOfBytesReceived, &(pOverlapped->Overlapped))) {
-			if(WSAGetLastError() != ERROR_IO_PENDING) {
-				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n", GetLastError());
-				return INVALID_SOCKET;
-			}
-		}
-		return pOverlapped->Sock;
+		return Attach(Sock, nRole);
 	}
 
 	int Connect(const char* lpszHostAddress, unsigned short nHostPort)
@@ -179,19 +167,49 @@ public:
 	{
 		ASSERT(IsSocket());
 
+		DWORD dwBytes = 0;
+		do {
+			//获得ConnectEx 函数的指针
+			dwBytes = 0;
+			GUID GuidConnectEx = WSAID_CONNECTEX;
+			if (SOCKET_ERROR == WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
+				&GuidConnectEx, sizeof(GuidConnectEx ),
+				&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
+				PRINTF("WSAIoctl ConnectEx is failed. Error=%d\n", GetLastError());
+				break;
+			}
+		} while(false);
+		if(!lpfnConnectEx) {
+			return SOCKET_ERROR;
+		}
+
 		OnRole(SOCKET_ROLE_CONNECT);
+		role_ = SOCKET_ROLE_CONNECT;
+		event_ |= FD_CONNECT;
 		IOCtl(FIONBIO, 1);//设为非阻塞模式
 
 		//MSDN说The parameter s is an unbound or a listening socket，
 		//还是诡异两个字connect操作干嘛要绑定？不知道，没人给解释，那绑定就对了，那么绑哪个？
 		//最好把你的地址结构像下面这样设置
-		SOCKADDR_IN addr;
-		addr.sin_family = AF_INET;
-		addr.sin_port = htons(0);
-		addr.sin_addr.s_addr = htonl(ADDR_ANY);
-		//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
-		//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
-		Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
+		switch (lpSockAddr->sa_family)
+		{
+		case AF_INET:
+		{
+			SOCKADDR_IN addr;
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(0);
+			addr.sin_addr.s_addr = htonl(ADDR_ANY);
+			//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
+			//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
+			Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
+		}
+		break;
+		case AF_INET6:
+		break;
+		default:
+		ASSERT(0);
+		break;
+		}
 		
 		PER_IO_OPERATION_DATA* pOverlapped = &m_SendOverlapped;
 		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
@@ -214,6 +232,70 @@ public:
 			//PRINTF("ConnectEx is failed. Error=%d\n", nError);
 		}
 		return SOCKET_ERROR;
+	}
+
+	int Listen(int nConnectionBacklog = 5)
+	{
+		int ret = Base::Listen(nConnectionBacklog);
+		RemoveSelect(FD_ACCEPT);
+		return ret;
+	}
+
+	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
+	{
+		DWORD dwBytes = 0;
+		do {
+			// 获取AcceptEx函数指针
+			dwBytes = 0;
+			GUID GuidAcceptEx = WSAID_ACCEPTEX;
+			if (0 != WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
+							&GuidAcceptEx, sizeof(GuidAcceptEx),
+							&lpfnAcceptEx, sizeof(lpfnAcceptEx), &dwBytes, NULL, NULL)) {
+				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n", GetLastError());
+				break;
+			}
+			// 获取GetAcceptExSockAddrs函数指针
+			dwBytes = 0;
+			GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
+			if (0 != WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
+							&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
+							&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
+				PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d\n", GetLastError());
+				break;
+			}
+		} while(false);
+		if(!lpfnAcceptEx || !lpfnGetAcceptExSockaddrs) {
+			return INVALID_SOCKET;
+		}
+
+		//为即将到来的Client连接事先创建好Socket，异步连接需要事先将此Socket备下，再行连接
+		SOCKET Sock = XSocket::Socket::Open(AF_INET, SOCK_STREAM, 0);
+		if(Sock == INVALID_SOCKET) {
+			return INVALID_SOCKET;
+		}
+
+		PER_IO_OPERATION_DATA* pOverlapped = &m_ReceiveOverlapped;
+		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
+		pOverlapped->Buffer.buf	= AccpetBuf; //这个不能为空, 应使其不小于16，因为SOCKADDR_IN大小影响
+		pOverlapped->Buffer.len	= 0; //0表只连不接收、连接到来->请求完成，否则连接到来+任意长数据到来->请求完成
+		pOverlapped->OperationType = IOCP_OPERATION_ACCEPT;
+		pOverlapped->Sock = Sock;
+		pOverlapped->NumberOfBytesReceived = 0;
+		//调用AcceptEx函数，地址长度需要在原有的上面加上16个字节
+		int nAccept = lpfnAcceptEx((SOCKET)*this, pOverlapped->Sock,
+			pOverlapped->Buffer.buf, pOverlapped->Buffer.len, 
+			sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
+			&pOverlapped->NumberOfBytesReceived, &(pOverlapped->Overlapped));
+		if(nAccept == 0) {
+			if(WSAGetLastError() != ERROR_IO_PENDING) {
+				DWORD dwError =  GetLastError();
+				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n",dwError);
+				XSocket::Socket::Close(Sock);
+				SetLastError(dwError);
+				return INVALID_SOCKET;
+			}
+		}
+		return nAccept;
 	}
 
 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
@@ -271,34 +353,22 @@ public:
 			lAsyncEvent |= FD_WRITE;
 			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)this, &m_SendOverlapped.Overlapped);
 		}
-		event_ |= lEvent;
+		if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
+			lAsyncEvent |= FD_ACCEPT;
+			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCPET, (ULONG_PTR)this, &m_ReceiveOverlapped.Overlapped);
+		}
+		Base::Select(lEvent);
 		if(lAsyncEvent & FD_READ) {
-			OnReceive(0);
+			Trigger(FD_READ, 0);
 		}
 		if(lAsyncEvent & FD_WRITE) {
-			OnSend(0);
+			Trigger(FD_WRITE, 0);
+		}
+		if(lAsyncEvent & FD_ACCEPT) {
+			Trigger(FD_ACCEPT, 0);
 		}
 	}
 };
-
-
-/*!
- *	@brief ListenSocketT 模板定义.
- *
- *	封装ListenSocketT，适用于服务端监听Socket
- */
-template<class TBase = SocketEx, u_short uAddrSize = 256>
-class CompletionPortListenSocketT : public ListenSocketT<TBase>
-{
-	typedef ListenSocketT<TBase> Base;
-protected:
-	char addr_[uAddrSize];
-	int addrlen_ = uAddrSize;
-public:
-
-protected:
-};
-
 
 /*!
  *	@brief CompletionPortSocketSet 模板定义.
@@ -345,6 +415,9 @@ public:
 		}
 		if(evt & FD_WRITE) {
 			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(pos + 1), NULL);
+		}
+		if(evt & FD_ACCEPT) {
+			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(pos + 1), NULL);
 		}
 	}
 	
@@ -441,7 +514,6 @@ protected:
 				if(sock_ptr) {
 					if (!sock_ptr->IsSelect(FD_READ)) {
 						sock_ptr->Select(FD_READ);
-						sock_ptr->Trigger(FD_READ, 0);
 					}
 				}
 				return;
@@ -450,28 +522,35 @@ protected:
 				if(sock_ptr) {
 					if (!sock_ptr->IsSelect(FD_WRITE)) {
 						sock_ptr->Select(FD_WRITE);
-						sock_ptr->Trigger(FD_WRITE, 0);
+					}
+				}
+				return;
+			}
+			if (dwTransfer == IOCP_OPERATION_TRYACCEPT) { //
+				if(sock_ptr) {
+					if (!sock_ptr->IsSelect(FD_ACCEPT)) {
+						sock_ptr->Select(FD_ACCEPT);
 					}
 				}
 				return;
 			}
 			if(!lpOverlapped) {
 				if (sock_ptr) {
-					sock_ptr->Trigger(FD_CLOSE, GetLastError());
+					sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
 				}
 				return;
 			}
 			if (!bStatus) {
 				if (sock_ptr) {
 					if (sock_ptr->IsListenSocket()) {
-						int nErrorCode = GetLastError();
+						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_ACCEPT, nErrorCode);
 					} else if (sock_ptr->IsSelect(FD_CONNECT)) {
 						sock_ptr->RemoveSelect(FD_CONNECT);
-						int nErrorCode = GetLastError();
+						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_CONNECT, nErrorCode);
 					} else {
-						int nErrorCode = GetLastError();
+						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_CLOSE, nErrorCode);
 					}
 					if(lpOverlapped->OperationType == IOCP_OPERATION_ACCEPT) {
@@ -488,19 +567,19 @@ protected:
 					case IOCP_OPERATION_ACCEPT:
 					{
 						if(sock_ptr->IsSelect(FD_ACCEPT)) {
-							sock_ptr->SetSockOpt(
-								SOL_SOCKET
-								, SO_UPDATE_ACCEPT_CONTEXT
-								, (char*)&(lpOverlapped->Sock)
-								, sizeof(lpOverlapped->Sock));
-							SOCKADDR_IN *lpRemoteAddr = NULL, *lpLocalAddr = NULL;
-							int nRemoteAddrLen = sizeof(SOCKADDR_IN), nLocalAddrLen = sizeof(SOCKADDR_IN);
-							GetAcceptExSockaddrs(lpOverlapped->Buffer.buf, 0, 
-								sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
-								(LPSOCKADDR*)&lpLocalAddr, &nLocalAddrLen,
-								(LPSOCKADDR*)&lpRemoteAddr, &nRemoteAddrLen);
+							// sock_ptr->SetSockOpt(
+							// 	SOL_SOCKET
+							// 	, SO_UPDATE_ACCEPT_CONTEXT
+							// 	, (char*)&(lpOverlapped->Sock)
+							// 	, sizeof(lpOverlapped->Sock));
+							// SOCKADDR_IN *lpRemoteAddr = NULL, *lpLocalAddr = NULL;
+							// int nRemoteAddrLen = sizeof(SOCKADDR_IN), nLocalAddrLen = sizeof(SOCKADDR_IN);
+							// GetAcceptExSockaddrs(lpOverlapped->Buffer.buf, 0, 
+							// 	sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
+							// 	(LPSOCKADDR*)&lpLocalAddr, &nLocalAddrLen,
+							// 	(LPSOCKADDR*)&lpRemoteAddr, &nRemoteAddrLen);
 							//sprintf(pClientComKey->sIP, "%d", addrClient->sin_port );	//cliAdd.sin_port );
-							sock_ptr->Trigger(FD_ACCEPT, (const char*)&lpRemoteAddr, nRemoteAddrLen, (int)lpOverlapped->Sock);
+							sock_ptr->Trigger(FD_ACCEPT, nullptr, 0, (int)lpOverlapped->Sock);
 						}
 						if (sock_ptr->IsSocket()) {
 							if (sock_ptr->IsSelect(FD_ACCEPT)) {
@@ -520,14 +599,6 @@ protected:
 							sock_ptr->RemoveSelect(FD_CONNECT);
 							sock_ptr->Trigger(FD_CONNECT, sock_ptr->GetLastError());
 						}
-						if (sock_ptr->IsSocket()) {
-							if (sock_ptr->IsSelect(FD_WRITE)) {
-								sock_ptr->Trigger(FD_WRITE, 0);
-							}
-							if (sock_ptr->IsSelect(FD_READ)) {
-								sock_ptr->Trigger(FD_READ, 0);
-							}
-						}
 					}
 					break;
 					case IOCP_OPERATION_RECEIVE:
@@ -537,9 +608,11 @@ protected:
 							if (sock_ptr->IsSelect(FD_READ)) {
 								sock_ptr->Trigger(FD_READ, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesReceived, 0);
 							}
-							if (sock_ptr->IsSocket()) {
-								sock_ptr->Trigger(FD_READ, 0); //继续投递接收操作
+						if (sock_ptr->IsSocket()) {
+							if (sock_ptr->IsSelect(FD_READ)) {
+								sock_ptr->Trigger(FD_READ, 0);
 							}
+						}
 						} else {
 							PRINTF("GetQueuedCompletionStatus Recv Error:%d WSAError:%d\n", ::GetLastError(), sock_ptr->GetLastError());
 							sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
@@ -554,7 +627,9 @@ protected:
 								sock_ptr->Trigger(FD_WRITE, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesSended, 0);
 							}
 							if (sock_ptr->IsSocket()) {
-								sock_ptr->Trigger(FD_WRITE, 0); //继续投递接收操作
+								if (sock_ptr->IsSelect(FD_WRITE)) {
+									sock_ptr->Trigger(FD_WRITE, 0);
+								}
 							}
 						} else {
 							PRINTF("GetQueuedCompletionStatus Send Error:%d WSAError:%d\n", ::GetLastError(), sock_ptr->GetLastError());

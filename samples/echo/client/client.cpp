@@ -2,6 +2,9 @@
 #include "../../../XSocket/XSocketImpl.h"
 #ifdef USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
+#elif defined(USE_IOCP)
+#include "../../../XSocket/XCompletionPort.h"
+#else
 #endif//
 using namespace XSocket;
 
@@ -30,14 +33,30 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef DelayEventServiceT<Event,ThreadService> ClientService;
+typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> ClientService;
+
+#ifndef USE_UDP
+#ifdef USE_EPOLL
+typedef EPollSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
+#elif defined(USE_IOCP)
+typedef CompletionPortSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
+#else
+typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
+#endif//
+#endif//USE_UDP
 
 class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
 	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketT<SocketEx>>>>
 #else
-	: public SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > >
+#ifdef USE_EPOLL
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<EPollSocketT<ClientSocketSet,SocketEx>>>>>
+#elif defined(USE_IOCP)
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>>
+#else
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientSocketSet,SocketEx>>>>>
+#endif
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
@@ -51,7 +70,13 @@ class client
 #ifndef USE_MANAGER
 	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketT<SocketEx>>>> Base;
 #else
-	typedef SocketExT<client,SimpleSocketArchitectureT<ProxyConnectHandler<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > > Base;
+#ifdef USE_EPOLL
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<EPollSocketT<ClientSocketSet,SocketEx>>>>> Base;
+#elif defined(USE_IOCP)
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>> Base;
+#else
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientSocketSet,SocketEx>>>>> Base;
+#endif
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
@@ -60,14 +85,6 @@ class client
 	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > Base;
 #endif//USE_MANAGER
 #endif//USE_UDP
-#ifdef USE_MANAGER
-#ifdef USE_EPOLL
-	friend class EPollManager<client,DEFAULT_FD_SETSIZE>;
-#else
-	friend class SelectSet<client,DEFAULT_FD_SETSIZE>;
-	friend class SelectManager<client,DEFAULT_FD_SETSIZE>;
-#endif//USE_EPOLL
-#endif//USE_MANAGER
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -139,7 +156,6 @@ public:
 	}
 #endif
 
-protected:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {
@@ -150,7 +166,9 @@ protected:
 #endif
 		}
 	}
-	
+
+protected:
+	//
 #ifndef USE_UDP
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
 	{
@@ -178,16 +196,18 @@ protected:
 #endif//
 };
 
+class manager 
 #ifdef USE_MANAGER
-#ifdef USE_EPOLL
-class manager : public EPollManager<client,DEFAULT_FD_SETSIZE>
+: public SocketManagerT<ClientSocketSet>
 #else
-class manager : public SelectManager<client,DEFAULT_FD_SETSIZE>
-#endif//
-#else
-class manager : public ThreadService
+: public ThreadService
 #endif//
 {
+#ifdef USE_MANAGER
+	typedef SocketManagerT<ClientSocketSet> Base;
+#else
+	typedef ThreadService Base;
+#endif//
 protected:
 	client *c;
 public:
@@ -205,38 +225,42 @@ public:
 		
 	}
 
-	virtual bool OnInit()
+	bool Start()
 	{
+		bool ret = Base::Start();
+	#ifdef USE_MANAGER
+		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
+		{
+			std::shared_ptr<client> sp_client = std::make_shared<client>();
+	#ifndef USE_UDP
+			sp_client->Open();
+	#else
+			sp_client->Open(AF_INET,SOCK_DGRAM);
+	#endif//
+			AddSocket(sp_client);
+			sp_client->Connect(DEFAULT_IP,DEFAULT_PORT);
+		}
+	#else
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-	#ifndef USE_MANAGER
 			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
-	#else
-	#ifndef USE_UDP
-			c[i].Open();
-	#else
-			c[i].Open(AF_INET,SOCK_DGRAM);
-	#endif//
-			AddSocket(&c[i]);
-			c[i].Connect(DEFAULT_IP,DEFAULT_PORT);
-	#endif//
 		}
-		return true;
+	#endif//
+		return ret;
 	}
 
-	virtual void OnTerm()
+	void Stop()
 	{
+		Base::Stop();
 	#ifdef USE_MANAGER
-		Base::OnTerm();
-		RemoveAllSocket(true);
 	#else
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
 			c[i].Stop();
 		}
-	#endif//
 		delete []c;
+	#endif//
 	}
 };
 

@@ -10,6 +10,8 @@
 #endif//
 using namespace XSocket;
 
+#ifndef USE_UDP
+
 class worker;
 
 class Event
@@ -38,33 +40,36 @@ public:
 typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> WorkService;
 //typedef ThreadService WorkService;
 
-#ifndef USE_UDP
-#ifdef USE_EPOLL
-typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
-#elif defined(USE_IOCP)
-typedef CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
-#else
-typedef SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
-#endif//
-#endif//USE_UDP
+class WorkSocket;
+class WorkSocketSet;
 
-#ifndef USE_UDP
-class worker
+class WorkSocketSet : public
 #ifdef USE_EPOLL
-	: public SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>
+EPollSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 #elif defined(USE_IOCP)
-	: public SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>
+CompletionPortSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 #else
-	: public SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>
-#endif
+SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
+#endif//
 {
+
+};
+
+class WorkSocket : public
 #ifdef USE_EPOLL
-	typedef SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>> Base;
+EPollSocketT<WorkSocketSet,SocketEx>
 #elif defined(USE_IOCP)
-	typedef SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>> Base;
+CompletionPortSocketT<WorkSocketSet,SocketEx>
 #else
-	typedef SocketExImpl<worker,SimpleEvtSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>> Base;
-#endif
+SelectSocketT<WorkSocketSet,SocketEx>
+#endif//
+{
+
+};
+
+class worker : public SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>
+{
+	typedef SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>> Base;
 protected:
 	
 public:
@@ -116,36 +121,117 @@ protected:
 };
 
 class server 
+#if 0
 	: public SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet>
+#else
+	: public SocketManagerT<WorkSocketSet>
+#endif//
 {
+#if 0
 	typedef SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet> Base;
+#else
+	typedef SocketManagerT<WorkSocketSet> Base;
+protected:
+	class listener : public SocketExImpl<listener,SimpleEvtSocketT<ListenSocketT<WorkSocket>>>
+	, public std::enable_shared_from_this<listener>
+	{
+	protected:
+		server* srv_;
+	public:
+		listener(server* srv):srv_(srv)
+		{
+		}
+
+	protected:
+		//
+		virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) 
+		{
+				//测试下还能不能再接收SOCKET
+				if(srv_->AddSocket(NULL) < 0) {
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					XSocket::Socket::Close(Sock);
+					return;
+				}
+				std::shared_ptr<worker> sock_ptr = std::make_shared<worker>();
+				sock_ptr->Attach(Sock,SOCKET_ROLE_WORK);
+				
+	#ifdef WIN32
+				sock_ptr->IOCtl(FIONBIO, 1);//设为非阻塞模式
+	#else
+				int flags = sock_ptr->IOCtl(F_GETFL,(u_long)0); 
+				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
+				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
+	#endif//
+				int pos = srv_->AddSocket(sock_ptr, FD_READ|FD_OOB);
+				if(pos >= 0) {
+					//
+				} else {
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					sock_ptr->Trigger(FD_CLOSE, 0);
+				}
+		}
+	};
+#endif
 public:
+#if 0
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
+#else
+	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base((nMaxSocketCount+WorkSocketSet::GetMaxSocketCount()-1)/WorkSocketSet::GetMaxSocketCount())
+#endif
 	{
 
 	}
-	
-	bool OnChar(char c)
+
+#if 1
+	bool Start(const char* address, u_short port)
 	{
-		switch(c)
-		{
-		case 'x':
-		case 'X':
-			printf("server worker count is [%d]\n", GetSocketCount());
-			break;
-		case 'q':
-		case 'Q':
+		bool ret = Base::Start();
+		if(!ret) {
 			return false;
-			break;
 		}
+
+		std::shared_ptr<listener> sock_ptr = std::make_shared<listener>(this);
+		sock_ptr->Open();
+		sock_ptr->SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
+		sock_ptr->Bind(address, port);
+		sock_ptr->Listen();
+		AddSocket(sock_ptr, FD_ACCEPT);
+
 		return true;
 	}
+#else
+protected:
+	//
+	virtual bool OnInit()
+	{
+		if(port_ <= 0) {
+			return false;
+		}
+		Base::Open();
+		Base::SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
+		Base::Bind(address_.c_str(), port_);
+		Base::Listen();
+		return true;
+	}
+
+	virtual void OnTerm()
+	{
+		//服务结束运行，释放资源
+		if(Base::IsSocket()) {
+#ifndef WIN32
+			Base::ShutDown();
+#endif
+			Base::Trigger(FD_CLOSE, 0);
+		}
+	}
+#endif//
 };
 
 #else
-class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<SocketEx>>>
+
+class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SocketEx>>>>
 {
-	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<SocketEx>>> Base;
+	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SocketEx>>>> Base;
 protected:
 	std::string addr_;
 	u_short port_;
@@ -205,6 +291,7 @@ protected:
 		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}
 };
+
 #endif//USE_UDP
 
 #ifdef WIN32

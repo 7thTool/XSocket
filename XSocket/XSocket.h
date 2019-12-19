@@ -70,10 +70,10 @@ public:
 	static int ShutDown(SOCKET Sock, int nHow);
 	static int Close(SOCKET Sock);
 	
-	static SOCKET Accept(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 	static int Bind(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	static int Connect(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	static int Listen(SOCKET Sock, int nConnectionBacklog);
+	static SOCKET Accept(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 	static int Send(SOCKET Sock, const char* lpBuf, int nBufLen, int nFlags = MSG_NOSIGNAL);
 	static int Receive(SOCKET Sock, char* lpBuf, int nBufLen, int nFlags = MSG_NOSIGNAL);
 	//int SyncSend(SOCKET Sock, const char* lpBuf, int nBufLen, int nFlags = MSG_NOSIGNAL);
@@ -134,10 +134,10 @@ public:
 	inline int ShutDown(int nHow = Both) { return ShutDown(sock_, nHow); }
 	inline int Close() { if (IsSocket()) { return Close(Detach()); } return 0; }
 
-	inline SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen) { return Accept(sock_, lpSockAddr, lpSockAddrLen); }
 	inline int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen) { return Bind(sock_, lpSockAddr, nSockAddrLen); }
 	inline int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen) { return Connect(sock_, lpSockAddr, nSockAddrLen); }
 	inline int Listen(int nConnectionBacklog = 5) { return Listen(sock_, nConnectionBacklog); }
+	inline SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen) { return Accept(sock_, lpSockAddr, lpSockAddrLen); }
 	inline int Send(const char* lpBuf, int nBufLen, int nFlags = MSG_NOSIGNAL) { return Send(sock_, lpBuf, nBufLen, nFlags); }
 	inline int Receive(char* lpBuf, int nBufLen, int nFlags = MSG_NOSIGNAL) { return Receive(sock_, lpBuf, nBufLen, nFlags); }
 	//inline int SyncSend(const char* lpBuf, int nBufLen, int nFlags = MSG_NOSIGNAL) { return SyncSend(sock_, lpBuf, nBufLen, nFlags); }

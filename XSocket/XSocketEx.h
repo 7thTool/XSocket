@@ -69,7 +69,6 @@ public:
 	int ShutDown(int nHow = Both);
 	int Close();
 
-	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 	//int Bind(const char* lpszHostAddress, unsigned short nHostPort, PPROXYINFO pProxy);
 	int Bind(const char* lpszHostAddress, unsigned short nHostPort);
 	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
@@ -77,6 +76,7 @@ public:
 	int Connect(const char* lpszHostAddress, unsigned short nHostPort);
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	int Listen(int nConnectionBacklog = 5);
+	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 
 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0);
 	int Receive(char* lpBuf, int nBufLen, int nFlags = 0);
@@ -680,15 +680,35 @@ protected:
 typedef ThreadServiceT<Service> ThreadService;
 
 /*!
+ *	@brief WorkSocketT 模板定义.
+ *
+ *	封装WorkSocket，适用于服务端工作Socket
+ */
+template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+class WorkSocketT : public TBase
+{
+	typedef TBase Base;
+public:
+	typedef TSockAddr SockAddr;
+
+	WorkSocketT():Base()
+	{
+
+	}
+};
+
+/*!
  *	@brief ConnectSocketT 模板定义.
  *
  *	封装ConnectSocket，适用于客户端连接Socket
  */
-template<class TBase = SocketEx>
+template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
 class ConnectSocketT : public TBase
 {
 	typedef ConnectSocketT<TBase> This;
 	typedef TBase Base;
+public:
+	typedef TSockAddr SockAddr;
 protected:
 	bool m_bConnected;
 	unsigned long m_ConnectTime;
@@ -770,24 +790,8 @@ protected:
 		if(!nErrorCode) {
 			m_bConnected = true;
 			m_ConnectTime = Tick() - m_ConnectTime; //记住连接耗时
-			Base::Select(FD_READ|FD_WRITE|FD_OOB);
+			Base::Select(FD_READ|FD_OOB);
 		}
-	}
-};
-
-/*!
- *	@brief WorkSocketT 模板定义.
- *
- *	封装WorkSocket，适用于服务端工作Socket
- */
-template<class TBase = SocketEx>
-class WorkSocketT : public TBase
-{
-	typedef TBase Base;
-public:
-	WorkSocketT():Base()
-	{
-
 	}
 };
 
@@ -796,17 +800,58 @@ public:
  *
  *	封装ListenSocket，适用于服务端监听Socket
  */
-template<class TBase = SocketEx>
+template<class TBase, class TSockAddr = SOCKADDR_IN>
 class ListenSocketT : public TBase
 {
 	typedef TBase Base;
 public:
+	typedef TSockAddr SockAddr;
+
 	ListenSocketT():Base()
 	{
 
 	}
 
 protected:
+	//
+	virtual void OnAccept(int nErrorCode)
+	{
+		if(nErrorCode) {
+			return Base::OnAccept(nErrorCode);
+		}
+
+		//bool bConitnue = false;
+		//do {
+		//	bConitnue = false;
+			SockAddr stAddr = {0};
+			int nAddrLen = sizeof(stAddr);
+			SOCKET Sock = Base::Accept((SOCKADDR*)&stAddr, &nAddrLen);
+	 		if(XSocket::Socket::IsSocket(Sock)) {
+				Base::Trigger(FD_ACCEPT, (const char*)&stAddr, nAddrLen, (int)Sock);
+				//bConitnue = true;
+			} else {
+				nErrorCode = GetLastError();
+				switch(nErrorCode)
+				{
+				case 0:
+					break;
+#ifdef WIN32
+				case WSAEWOULDBLOCK:
+				case WSA_IO_PENDING:
+					break;
+#else
+				case EWOULDBLOCK:
+					break;
+				case EINTR:
+					break;
+#endif//
+				default:
+					Base::Trigger(FD_CLOSE,nErrorCode);
+					break;
+				}
+			}
+		//} while (bConitnue);
+	}
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -1407,97 +1452,6 @@ protected:
 	}
 };
 
-/*!
- *	@brief SelectManager 模板定义.
- *
- *	封装SelectManager，实现对select模型管理监听Socket连接，依赖SelectSocket
- */
-template<class TService, class TBase = ListenSocketT<SocketEx>>
-class SelectListenT : public SelectOneSocketT<TService,TBase>
-{
-	typedef SelectOneSocketT<TService,TBase> Base;
-public:
-	typedef TService Service;
-	std::string address_;
-	u_short port_;
-public:
-	SelectListenT() : Base()
-	{
-		
-	}
-
-	bool Start(const char* address, u_short port)
-	{
-		address_ = address;
-		port_ = port;
-		return Base::Start();
-	}
-
-protected:
-	//
-	virtual bool OnInit()
-	{
-		if(port_ <= 0) {
-			return false;
-		}
-		Base::Open();
-		Base::SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-		Base::Bind(address_.c_str(), port_);
-		Base::Listen();
-		return true;
-	}
-
-	virtual void OnTerm()
-	{
-		//服务结束运行，释放资源
-		if(Base::IsSocket()) {
-#ifndef WIN32
-			Base::ShutDown();
-#endif
-			Base::Trigger(FD_CLOSE, 0);
-		}
-	}
-
-protected:
-	//
-	virtual void OnAccept(int nErrorCode)
-	{
-		if(nErrorCode) {
-			return Base::OnAccept(nErrorCode);
-		}
-
-		//bool bConitnue = false;
-		//do {
-		//	bConitnue = false;
-			SOCKADDR_IN Addr = {0};
-			int AddrLen = sizeof(SOCKADDR_IN);
-			SOCKET Sock = Base::Accept((SOCKADDR*)&Addr, &AddrLen);
-	 		if(XSocket::Socket::IsSocket(Sock)) {
-				Base::Trigger(FD_ACCEPT, (const char*)&Addr, AddrLen, (int)Sock);
-				//bConitnue = true;
-			} else {
-				nErrorCode = GetLastError();
-				switch(nErrorCode)
-				{
-				case EWOULDBLOCK:
-					break;
-	#ifdef WIN32
-				case WSA_IO_PENDING:
-					break;
-	#else
-				case EINTR:
-					//bConitnue = true;
-					break;
-	#endif//
-				default:
-					Base::Trigger(FD_CLOSE,nErrorCode);
-					break;
-				}
-			}
-		//} while (bConitnue);
-	}
-};
-
 //////////////////////////////////////////////////////////////////////////
 
 /*!
@@ -1530,14 +1484,17 @@ protected:
  */
 template<class TService, class TBase, class TSocketSet>
 class SelectServerT 
-: public SelectListenT<TService,TBase>
+: public SelectOneSocketT<TService,TBase>
 , public SocketManagerT<TSocketSet>
 {
 public:
 	typedef TSocketSet SocketSet;
 	typedef typename SocketSet::Socket Socket;
 	typedef SocketManagerT<SocketSet> SockManager;
-	typedef SelectListenT<TService,TBase> Base;
+	typedef SelectOneSocketT<TService,TBase> Base;
+protected:
+	std::string address_;
+	u_short port_;
 public:
 	SelectServerT(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
 	{
@@ -1551,7 +1508,9 @@ public:
 
 	bool Start(const char* address, u_short port)
 	{
-		if(!Base::Start(address, port)) {
+		address_ = address;
+		port_ = port;
+		if(!Base::Start()) {
 			return false;
 		}
 		if(!SockManager::Start()) {
@@ -1568,6 +1527,29 @@ public:
 
 protected:
 	//
+	virtual bool OnInit()
+	{
+		if(port_ <= 0) {
+			return false;
+		}
+		Base::Open();
+		Base::SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
+		Base::Bind(address_.c_str(), port_);
+		Base::Listen();
+		return true;
+	}
+
+	virtual void OnTerm()
+	{
+		//服务结束运行，释放资源
+		if(Base::IsSocket()) {
+#ifndef WIN32
+			Base::ShutDown();
+#endif
+			Base::Trigger(FD_CLOSE, 0);
+		}
+	}
+
 	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) 
 	{
 				//测试下还能不能再接收SOCKET
@@ -1586,7 +1568,7 @@ protected:
 				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
 				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
 	#endif//
-				int pos = SockManager::AddSocket(sock_ptr, FD_READ|FD_WRITE|FD_OOB);
+				int pos = SockManager::AddSocket(sock_ptr, FD_READ|FD_OOB);
 				if(pos >= 0) {
 					//
 				} else {

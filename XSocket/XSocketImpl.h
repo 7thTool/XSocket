@@ -470,90 +470,6 @@ protected:
 	}
 };
 
-/*!
- *	@brief SimpleSvrSocketT 定义.
- *
- *	封装SimpleSvrSocketT，增加服务对象，实现简单的流式发送/接收（写入/读取）网络架构
- */
-template<class TBase, u_short uMaxBufSize = 8*1024>
-class SimpleSvrSocketT : public SimpleSocketT<TBase,uMaxBufSize>
-{
-	typedef SimpleSocketT<TBase,uMaxBufSize> Base;
-public:
-	typedef typename Base::SocketSet SocketSet;
-protected:
-	SocketSet* service_ptr_ = nullptr;
-public:
-	//
-	inline SocketSet* this_service() { return service_ptr_; }
-
-protected:
-	//
-	virtual void OnAttachService(Service* pSvr)
-	{
-		Base::OnAttachService(pSvr);
-		service_ptr_ = dynamic_cast<SocketSet*>(pSvr);
-	}
-	virtual void OnDeatchService(Service* pSvr)
-	{
-		service_ptr_ = nullptr;
-	}
-};
-
-/*!
- *	@brief SimpleEventService 定义.
- *
- *	封装SimpleEventService，实现简单事件分发
- */
-template<class TBase = Service>
-class SimpleEventServiceT : public TBase
-{
-public:
-	typedef typename TBase::Event Event;
-
-protected:
-	//
-	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
-		if(evt.dst == sock_ptr) {
-			return true;
-		}
-		return false;
-	}
-	//
-	virtual void OnEvent(const Event& evt)
-	{
-		if(evt.dst) {
-			evt.dst->OnEvent(evt);
-		}
-	}
-};
-
-/*!
- *	@brief SimpleEvtSocketT 定义.
- *
- *	封装SimpleEvtSocketT，增加事件服务接口，实现简单的流式发送/接收（写入/读取）网络架构
- */
-template<class TBase, u_short uMaxBufSize = 8*1024>
-class SimpleEvtSocketT : public SimpleSvrSocketT<TBase,uMaxBufSize>
-{
-	typedef SimpleSvrSocketT<TBase,uMaxBufSize> Base;
-public:
-	typedef typename Base::SocketSet EvtSocketSet;
-	typedef typename EvtSocketSet::Event Event;
-public:
-
-	inline void Post(const Event& evt) {
-		// if(!evt.dst) {
-		// 	evt.dst = this;
-		// }
-		Base::this_service()->Post(evt);
-	}
-	
-	virtual void OnEvent(const Event& evt)
-	{
-	}
-};
-
 // /*!
 //  *	@brief SocketArchitectureT 定义.
 //  *
@@ -746,15 +662,17 @@ public:
  *
  *	封装UdpSocket，定义Udp套接字实现接口
  */
-template<class TBase = SocketEx, class SockAddrType = SOCKADDR_IN>
+template<class TBase = SocketEx>
 class UdpSocket : public TBase
 {
 	typedef TBase Base;
+public:
+	typedef typename TBase::SockAddr SockAddr;
 protected:
 	int m_nSendLen;
 	const char* m_pSendBuf;
 	int m_nSendBufLen;
-	const SockAddrType* m_pSendAddr;
+	const SockAddr* m_pSendAddr;
 public:
 	UdpSocket()
 		:Base()
@@ -784,28 +702,28 @@ public:
 protected:
 	//
 	//解析数据包
-	virtual int ParseBuf(const char* lpBuf, int & nBufLen, const SockAddrType & SockAddr) { return SOCKET_PACKET_FLAG_COMPLETE; }
+	virtual int ParseBuf(const char* lpBuf, int & nBufLen, const SockAddr & stAddr) { return SOCKET_PACKET_FLAG_COMPLETE; }
 
 	//准备接收缓存
-	// virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SockAddrType* & lpSockAddr)
+	// virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SockAddr* & lpAddr)
 	// {
 	// 	return false;
 	// }
 
 	//接收完整一个包
-	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
+	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddr & stAddr)
 	{
 
 	}
 
 	//准备发送数据包
-	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SockAddrType* & lpSockAddr)
+	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SockAddr* & lpAddr)
 	{
 		return false;
 	}
 
 	//发送完整一个包
-	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
+	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SockAddr & stAddr)
 	{
 
 	}
@@ -825,9 +743,9 @@ protected:
 			//UDP 保证一次接收一个完整UDP包
 			char lpBuf[1025] = {0};
 			int nBufLen = 1024;
-			SockAddrType SockAddr;
-			int nSockAddrLen = sizeof(SockAddrType);
-			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&SockAddr,&nSockAddrLen);
+			SockAddr stAddr;
+			int nAddrLen = sizeof(SockAddr);
+			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&stAddr,&nAddrLen);
 			if (nBufLen<=0) {
 				nErrorCode = GetLastError();
 				switch(nErrorCode)
@@ -848,26 +766,26 @@ protected:
 					break;
 				}
 			} else {
-				OnReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&SockAddr,nSockAddrLen, 0);
+				OnReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&stAddr,nAddrLen, 0);
 				bConitnue = Base::IsSocket();
 			}
 		} while(bConitnue);
 	}
 
-	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags)
 	{
-		ASSERT(nSockAddrLen==sizeof(SockAddrType));
-		Base::OnReceiveFrom(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags); 
+		ASSERT(nAddrLen==sizeof(SockAddr));
+		Base::OnReceiveFrom(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags); 
 		const char* lpParseBuf = lpBuf;
 		int nParseBufLen = nBufLen;
 		do {
 			int nPacketBufLen = nParseBufLen;
-			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, *(SockAddrType*)lpSockAddr);
+			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, *(SockAddr*)lpAddr);
 			if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
 				//Base::Trigger(FD_CLOSE, Base::GetLastError());
 				break;
 			}
-			OnRecvBuf(lpParseBuf, nPacketBufLen, *(SockAddrType*)lpSockAddr);
+			OnRecvBuf(lpParseBuf, nPacketBufLen, *(SockAddr*)lpAddr);
 			lpParseBuf += nPacketBufLen;
 			nParseBufLen -= nPacketBufLen;
 		} while (nParseBufLen > 0);
@@ -884,26 +802,26 @@ protected:
 			bConitnue = false;
 			const char* lpBuf = nullptr;
 			int nBufLen = 0;
-			const SockAddrType* lpSockAddr;
+			const SockAddr* lpAddr;
 			if (!m_pSendBuf) {
-				if(!PrepareSendBuf(lpBuf,nBufLen,lpSockAddr)) {
+				if(!PrepareSendBuf(lpBuf,nBufLen,lpAddr)) {
 					//说明没有可发送数据
 					return;
 				}
 				m_nSendLen = 0;
 				m_pSendBuf = lpBuf;
 				m_nSendBufLen = nBufLen;
-				m_pSendAddr = lpSockAddr;
+				m_pSendAddr = lpAddr;
 			}
 			ASSERT(m_nSendLen == 0);
 			lpBuf = m_pSendBuf+m_nSendLen;
 			nBufLen = (int)(m_nSendBufLen-m_nSendLen);
-			lpSockAddr = m_pSendAddr;
+			lpAddr = m_pSendAddr;
 			ASSERT(lpBuf && nBufLen>0);
 	#if 0
-			PRINTF("echo:(%s:%d)\n",N2Ip(lpSockAddr->sin_addr.s_addr),N2H(lpSockAddr->sin_port));
+			PRINTF("echo:(%s:%d)\n",N2Ip(lpAddr->sin_addr.s_addr),N2H(lpAddr->sin_port));
 	#endif//
-			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpSockAddr,sizeof(SockAddrType));
+			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,sizeof(SockAddr));
 			if (nBufLen<=0) {
 				nErrorCode = GetLastError();
 				switch(nErrorCode)
@@ -923,19 +841,19 @@ protected:
 					break;
 				}
 			} else {
-				OnSendTo(lpBuf,nBufLen,(const SOCKADDR*)lpSockAddr,sizeof(SockAddrType),0);
+				OnSendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,sizeof(SockAddr),0);
 				bConitnue = Base::IsSocket(); //继续发送
 			}
 		} while(bConitnue);
 	}
 	
-	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags)
 	{
-		ASSERT(nSockAddrLen==sizeof(SockAddrType));
-		Base::OnSendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		ASSERT(nAddrLen==sizeof(SockAddr));
+		Base::OnSendTo(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags);
 		m_nSendLen += nBufLen;
 		if (m_nSendLen >= m_nSendBufLen) {
-			OnSendBuf(m_pSendBuf, m_nSendLen, *(SockAddrType*)lpSockAddr);
+			OnSendBuf(m_pSendBuf, m_nSendLen, *(SockAddr*)lpAddr);
 			m_nSendLen = 0;
 			m_pSendBuf = nullptr;
 			m_nSendBufLen = 0;
@@ -951,16 +869,18 @@ protected:
  *
  *	封装SimpleUdpSocketT，实现简单的Udp数据包网络架构
  */
-template<class TBase, class SockAddrType = SOCKADDR_IN>
-class SimpleUdpSocketT : public UdpSocket<TBase,SockAddrType>
+template<class TBase>
+class SimpleUdpSocketT : public UdpSocket<TBase>
 {
-	typedef UdpSocket<TBase,SockAddrType> Base;
+	typedef UdpSocket<TBase> Base;
+public:
+	typedef typename TBase::SockAddr SockAddr;
 protected:
 	typedef struct tagSABuf
 	{
 		const char* pSendBuf;
 		int nSendBufLen;
-		SockAddrType SendAddr;
+		SockAddr SendAddr;
 		int nSendFlags;
 	}SABUF,*PSABUF;
 	std::deque<SABUF> SendBuffers_;
@@ -991,7 +911,7 @@ public:
 		return ret;
 	}
 
-	int SendBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr, int nFlags = 0)
+	int SendBuf(const char* lpBuf, int nBufLen, const SockAddr & stAddr, int nFlags = 0)
 	{
 		ASSERT(Base::IsSocket());
 		SABUF buffer = {0};
@@ -1003,7 +923,7 @@ public:
 			buffer.pSendBuf = lpBuf;
 		}
 		buffer.nSendBufLen = nBufLen;
-		buffer.SendAddr = SockAddr;
+		buffer.SendAddr = stAddr;
 		buffer.nSendFlags = nFlags;
 		SendBuffers_.push_back(buffer);
 		if(!Base::IsSelect(FD_WRITE)) {
@@ -1014,21 +934,21 @@ public:
 
 protected:
 	//
-	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SockAddrType* & lpSockAddr)
+	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SockAddr* & lpAddr)
 	{
 		if (!SendBuffers_.empty()) {
 			auto& buffer = SendBuffers_.front();
 			lpBuf = buffer.pSendBuf;
 			nBufLen = buffer.nSendBufLen;
-			lpSockAddr = &buffer.SendAddr;
+			lpAddr = &buffer.SendAddr;
 			return true;
 		}
 		return false;
 	}
 
-	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr) 
+	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SockAddr & stAddr) 
 	{
-		Base::OnSendBuf(lpBuf, nBufLen, SockAddr);
+		Base::OnSendBuf(lpBuf, nBufLen, stAddr);
 		auto& buffer = SendBuffers_.front();
 		if(buffer.nSendFlags & SOCKET_PACKET_FLAG_TEMPBUF) {
 			delete []buffer.pSendBuf;
@@ -1047,10 +967,10 @@ protected:
  *	使用UDP数据包+序列号，UDP数据包+时间戳，应答确认机制。
  *	|8字节首部|最大512长度内容|=520字节。
  */
-//template<class TBase, class SockAddrType = SOCKADDR_IN>
-//class StableUdpSocketT : public SimpleUdpSocketT<TBase,SockAddrType>
+//template<class TBase, class SockAddr = SOCKADDR_IN>
+//class StableUdpSocketT : public SimpleUdpSocketT<TBase,SockAddr>
 //{
-//	typedef SimpleUdpSocketT<TBase,SockAddrType> Base;
+//	typedef SimpleUdpSocketT<TBase,SockAddr> Base;
 //protected:
 //	enum
 //	{
@@ -1104,6 +1024,92 @@ protected:
 //		Base::OnSend(nErrorCode);
 //	}
 //};
+
+
+/*!
+ *	@brief SimpleSvrSocketT 定义.
+ *
+ *	封装SimpleSvrSocketT，增加服务对象，实现简单的流式发送/接收（写入/读取）网络架构
+ */
+template<class TBase>
+class SimpleSvrSocketT : public TBase
+{
+	typedef TBase Base;
+public:
+	typedef typename Base::SocketSet SocketSet;
+protected:
+	SocketSet* service_ptr_ = nullptr;
+public:
+	//
+	inline SocketSet* this_service() { return service_ptr_; }
+
+protected:
+	//
+	virtual void OnAttachService(Service* pSvr)
+	{
+		Base::OnAttachService(pSvr);
+		service_ptr_ = dynamic_cast<SocketSet*>(pSvr);
+	}
+	virtual void OnDeatchService(Service* pSvr)
+	{
+		service_ptr_ = nullptr;
+	}
+};
+
+/*!
+ *	@brief SimpleEventService 定义.
+ *
+ *	封装SimpleEventService，实现简单事件分发
+ */
+template<class TBase = Service>
+class SimpleEventServiceT : public TBase
+{
+public:
+	typedef typename TBase::Event Event;
+
+protected:
+	//
+	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
+		if(evt.dst == sock_ptr) {
+			return true;
+		}
+		return false;
+	}
+	//
+	virtual void OnEvent(const Event& evt)
+	{
+		if(evt.dst) {
+			evt.dst->OnEvent(evt);
+		}
+	}
+};
+
+/*!
+ *	@brief SimpleEvtSocketT 定义.
+ *
+ *	封装SimpleEvtSocketT，增加事件服务接口，实现简单的流式发送/接收（写入/读取）网络架构
+ */
+template<class TBase>
+class SimpleEvtSocketT : public SimpleSvrSocketT<TBase>
+{
+	typedef SimpleSvrSocketT<TBase> Base;
+public:
+	typedef typename Base::SocketSet EvtSocketSet;
+	typedef typename EvtSocketSet::Event Event;
+public:
+
+	inline void Post(const Event& evt) {
+		// if(!evt.dst) {
+		// 	evt.dst = this;
+		// }
+		Base::this_service()->Post(evt);
+	}
+	
+	virtual void OnEvent(const Event& evt)
+	{
+	}
+};
+
 
 }
 
