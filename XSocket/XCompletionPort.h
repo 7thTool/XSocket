@@ -74,27 +74,21 @@ public:
 protected:
 	union 
 	{
-		struct 
-		{
-			LPFN_ACCEPTEX lpfnAcceptEx;
-			LPFN_GETACCEPTEXSOCKADDRS lpfnGetAcceptExSockaddrs;
-			char AccpetBuf[1];
-		};
-		struct 
-		{
-			LPFN_CONNECTEX lpfnConnectEx;
-			PER_IO_OPERATION_DATA m_SendOverlapped;
-		};
-		char Reserved[sizeof(PER_IO_OPERATION_DATA) + sizeof(LPFN_CONNECTEX)];
+		PER_IO_OPERATION_DATA send_overlapped_;
+		char send_reserved_[sizeof(PER_IO_OPERATION_DATA)];
 	};
-	PER_IO_OPERATION_DATA m_ReceiveOverlapped;
+	union 
+	{
+		PER_IO_OPERATION_DATA receive_overlapped_;
+		char receive_reserved_[sizeof(PER_IO_OPERATION_DATA)];
+	};
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
 	CompletionPortSocketT():Base()
 	{
-		memset(&Reserved,0,sizeof(Reserved));
-		memset(&m_ReceiveOverlapped,0,sizeof(PER_IO_OPERATION_DATA));
+		memset(&send_reserved_,0,sizeof(send_reserved_));
+		memset(&receive_reserved_,0,sizeof(receive_reserved_));
 	}
 
 	virtual ~CompletionPortSocketT()
@@ -105,40 +99,40 @@ public:
 	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM)
 	{
 		SOCKET Sock = WSASocket(nSockAf, nSockType, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
-		DWORD dwBytes = 0;
-		do {
-			// 获取AcceptEx函数指针
-			dwBytes = 0;
-			GUID GuidAcceptEx = WSAID_ACCEPTEX;
-			if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
-							&GuidAcceptEx, sizeof(GuidAcceptEx),
-							&lpfnAcceptEx, sizeof(lpfnAcceptEx), &dwBytes, NULL, NULL)) {
-				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n", GetLastError());
-				break;
-			}
-			// 获取GetAcceptExSockAddrs函数指针
-			dwBytes = 0;
-			GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
-			if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
-							&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
-							&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
-				PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d\n", GetLastError());
-				break;
-			}
-			//获得ConnectEx 函数的指针
-			dwBytes = 0;
-			GUID GuidConnectEx = WSAID_CONNECTEX;
-			if (SOCKET_ERROR == WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
-				&GuidConnectEx, sizeof(GuidConnectEx ),
-				&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
-				PRINTF("WSAIoctl ConnectEx is failed. Error=%d\n", GetLastError());
-				break;
-			}
-		} while(false);
-		if(!lpfnAcceptEx || !lpfnGetAcceptExSockaddrs || !lpfnConnectEx) {
-			XSocket::Socket::Close(Sock);
-			return INVALID_SOCKET;
-		}
+		// DWORD dwBytes = 0;
+		// do {
+		// 	// 获取AcceptEx函数指针
+		// 	dwBytes = 0;
+		// 	GUID GuidAcceptEx = WSAID_ACCEPTEX;
+		// 	if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
+		// 					&GuidAcceptEx, sizeof(GuidAcceptEx),
+		// 					&lpfnAcceptEx, sizeof(lpfnAcceptEx), &dwBytes, NULL, NULL)) {
+		// 		PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n", GetLastError());
+		// 		break;
+		// 	}
+		// 	// 获取GetAcceptExSockAddrs函数指针
+		// 	dwBytes = 0;
+		// 	GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
+		// 	if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
+		// 					&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
+		// 					&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
+		// 		PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d\n", GetLastError());
+		// 		break;
+		// 	}
+		// 	//获得ConnectEx 函数的指针
+		// 	dwBytes = 0;
+		// 	GUID GuidConnectEx = WSAID_CONNECTEX;
+		// 	if (SOCKET_ERROR == WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
+		// 		&GuidConnectEx, sizeof(GuidConnectEx ),
+		// 		&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
+		// 		PRINTF("WSAIoctl ConnectEx is failed. Error=%d\n", GetLastError());
+		// 		break;
+		// 	}
+		// } while(false);
+		// if(!lpfnAcceptEx || !lpfnGetAcceptExSockaddrs || !lpfnConnectEx) {
+		// 	XSocket::Socket::Close(Sock);
+		// 	return INVALID_SOCKET;
+		// }
 		int nRole = SOCKET_ROLE_NONE;
 		if ((nSockAf==AF_INET&&nSockType==SOCK_DGRAM)) {
 			nRole = SOCKET_ROLE_WORK;
@@ -166,7 +160,7 @@ public:
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	{
 		ASSERT(IsSocket());
-
+		static LPFN_CONNECTEX lpfnConnectEx = [&] {
 		DWORD dwBytes = 0;
 		do {
 			//获得ConnectEx 函数的指针
@@ -179,6 +173,8 @@ public:
 				break;
 			}
 		} while(false);
+		return lpfnConnectEx;
+		}();
 		if(!lpfnConnectEx) {
 			return SOCKET_ERROR;
 		}
@@ -211,7 +207,7 @@ public:
 		break;
 		}
 		
-		PER_IO_OPERATION_DATA* pOverlapped = &m_SendOverlapped;
+		PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
 		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
 		pOverlapped->Buffer.buf	= NULL;
 		pOverlapped->Buffer.len	= 0;
@@ -243,6 +239,7 @@ public:
 
 	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 	{
+		static LPFN_ACCEPTEX lpfnAcceptEx = [&] {
 		DWORD dwBytes = 0;
 		do {
 			// 获取AcceptEx函数指针
@@ -254,17 +251,10 @@ public:
 				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n", GetLastError());
 				break;
 			}
-			// 获取GetAcceptExSockAddrs函数指针
-			dwBytes = 0;
-			GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
-			if (0 != WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
-							&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
-							&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
-				PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d\n", GetLastError());
-				break;
-			}
 		} while(false);
-		if(!lpfnAcceptEx || !lpfnGetAcceptExSockaddrs) {
+		return lpfnAcceptEx;
+		}();
+		if(!lpfnAcceptEx) {
 			return INVALID_SOCKET;
 		}
 
@@ -274,9 +264,9 @@ public:
 			return INVALID_SOCKET;
 		}
 
-		PER_IO_OPERATION_DATA* pOverlapped = &m_ReceiveOverlapped;
+		PER_IO_OPERATION_DATA* pOverlapped = &receive_overlapped_;
 		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
-		pOverlapped->Buffer.buf	= AccpetBuf; //这个不能为空, 应使其不小于16，因为SOCKADDR_IN大小影响
+		pOverlapped->Buffer.buf	= send_reserved_; //这个不能为空, 应使其不小于16，因为SOCKADDR_IN大小影响
 		pOverlapped->Buffer.len	= 0; //0表只连不接收、连接到来->请求完成，否则连接到来+任意长数据到来->请求完成
 		pOverlapped->OperationType = IOCP_OPERATION_ACCEPT;
 		pOverlapped->Sock = Sock;
@@ -300,8 +290,8 @@ public:
 
 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
-		ASSERT(m_SendOverlapped.NumberOfBytesSended >= m_SendOverlapped.Buffer.len);
-		PER_IO_OPERATION_DATA* pOverlapped = &m_SendOverlapped;
+		ASSERT(send_overlapped_.NumberOfBytesSended >= send_overlapped_.Buffer.len);
+		PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
 		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
 		pOverlapped->Buffer.buf	= (char*)lpBuf;
 		pOverlapped->Buffer.len	= nBufLen; 
@@ -323,7 +313,7 @@ public:
 
 	int Receive(char* lpBuf, int nBufLen, int nFlags = 0)
 	{
-		PER_IO_OPERATION_DATA* pOverlapped = &m_ReceiveOverlapped;
+		PER_IO_OPERATION_DATA* pOverlapped = &receive_overlapped_;
 		memset(&pOverlapped->Overlapped,0,sizeof(WSAOVERLAPPED));
 		pOverlapped->Buffer.buf = lpBuf;
 		pOverlapped->Buffer.len = nBufLen;
@@ -347,15 +337,15 @@ public:
 		int lAsyncEvent = 0;
 		if(!(event_ & FD_READ) && (lEvent & FD_READ)) {
 			lAsyncEvent |= FD_READ;
-			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)this, &m_ReceiveOverlapped.Overlapped);
+			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)this, &receive_overlapped_.Overlapped);
 		}
 		if(!(event_ & FD_WRITE) && (lEvent & FD_WRITE)) {
 			lAsyncEvent |= FD_WRITE;
-			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)this, &m_SendOverlapped.Overlapped);
+			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)this, &send_overlapped_.Overlapped);
 		}
 		if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
 			lAsyncEvent |= FD_ACCEPT;
-			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCPET, (ULONG_PTR)this, &m_ReceiveOverlapped.Overlapped);
+			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCPET, (ULONG_PTR)this, &receive_overlapped_.Overlapped);
 		}
 		Base::Select(lEvent);
 		if(lAsyncEvent & FD_READ) {
@@ -567,6 +557,19 @@ protected:
 					case IOCP_OPERATION_ACCEPT:
 					{
 						if(sock_ptr->IsSelect(FD_ACCEPT)) {
+							// LPFN_GETACCEPTEXSOCKADDRS lpfnGetAcceptExSockaddrs = nullptr;
+							// DWORD dwBytes = 0;
+							// do {
+							// 	// 获取GetAcceptExSockAddrs函数指针
+							// 	dwBytes = 0;
+							// 	GUID GuidGetAcceptExSockaddrs = WSAID_GETACCEPTEXSOCKADDRS;
+							// 	if (0 != WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
+							// 					&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
+							// 					&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
+							// 		PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d\n", GetLastError());
+							// 		break;
+							// 	}
+							// } while(false);
 							// sock_ptr->SetSockOpt(
 							// 	SOL_SOCKET
 							// 	, SO_UPDATE_ACCEPT_CONTEXT
@@ -574,7 +577,7 @@ protected:
 							// 	, sizeof(lpOverlapped->Sock));
 							// SOCKADDR_IN *lpRemoteAddr = NULL, *lpLocalAddr = NULL;
 							// int nRemoteAddrLen = sizeof(SOCKADDR_IN), nLocalAddrLen = sizeof(SOCKADDR_IN);
-							// GetAcceptExSockaddrs(lpOverlapped->Buffer.buf, 0, 
+							// lpfnGetAcceptExSockaddrs(lpOverlapped->Buffer.buf, 0, 
 							// 	sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
 							// 	(LPSOCKADDR*)&lpLocalAddr, &nLocalAddrLen,
 							// 	(LPSOCKADDR*)&lpRemoteAddr, &nRemoteAddrLen);
