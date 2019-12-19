@@ -684,13 +684,11 @@ typedef ThreadServiceT<Service> ThreadService;
  *
  *	封装WorkSocket，适用于服务端工作Socket
  */
-template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+template<class TBase = SocketEx>
 class WorkSocketT : public TBase
 {
 	typedef TBase Base;
 public:
-	typedef TSockAddr SockAddr;
-
 	WorkSocketT():Base()
 	{
 
@@ -702,13 +700,11 @@ public:
  *
  *	封装ConnectSocket，适用于客户端连接Socket
  */
-template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+template<class TBase = SocketEx>
 class ConnectSocketT : public TBase
 {
 	typedef ConnectSocketT<TBase> This;
 	typedef TBase Base;
-public:
-	typedef TSockAddr SockAddr;
 protected:
 	bool m_bConnected;
 	unsigned long m_ConnectTime;
@@ -800,12 +796,12 @@ protected:
  *
  *	封装ListenSocket，适用于服务端监听Socket
  */
-template<class TBase, class TSockAddr = SOCKADDR_IN>
+template<class TBase>
 class ListenSocketT : public TBase
 {
 	typedef TBase Base;
 public:
-	typedef TSockAddr SockAddr;
+	typedef typename Base::SockAddr SockAddr;
 
 	ListenSocketT():Base()
 	{
@@ -1308,12 +1304,13 @@ protected:
  *
  *	封装SelectSocket，实现对select模型管理一个客户端连接Socket
  */
-template<class TSocketSet, class TBase = SocketEx>
+template<class TSocketSet, class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
 class SelectSocketT : public TBase
 {
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
+	typedef TSockAddr SockAddr;
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 

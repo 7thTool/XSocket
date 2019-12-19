@@ -65,12 +65,13 @@ typedef struct _PER_IO_OPERATION_DATA
  *
  *	封装CompletionPortSocket
  */
-template<class TSocketSet, class TBase = SocketEx>
+template<class TSocketSet, class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
 class CompletionPortSocketT : public TBase
 {
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
+	typedef TSockAddr SockAddr;
 protected:
 	union 
 	{

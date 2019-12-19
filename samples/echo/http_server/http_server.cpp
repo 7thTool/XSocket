@@ -98,9 +98,9 @@ protected:
 };
 
 class server 
-	: public SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet>
+	: public SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SelectSocketT<ThreadService,SocketEx>>>,WorkSocketSet>
 {
-	typedef SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SocketEx>>,WorkSocketSet> Base;
+	typedef SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SelectSocketT<ThreadService,SocketEx>>>,WorkSocketSet> Base;
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{
