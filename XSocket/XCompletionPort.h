@@ -96,10 +96,10 @@ public:
 	{
 		
 	}
-	
-	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM)
+
+	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0)
 	{
-		SOCKET Sock = WSASocket(nSockAf, nSockType, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+		SOCKET Sock = WSASocket(nSockAf, nSockType, nSockProtocol, NULL, 0, WSA_FLAG_OVERLAPPED);
 		// DWORD dwBytes = 0;
 		// do {
 		// 	// 获取AcceptEx函数指针
@@ -141,73 +141,24 @@ public:
 		return Attach(Sock, nRole);
 	}
 
-	int Connect(const char* lpszHostAddress, unsigned short nHostPort)
+	inline int Connect(const char* lpszHostAddress, int nHostPort)
 	{
-		SOCKADDR_IN sockAddr = {0};
-		if (lpszHostAddress == NULL) {
-			sockAddr.sin_addr.s_addr = H2N((u_long)INADDR_ANY);
-		} else {
-			sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)lpszHostAddress));
-			if (sockAddr.sin_addr.s_addr == INADDR_NONE) {
-				//SetLastError(EINVAL);
-				//return SOCKET_ERROR;
-			}
+		Open(AF_INET6, SOCK_STREAM, 0);
+		if (IsSocket()) {
+			return INVALID_SOCKET;
 		}
-		sockAddr.sin_family = AF_INET;
-		sockAddr.sin_port = H2N((u_short)nHostPort);
-		return Connect((SOCKADDR*)&sockAddr, sizeof(sockAddr));
-	}
-
-	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
-	{
-		ASSERT(IsSocket());
-		static LPFN_CONNECTEX lpfnConnectEx = [&] {
-		DWORD dwBytes = 0;
-		do {
-			//获得ConnectEx 函数的指针
-			dwBytes = 0;
-			GUID GuidConnectEx = WSAID_CONNECTEX;
-			if (SOCKET_ERROR == WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
-				&GuidConnectEx, sizeof(GuidConnectEx ),
-				&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
-				PRINTF("WSAIoctl ConnectEx is failed. Error=%d\n", GetLastError());
-				break;
-			}
-		} while(false);
-		return lpfnConnectEx;
-		}();
-		if(!lpfnConnectEx) {
-			return SOCKET_ERROR;
+		DWORD ipv6only = 0;
+		if (SetSockOpt(IPPROTO_IPV6, IPV6_V6ONLY, (char *)&ipv6only, sizeof(ipv6only)) == SOCKET_ERROR) {
+			return INVALID_SOCKET;
 		}
 
-		OnRole(SOCKET_ROLE_CONNECT);
-		role_ = SOCKET_ROLE_CONNECT;
-		event_ |= FD_CONNECT;
-		IOCtl(FIONBIO, 1);//设为非阻塞模式
-
-		//MSDN说The parameter s is an unbound or a listening socket，
-		//还是诡异两个字connect操作干嘛要绑定？不知道，没人给解释，那绑定就对了，那么绑哪个？
-		//最好把你的地址结构像下面这样设置
-		switch (lpSockAddr->sa_family)
-		{
-		case AF_INET:
-		{
-			SOCKADDR_IN addr;
-			addr.sin_family = AF_INET;
-			addr.sin_port = htons(0);
-			addr.sin_addr.s_addr = htonl(ADDR_ANY);
-			//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
-			//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
-			Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
-		}
-		break;
-		case AF_INET6:
-		break;
-		default:
-		ASSERT(0);
-		break;
-		}
-		
+		char PortName[16] = {0};
+		snprintf(PortName, "%d", nHostPort);
+		SOCKADDR_STORAGE LocalAddr = {0};
+		SOCKADDR_STORAGE RemoteAddr = {0};
+		DWORD dwLocalAddr = sizeof(LocalAddr);
+		DWORD dwRemoteAddr = sizeof(RemoteAddr);
+		//struct timeval timeout = {0};
 		PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
 		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
 		pOverlapped->Buffer.buf	= NULL;
@@ -215,18 +166,86 @@ public:
 		pOverlapped->Flags = 0;
 		pOverlapped->OperationType = IOCP_OPERATION_CONNECT;
 		pOverlapped->NumberOfBytesSended = 0;
-		if(lpfnConnectEx((SOCKET)*this, 
-			lpSockAddr, 
-			nSockAddrLen, 
-			pOverlapped->Buffer.buf,
-			pOverlapped->Buffer.len,
-			(LPDWORD)&pOverlapped->NumberOfBytesSended, 
-			&pOverlapped->Overlapped)) {
+		return WSAConnectByName((SOCKET)*this
+		, lpszHostAddress
+		, PortName
+		, &dwLocalAddr
+		,(SOCKADDR *)&LocalAddr
+		, &dwRemoteAddr
+		,(SOCKADDR *)&RemoteAddr
+		, NULL
+		,&pOverlapped->Overlapped);
+	}
+
+	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+	{
+		ASSERT(IsSocket());
+		OnRole(SOCKET_ROLE_CONNECT);
+		role_ = SOCKET_ROLE_CONNECT;
+		event_ |= FD_CONNECT;
+		IOCtl(FIONBIO, 1);//设为非阻塞模式
+
+		switch (lpSockAddr->sa_family)
+		{
+		case AF_INET6:
+		{
 			ASSERT(0);
-			return 0;
-		} else {
-			//int nError = GetLastError();
-			//PRINTF("ConnectEx is failed. Error=%d\n", nError);
+		}
+		break;
+		default:
+		{
+			static LPFN_CONNECTEX lpfnConnectEx = [&] {
+			DWORD dwBytes = 0;
+			do {
+				//获得ConnectEx 函数的指针
+				dwBytes = 0;
+				GUID GuidConnectEx = WSAID_CONNECTEX;
+				if (SOCKET_ERROR == WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
+					&GuidConnectEx, sizeof(GuidConnectEx ),
+					&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
+					PRINTF("WSAIoctl ConnectEx is failed. Error=%d\n", GetLastError());
+					break;
+				}
+			} while(false);
+			return lpfnConnectEx;
+			}();
+			if(!lpfnConnectEx) {
+				return SOCKET_ERROR;
+			}
+
+			//MSDN说The parameter s is an unbound or a listening socket，
+			//还是诡异两个字connect操作干嘛要绑定？不知道，没人给解释，那绑定就对了，那么绑哪个？
+			//最好把你的地址结构像下面这样设置
+			SOCKADDR_IN addr;
+			addr.sin_family = AF_INET;
+			addr.sin_port = htons(0);
+			addr.sin_addr.s_addr = htonl(ADDR_ANY);
+			//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
+			//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
+			Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
+
+			PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
+			memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
+			pOverlapped->Buffer.buf	= NULL;
+			pOverlapped->Buffer.len	= 0;
+			pOverlapped->Flags = 0;
+			pOverlapped->OperationType = IOCP_OPERATION_CONNECT;
+			pOverlapped->NumberOfBytesSended = 0;
+			if(lpfnConnectEx((SOCKET)*this, 
+				lpSockAddr, 
+				nSockAddrLen, 
+				pOverlapped->Buffer.buf,
+				pOverlapped->Buffer.len,
+				(LPDWORD)&pOverlapped->NumberOfBytesSended, 
+				&pOverlapped->Overlapped)) {
+				ASSERT(0);
+				return 0;
+			} else {
+				//int nError = GetLastError();
+				//PRINTF("ConnectEx is failed. Error=%d\n", nError);
+			}
+		}
+		break;
 		}
 		return SOCKET_ERROR;
 	}
@@ -260,7 +279,7 @@ public:
 		}
 
 		//为即将到来的Client连接事先创建好Socket，异步连接需要事先将此Socket备下，再行连接
-		SOCKET Sock = XSocket::Socket::Open(AF_INET, SOCK_STREAM, 0);
+		SOCKET Sock = XSocket::Socket::Create(AF_INET, SOCK_STREAM, 0);
 		if(Sock == INVALID_SOCKET) {
 			return INVALID_SOCKET;
 		}
@@ -280,7 +299,7 @@ public:
 		if(nAccept == 0) {
 			if(WSAGetLastError() != ERROR_IO_PENDING) {
 				DWORD dwError =  GetLastError();
-				PRINTF("WSAIoctl AcceptEx is failed. Error=%d\n",dwError);
+				PRINTF("AcceptEx is failed. Error=%d\n",dwError);
 				XSocket::Socket::Close(Sock);
 				SetLastError(dwError);
 				return INVALID_SOCKET;
@@ -289,6 +308,13 @@ public:
 		return nAccept;
 	}
 
+	inline int GetAddrType() 
+	{ 
+		SockAddr addr = {0};
+		GetSockName(&addr, sizeof(SockAddr));
+		return addr.sa_family;
+	}
+	
 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		ASSERT(send_overlapped_.NumberOfBytesSended >= send_overlapped_.Buffer.len);

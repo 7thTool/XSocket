@@ -48,6 +48,13 @@ public:
 		
 	}
 
+	inline int GetAddrType() 
+	{ 
+		SockAddr addr = {0};
+		GetSockName(&addr, sizeof(SockAddr));
+		return addr.sa_family;
+	}
+
 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		int nSendLen = Base::Send(lpBuf, nBufLen, nFlags);
@@ -86,6 +93,49 @@ public:
 			}	
 		}
 		return nRecvLen;
+	}
+
+	int SendTo(SOCKET Sock, const char* lpBuf, int nBufLen,
+		const SOCKADDR* lpSockAddr = 0, int nSockAddrLen = 0, int nFlags = MSG_NOSIGNAL)
+	{
+		int nSendLen = Base::SendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		if(nSendLen <= 0) {
+			int nErrorCode = Base::GetLastError();
+			switch(nErrorCode)
+			{
+			case 0:
+				break;
+			case EWOULDBLOCK:
+			case EINTR:
+				service()->AsyncSelect(this, FD_WRITE);
+				break;
+			default:
+				break;
+			}	
+		}
+		return nSendLen;
+	}
+
+	int ReceiveFrom(SOCKET Sock, char* lpBuf, int nBufLen, 
+		SOCKADDR* lpSockAddr = 0, int* lpSockAddrLen = 0, int nFlags = MSG_NOSIGNAL)
+	{
+		int nRecvLen = Base::ReceiveFrom(lpBuf, nBufLen, lpSockAddr, lpSockAddrLen, nFlags);
+		if(nRecvLen <= 0) {
+			int nErrorCode = Base::GetLastError();
+			switch(nErrorCode)
+			{
+			case 0:
+				break;
+			case EWOULDBLOCK:
+			case EINTR:
+				service()->AsyncSelect(this, FD_READ);
+				break;
+			default:
+				break;
+			}	
+		}
+		return nRecvLen;
+
 	}
 
 	inline void Select(int lEvent) {  

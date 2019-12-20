@@ -27,10 +27,10 @@ SocketEx::~SocketEx()
 	event_ = 0;
 }
 
-SOCKET SocketEx::Open(int nSockAf, int nSockType)
+SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 {
 	int nRole = SOCKET_ROLE_NONE;
-	SOCKET Sock = Socket::Open(nSockAf, nSockType, 0);
+	SOCKET Sock = Socket::Open(nSockAf, nSockType, nSockProtocol);
 	if ((nSockAf==AF_INET&&nSockType==SOCK_DGRAM)) {
 		nRole = SOCKET_ROLE_WORK;
 #ifdef WIN32
@@ -116,23 +116,6 @@ int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	ASSERT(IsSocket());
 	int rlt = Socket::Bind(lpSockAddr,nSockAddrLen);
 	return rlt;
-}
-
-int SocketEx::Connect(const char* lpszHostAddress, unsigned short nHostPort)
-{
-	SOCKADDR_IN sockAddr = {0};
-	if (lpszHostAddress == NULL) {
-		sockAddr.sin_addr.s_addr = H2N((u_long)INADDR_ANY);
-	} else {
-		sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)lpszHostAddress));
-		if (sockAddr.sin_addr.s_addr == INADDR_NONE) {
-			//SetLastError(EINVAL);
-			//return SOCKET_ERROR;
-		}
-	}
-	sockAddr.sin_family = AF_INET;
-	sockAddr.sin_port = H2N((u_short)nHostPort);
-	return Connect((SOCKADDR*)&sockAddr, sizeof(sockAddr));
 }
 
 int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
@@ -230,7 +213,8 @@ void SocketEx::OnReceive(const char* lpBuf, int nBufLen, int nFlags)
 
 void SocketEx::OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
-	PRINTF("(%p %p %d)::OnReceiveFrom(%s:%d): %.*s\n", Service::service(), this, (SOCKET)*this, N2Ip(Addr2Ip(lpSockAddr,nSockAddrLen)), N2H(Addr2Port(lpSockAddr,nSockAddrLen)), nBufLen, lpBuf);
+	char str[64] = {0};
+	PRINTF("(%p %p %d)::OnReceiveFrom(%s): %.*s\n", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
 }
 
 void SocketEx::OnSend(int nErrorCode)
@@ -247,7 +231,8 @@ void SocketEx::OnSend(const char* lpBuf, int nBufLen, int nFlags)
 
 void SocketEx::OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
-	PRINTF("(%p %p %d)::OnSendTo(%s:%d):%.*s\n", Service::service(), this, (SOCKET)*this, N2Ip(Addr2Ip(lpSockAddr,nSockAddrLen)), N2H(Addr2Port(lpSockAddr,nSockAddrLen)), nBufLen, lpBuf);
+	char str[64] = {0};
+	PRINTF("(%p %p %d)::OnSendTo(%s:%d):%.*s\n", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
 }
 
 void SocketEx::OnOOB(int nErrorCode)

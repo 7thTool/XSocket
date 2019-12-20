@@ -52,17 +52,25 @@ public:
 	static u_short H2N(u_short n);
 	static u_short N2H(u_short n);
 
-	static u_long Ip2N(const char* Ip);
-	static const char* N2Ip(u_long Ip);
-	static const char* Url2Ip(const char* Url);
+	static u_long Ip2N(const char* ip);
+	static const char* N2Ip(u_long ip);
+	static const char* Url2Ip(const char* url);
 
-	static u_short Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-	static u_long Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-
+	//in_addr,in6_addr
+	static int IpStr2IpAddr(const char* ip, int af, void* p);
+	static const char* IpAddr2IpStr(void* p, int af, char* ip, int ip_len);
+	
 	static int GetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints, struct addrinfo **result);
-	static void SetAddrInfo(struct sockaddr * addr, u_short port);
+	static void SetAddrPort(struct sockaddr * addr, u_short port);
+	// static void FreeAddrInfo( const struct addrinfo *ai);
 
-	static SOCKET Open(int nSockAf, int nSockType, int nSockProtocol);
+	static u_short SockAddr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen);
+	static const char* SockAddr2IpStr(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len);
+	static const char* SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len);
+
+	static const char* Url2IpStr(const char* url, char* str, int len);
+	
+	static SOCKET Create(int nSockAf, int nSockType, int nSockProtocol);
 
 	static bool IsSocket(SOCKET Sock);
 
@@ -128,7 +136,7 @@ public:
 #endif//
 	}
 
-	inline SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM) { return Attach(Open(nSockAf, nSockType, 0)); }
+	inline SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0) { return Attach(Create(nSockAf, nSockType, nSockProtocol)); }
 	inline SOCKET Attach(SOCKET Sock) { SOCKET oSock = sock_; sock_ = Sock; return oSock; }
 	inline SOCKET Detach() { return Attach(INVALID_SOCKET); }
 	inline int ShutDown(int nHow = Both) { return ShutDown(sock_, nHow); }

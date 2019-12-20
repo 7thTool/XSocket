@@ -48,41 +48,41 @@ typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSe
 class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketT<SocketEx>>>>
+	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketExT<SocketEx>>>>
 #else
 #ifdef USE_EPOLL
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<EPollSocketT<ClientSocketSet,SocketEx>>>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx>>>>>
 #elif defined(USE_IOCP)
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>>
 #else
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientSocketSet,SocketEx>>>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>>>>>
 #endif
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketT<SocketEx>>>>
+	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SocketEx>>>>
 #else
-	: public SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > >
+	: public SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketExT<SocketEx> > > >
 #endif//USE_MANAGER
 #endif//USE_UDP
 {
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketT<SocketEx>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketExT<SocketEx>>>> Base;
 #else
 #ifdef USE_EPOLL
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<EPollSocketT<ClientSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx>>>>> Base;
 #elif defined(USE_IOCP)
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>> Base;
 #else
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>>>>> Base;
 #endif
 #endif//USE_MANAGER
 #else
 #ifndef USE_MANAGER
-	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketT<SocketEx>>>> Base;
+	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SocketEx>>>> Base;
 #else
-	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketT<SocketEx> > > > Base;
+	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketExT<SocketEx> > > > Base;
 #endif//USE_MANAGER
 #endif//USE_UDP
 protected:
@@ -96,7 +96,8 @@ public:
 		
 	}
 
-#ifndef USE_MANAGER
+#ifdef USE_MANAGER
+#else
 	bool Start(const std::string& addr, u_short port)
 	{
 		addr_ = addr;
@@ -112,8 +113,7 @@ protected:
 			return false;
 		}
 	#ifndef USE_UDP
-		Open();
-		Connect(addr_.c_str(), port_);
+		Base::Connect(addr_.c_str(), port_);
 	#else
 		Open(AF_INET,SOCK_DGRAM);
 		Select(FD_READ);
@@ -124,11 +124,11 @@ protected:
 		IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
 		//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
 	#endif//
-		SOCKADDR_IN Addr = {0};
-		Addr.sin_family = AF_INET;
-		Addr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		Addr.sin_port = H2N((u_short)port_);
-		PostBuf("hello.",6,Addr,SOCKET_PACKET_FLAG_TEMPBUF);
+		SOCKADDR_IN stAddr = {0};
+		stAddr.sin_family = AF_INET;
+		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
+		stAddr.sin_port = H2N((u_short)port_);
+		PostBuf("hello.",6,stAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 	#endif//
 		return true;
 	}
@@ -233,12 +233,11 @@ public:
 		{
 			std::shared_ptr<client> sp_client = std::make_shared<client>();
 	#ifndef USE_UDP
-			sp_client->Open();
+			sp_client->Connect(DEFAULT_IP,DEFAULT_PORT);
 	#else
 			sp_client->Open(AF_INET,SOCK_DGRAM);
 	#endif//
 			AddSocket(sp_client);
-			sp_client->Connect(DEFAULT_IP,DEFAULT_PORT);
 		}
 	#else
 		c = new client[DEFAULT_CLIENT_COUNT];

@@ -93,15 +93,15 @@ u_short Socket::N2H(u_short n)
 	return ntohs(n);
 }
 
-u_long Socket::Ip2N(const char* Ip)
+u_long Socket::Ip2N(const char* ip)
 {
-	return inet_addr(Ip);
+	return inet_addr(ip);
 }
 
-const char* Socket::N2Ip(u_long Ip)
+const char* Socket::N2Ip(u_long ip)
 {
 	struct in_addr addr = {0};
-	addr.s_addr = Ip;
+	addr.s_addr = ip;
 	return (::inet_ntoa(addr));
 }
 
@@ -118,33 +118,19 @@ const char* Socket::Url2Ip(const char* Url)
 		return (N2Ip(addr.sin_addr.s_addr));
 	}
 	//本来就是IP地址
-	return Url; 
+	return Url;
 }
 
-u_short Socket::Addr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+int Socket::IpStr2IpAddr(const char* ip, int af, void* p)
 {
-	switch (lpSockAddr->sa_family)
-	{
-	case AF_INET:
-		return ((SOCKADDR_IN*)lpSockAddr)->sin_port;
-		break;
-	default:
-		break;
-	}
-	return 0;
+	return inet_pton(af, ip, p);
 }
 
-u_long Socket::Addr2Ip(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+const char* Socket::IpAddr2IpStr(void* p, int af, char* ip, int ip_len)
 {
-	switch (lpSockAddr->sa_family)
-	{
-	case AF_INET:
-		return ((SOCKADDR_IN*)lpSockAddr)->sin_addr.s_addr;
-		break;
-	default:
-		break;
-	}
-	return 0;
+	memset(ip, 0, ip_len);
+	inet_ntop(af, p, ip, ip_len);
+	return ip;
 }
 
 int Socket::GetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints, struct addrinfo **result)
@@ -152,7 +138,7 @@ int Socket::GetAddrInfo( const char *hostname, const char *service, const struct
 	return ::getaddrinfo(hostname, service, hints, result);
 }
 
-void Socket::SetAddrInfo(struct sockaddr * addr, u_short port)
+void Socket::SetAddrPort(struct sockaddr * addr, u_short port)
 {
 	auto netType = addr->sa_family;
 	if (netType == AF_INET) {
@@ -164,7 +150,88 @@ void Socket::SetAddrInfo(struct sockaddr * addr, u_short port)
 	}
 }
 
-SOCKET Socket::Open(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
+// void Socket::FreeAddrInfo( const struct addrinfo *ai)
+// {
+// 	freeaddrinfo(ai);
+// }
+
+u_short Socket::SockAddr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+{
+	switch (lpSockAddr->sa_family)
+	{
+	case AF_INET:
+		return N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port);
+		break;
+	case AF_INET6:
+		return N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+
+const char* Socket::SockAddr2IpStr(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len)
+{
+	switch (lpSockAddr->sa_family)
+	{
+	case AF_INET:
+		return IpAddr2IpStr(&((SOCKADDR_IN*)lpSockAddr)->sin_addr, AF_INET, str, len);
+		break;
+	case AF_INET6:
+		return IpAddr2IpStr(&((SOCKADDR_IN6*)lpSockAddr)->sin6_addr, AF_INET6, str, len);
+		break;
+	default:
+		break;
+	}
+	return "";
+}
+
+const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len)
+{
+	char ip[64] = {0};
+	u_short port = 0;
+	switch (lpSockAddr->sa_family)
+	{
+	case AF_INET:
+	{
+		IpAddr2IpStr(&((SOCKADDR_IN*)lpSockAddr)->sin_addr, AF_INET, ip, 64);
+		port = N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port);
+		snprintf(str, len, "%s:%d", ip, port);
+	}
+	break;
+	case AF_INET6:
+	{
+		IpAddr2IpStr(&((SOCKADDR_IN6*)lpSockAddr)->sin6_addr, AF_INET6, ip, 64);
+		port = N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
+		snprintf(str, len, "%s:%d", ip, port);
+	}
+	break;
+	default:
+	break;
+	}
+	return "";
+}
+
+const char* Socket::Url2IpStr(const char* url, char* str, int len)
+{
+	struct addrinfo ai = {0}, *ai_res = nullptr;
+	ai.ai_family = PF_UNSPEC;
+	ai.ai_socktype = SOCK_STREAM;
+#ifdef WIN32
+	ai.ai_flags = 0;
+#else
+	ai.ai_flags = AI_DEFAULT;
+#endif
+	ai.ai_flags = AI_PASSIVE;
+	int err = GetAddrInfo(url, nullptr, &ai, &ai_res);
+	if(err) {
+		return "";
+	}
+	return SockAddr2IpStr(ai_res->ai_addr, ai_res->ai_addrlen, str, len);
+}
+
+SOCKET Socket::Create(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
 {
 	return socket(nSockAf, nSockType, nSockProtocol);
 }

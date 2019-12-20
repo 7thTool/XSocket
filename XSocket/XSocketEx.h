@@ -62,18 +62,15 @@ public:
 	virtual ~SocketEx();
 
 	//只需重载Attach，因为Open和Detach都会调用Attach
-	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM);
+	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
 	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
 	SOCKET Detach();
 
 	int ShutDown(int nHow = Both);
 	int Close();
 
-	//int Bind(const char* lpszHostAddress, unsigned short nHostPort, PPROXYINFO pProxy);
 	int Bind(const char* lpszHostAddress, unsigned short nHostPort);
 	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-	//int Connect(const char* lpszHostAddress, unsigned short nHostPort, PPROXYINFO pProxy);
-	int Connect(const char* lpszHostAddress, unsigned short nHostPort);
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	int Listen(int nConnectionBacklog = 5);
 	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
@@ -712,7 +709,7 @@ protected:
 
 public:
 	ConnectSocketT():Base(), m_bConnected(false), m_ConnectTime(0), m_ConnectTimeOut(0) {}
-	//virtual ~SocketConnectTimeOut() {}
+	//virtual ~ConnectSocketT() {}
 
 	int Close()
 	{
@@ -789,6 +786,73 @@ protected:
 			Base::Select(FD_READ|FD_OOB);
 		}
 	}
+};
+
+/*!
+ *	@brief ConnectSocketExT 模板定义.
+ *
+ *	封装ConnectSocketExT，自适应IPV4/IPV6套接字
+ */
+template<class TBase = SocketEx>
+class ConnectSocketExT : public ConnectSocketT<TBase>
+{
+	typedef ConnectSocketT<TBase> Base;
+protected:
+	addrinfo* ai_current_ = nullptr;
+public:
+	ConnectSocketExT()
+	{
+
+	}
+	virtual ~ConnectSocketExT() 
+	{
+	}
+
+	inline int Connect(const char* lpszHostAddress, int nHostPort = 0)
+	{
+		struct addrinfo ai = {0};
+		ai.ai_family = PF_UNSPEC;
+		ai.ai_socktype = SOCK_STREAM;
+		#ifdef WIN32
+		ai.ai_flags = 0;
+		#else
+		ai.ai_flags = AI_DEFAULT;
+		#endif
+		ai.ai_flags = AI_PASSIVE;
+		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &ai, &ai_current_);
+		if(ret) {
+			PRINTF("GetAddrInfo %s:%d failed,error=%d", lpszHostAddress, nHostPort, GetLastError());
+			return SOCKET_ERROR;
+		}
+		for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
+		{
+			XSocket::Socket::SetAddrPort(ai_next->ai_addr, nHostPort);
+		}
+		for(; ai_current_; ai_current_ = ai_current_->ai_next)
+		{
+			Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
+			if(Base::IsSocket()) {
+				return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
+			}
+		}
+		return SOCKET_ERROR;
+	}
+
+	inline int ConnectNext()
+	{
+		if(ai_current_) {
+			for(ai_current_ = ai_current_->ai_next; ai_current_; ai_current_ = ai_current_->ai_next)
+			{
+				Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
+				if(Base::IsSocket()) {
+					return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
+				}
+			}
+		}
+		return SOCKET_ERROR;
+	}
+
+	inline int GetAddrType() { ai_current_?ai_current_->ai_family:Base::GetAddrType(); }
 };
 
 /*!
@@ -1317,6 +1381,13 @@ public:
 	SelectSocketT() : Base()
 	{
     	
+	}
+
+	inline int GetAddrType() 
+	{ 
+		SockAddr addr = {0};
+		GetSockName(&addr, sizeof(SockAddr));
+		return addr.sa_family;
 	}
 };
 

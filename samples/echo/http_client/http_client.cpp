@@ -71,9 +71,9 @@ public:
 };
 typedef DelayEventServiceT<Event,ThreadService> ClientService;
 
-class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>>
+class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>>
 {
-	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> Base;
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -98,7 +98,11 @@ protected:
 			return false;
 		}
 		Open();
-		Connect(addr_.c_str(), port_);
+		SOCKADDR_IN stAddr = {0};
+		stAddr.sin_family = AF_INET;
+		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
+		stAddr.sin_port = H2N((u_short)port_);
+		Connect((SOCKADDR*)&stAddr, sizeof(stAddr));
 
 		return true;
 	}

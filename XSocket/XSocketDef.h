@@ -40,6 +40,7 @@
 #include <Windows.h>
 #include <tchar.h>
 #include <memory.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <winsock2.h>
 #include <WS2tcpip.h>
