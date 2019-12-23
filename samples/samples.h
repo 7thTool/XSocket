@@ -28,7 +28,7 @@
 //windows机器ipv6地址：fe80::21a:a5ff:fec1:1060%6
 //在windows机器ping命令： ping fe80::4e0f:6eff:fed8:489a%6 （即：目标地址%本地接口）
 
-//#define USE_IPV6
+#define USE_IPV6
 #ifdef USE_IPV6
 #define SockAddrType SOCKADDR_IN6
 #else
@@ -51,11 +51,11 @@
 #endif//
 #define USE_WEBSOCKET
 
-#define DEFAULT_IP		"127.0.0.1"
-#define DEFAULT_PORT	6666
 #define DEFAULT_BUFSIZE	1024
 
 #ifdef USE_IPV6
+#define DEFAULT_IP		":::1"
+#define DEFAULT_PORT	6666
 //1、IPV6组播地址
 //	RFC4291定义组播地址格式如下；
 //
@@ -153,6 +153,8 @@
 #define DEFAULT_MULTICAST_IP	"FF02::99"
 #define DEFAULT_MULTICAST_PORTS	"12345"
 #else
+#define DEFAULT_IP		"127.0.0.1"
+#define DEFAULT_PORT	6666
 #define DEFAULT_MULTICAST_IP	"224.0.0.255"
 #endif//
 #define DEFAULT_MULTICAST_PORT	12345

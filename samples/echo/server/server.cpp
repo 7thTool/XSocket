@@ -21,7 +21,7 @@ public:
 	int id;
 	std::string buf;
 #ifdef USE_UDP
-	SOCKADDR_IN addr;
+	SockAddrType addr;
 #endif
 	int flags;
 
@@ -29,7 +29,7 @@ public:
 #ifndef USE_UDP
 	Event(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 #else
-	Event(worker* d, int id, const char* buf, int len, const SOCKADDR_IN& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+	Event(worker* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
 #endif
 
 	// inline int get_id() { return evt; }
@@ -57,11 +57,11 @@ SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 
 class WorkSocket : public
 #ifdef USE_EPOLL
-EPollSocketT<WorkSocketSet,SocketEx>
+EPollSocketT<WorkSocketSet,SocketEx,SockAddrType>
 #elif defined(USE_IOCP)
-CompletionPortSocketT<WorkSocketSet,SocketEx>
+CompletionPortSocketT<WorkSocketSet,SocketEx,SockAddrType>
 #else
-SelectSocketT<WorkSocketSet,SocketEx>
+SelectSocketT<WorkSocketSet,SocketEx,SockAddrType>
 #endif//
 {
 

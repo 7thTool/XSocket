@@ -187,6 +187,26 @@ const char* Socket::SockAddr2IpStr(const SOCKADDR* lpSockAddr, int nSockAddrLen,
 	return "";
 }
 
+const char* Socket::SockAddr2PortStr(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len)
+{
+	switch (lpSockAddr->sa_family)
+	{
+	case AF_INET:
+	{
+		snprintf(str, len, "%d", N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port));
+	}
+	break;
+	case AF_INET6:
+	{
+		snprintf(str, len, "%s:%d", N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port));
+	}
+	break;
+	default:
+	break;
+	}
+	return "";
+}
+
 const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len)
 {
 	char ip[64] = {0};

@@ -17,7 +17,7 @@ public:
 	int id;
 	std::string buf;
 #ifdef USE_UDP
-	SOCKADDR_IN addr;
+	SockAddrType addr;
 #endif
 	int flags;
 
@@ -25,7 +25,7 @@ public:
 #ifndef USE_UDP
 	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 #else
-	Event(client* d, int id, const char* buf, int len, const SOCKADDR_IN& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+	Event(client* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
 #endif
 
 	// inline int get_id() { return evt; }
@@ -51,11 +51,11 @@ class client
 	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketExT<SocketEx>>>>
 #else
 #ifdef USE_EPOLL
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx>>>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>>
 #elif defined(USE_IOCP)
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>>
 #else
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>>>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>>
 #endif
 #endif//USE_MANAGER
 #else
@@ -71,11 +71,11 @@ class client
 	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketExT<SocketEx>>>> Base;
 #else
 #ifdef USE_EPOLL
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>> Base;
 #elif defined(USE_IOCP)
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>> Base;
 #else
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>>>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>> Base;
 #endif
 #endif//USE_MANAGER
 #else
@@ -150,7 +150,7 @@ public:
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
 	}
 #else
-	inline void PostBuf(const char* lpBuf, int nBufLen, const SOCKADDR_IN& addr, int nFlags = 0)
+	inline void PostBuf(const char* lpBuf, int nBufLen, const SockAddrType& addr, int nFlags = 0)
 	{
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,addr,nFlags));
 	}
@@ -233,11 +233,13 @@ public:
 		{
 			std::shared_ptr<client> sp_client = std::make_shared<client>();
 	#ifndef USE_UDP
-			sp_client->Connect(DEFAULT_IP,DEFAULT_PORT);
+			sp_client->Open(DEFAULT_IP);
+			AddSocket(sp_client);
+			sp_client->Connect(DEFAULT_PORT);
 	#else
 			sp_client->Open(AF_INET,SOCK_DGRAM);
-	#endif//
 			AddSocket(sp_client);
+	#endif//
 		}
 	#else
 		c = new client[DEFAULT_CLIENT_COUNT];

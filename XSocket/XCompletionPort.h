@@ -47,6 +47,14 @@ typedef struct _PER_IO_OPERATION_DATA
 	WSAOVERLAPPED	Overlapped;
 	WSABUF			Buffer;
 	byte			OperationType;
+	
+	// char NodeName[64] = {0};
+	// char PortName[16] = {0};
+	// SOCKADDR_STORAGE LocalAddr = {0};
+	// SOCKADDR_STORAGE RemoteAddr = {0};
+	// DWORD dwLocalAddr = sizeof(LocalAddr);
+	// DWORD dwRemoteAddr = sizeof(RemoteAddr);
+
 	union 
 	{
 		DWORD		Flags;
@@ -141,7 +149,7 @@ public:
 		return Attach(Sock, nRole);
 	}
 
-	inline int Connect(const char* lpszHostAddress, int nHostPort)
+	/*inline int Connect(const char* lpszHostAddress, int nHostPort)
 	{
 		Open(AF_INET6, SOCK_STREAM, 0);
 		if (IsSocket()) {
@@ -175,7 +183,7 @@ public:
 		,(SOCKADDR *)&RemoteAddr
 		, NULL
 		,&pOverlapped->Overlapped);
-	}
+	}*/
 
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	{
@@ -187,11 +195,49 @@ public:
 
 		switch (lpSockAddr->sa_family)
 		{
+		/*case AF_INET:
 		case AF_INET6:
 		{
-			ASSERT(0);
+			DWORD ipv6only = 0;
+			if (SetSockOpt(IPPROTO_IPV6, IPV6_V6ONLY, (char *)&ipv6only, sizeof(ipv6only)) == SOCKET_ERROR) {
+				return SOCKET_ERROR;
+			}
+
+			char NodeName[64] = {0};
+			SockAddr2IpStr(lpSockAddr, nSockAddrLen, NodeName, 64);
+			char PortName[16] = {0};
+			SockAddr2PortStr(lpSockAddr, nSockAddrLen, PortName, 16);
+			SOCKADDR_STORAGE LocalAddr = {0};
+			SOCKADDR_STORAGE RemoteAddr = {0};
+			DWORD dwLocalAddr = sizeof(LocalAddr);
+			DWORD dwRemoteAddr = sizeof(RemoteAddr);
+			//struct timeval timeout = {0};
+			PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
+			memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
+			pOverlapped->Buffer.buf	= NULL;
+			pOverlapped->Buffer.len	= 0;
+			SockAddr2IpStr(lpSockAddr, nSockAddrLen, pOverlapped->NodeName, 64);
+			SockAddr2PortStr(lpSockAddr, nSockAddrLen, pOverlapped->PortName, 16);
+			pOverlapped->Flags = 0;
+			pOverlapped->OperationType = IOCP_OPERATION_CONNECT;
+			pOverlapped->NumberOfBytesSended = 0;
+			if(WSAConnectByName((SOCKET)*this, pOverlapped->NodeName, pOverlapped->PortName
+			//, &dwLocalAddr, (SOCKADDR *)&LocalAddr, &dwRemoteAddr, (SOCKADDR *)&RemoteAddr
+			, &pOverlapped->dwLocalAddr, (SOCKADDR *)&pOverlapped->LocalAddr, &pOverlapped->dwRemoteAddr, (SOCKADDR *)&pOverlapped->RemoteAddr
+			, NULL
+			//, NULL
+			, &pOverlapped->Overlapped
+			)) {
+				return 0;
+			} else {
+				int nError = GetLastError();
+				char szErrorMessage[1024] = {0};
+				GetErrorMessage(nError, szErrorMessage, 1024);
+				PRINTF("WSAConnectByName is failed. Error=%d:%s\n", nError, szErrorMessage);
+				return SOCKET_ERROR;
+			}
 		}
-		break;
+		break;*/
 		default:
 		{
 			static LPFN_CONNECTEX lpfnConnectEx = [&] {
@@ -216,13 +262,31 @@ public:
 			//MSDN说The parameter s is an unbound or a listening socket，
 			//还是诡异两个字connect操作干嘛要绑定？不知道，没人给解释，那绑定就对了，那么绑哪个？
 			//最好把你的地址结构像下面这样设置
-			SOCKADDR_IN addr;
-			addr.sin_family = AF_INET;
-			addr.sin_port = htons(0);
-			addr.sin_addr.s_addr = htonl(ADDR_ANY);
-			//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
-			//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
-			Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
+			switch(lpSockAddr->sa_family)
+			{
+			case AF_INET6:
+			{
+				/*SOCKADDR_IN6 addr;
+				addr.sin6_family = AF_INET6;
+				addr.sin6_port = htons(0);
+				addr.sin6_addr.s_addr = htonl(ADDR_ANY);
+				//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
+				//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
+				Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN6));*/
+			}
+			break;
+			default:
+			{	
+				SOCKADDR_IN addr;
+				addr.sin_family = AF_INET;
+				addr.sin_port = htons(0);
+				addr.sin_addr.s_addr = htonl(ADDR_ANY);
+				//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
+				//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
+				Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
+			}
+			break;
+			}
 
 			PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
 			memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
@@ -241,8 +305,8 @@ public:
 				ASSERT(0);
 				return 0;
 			} else {
-				//int nError = GetLastError();
-				//PRINTF("ConnectEx is failed. Error=%d\n", nError);
+				PrintLastError("ConnectEx is faile.d");
+				return SOCKET_ERROR;
 			}
 		}
 		break;

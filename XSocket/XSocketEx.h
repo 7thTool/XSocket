@@ -62,7 +62,7 @@ public:
 	virtual ~SocketEx();
 
 	//只需重载Attach，因为Open和Detach都会调用Attach
-	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
+	SOCKET Open(int nSockAf, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
 	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
 	SOCKET Detach();
 
@@ -808,7 +808,7 @@ public:
 	{
 	}
 
-	inline int Connect(const char* lpszHostAddress, int nHostPort = 0)
+	inline SOCKET Open(const char* lpszHostAddress)
 	{
 		struct addrinfo ai = {0};
 		ai.ai_family = PF_UNSPEC;
@@ -821,33 +821,29 @@ public:
 		ai.ai_flags = AI_PASSIVE;
 		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &ai, &ai_current_);
 		if(ret) {
-			PRINTF("GetAddrInfo %s:%d failed,error=%d", lpszHostAddress, nHostPort, GetLastError());
-			return SOCKET_ERROR;
+			PrintLastError("GetAddrInfo");
+			return INVALID_SOCKET;
 		}
-		for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
-		{
-			XSocket::Socket::SetAddrPort(ai_next->ai_addr, nHostPort);
-		}
-		for(; ai_current_; ai_current_ = ai_current_->ai_next)
-		{
-			Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
-			if(Base::IsSocket()) {
-				return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
-			}
-		}
-		return SOCKET_ERROR;
+		return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
 	}
 
-	inline int ConnectNext()
+	inline SOCKET OpenNext()
 	{
-		if(ai_current_) {
+		if (ai_current_) {
 			for(ai_current_ = ai_current_->ai_next; ai_current_; ai_current_ = ai_current_->ai_next)
 			{
-				Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
-				if(Base::IsSocket()) {
-					return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
-				}
+				return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
 			}
+		}
+		return INVALID_SOCKET;
+	}
+
+	inline int Connect(int nHostPort = 0)
+	{
+		ASSERT (Base::IsSocket());
+		if (ai_current_) {
+			XSocket::Socket::SetAddrPort(ai_current_->ai_addr, nHostPort);
+			return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
 		}
 		return SOCKET_ERROR;
 	}
