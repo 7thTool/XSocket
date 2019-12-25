@@ -111,6 +111,13 @@ public:
 
 	static int GetErrorMessage(int nError, char* lpszMessage, int nMessageLen);
 	static int GetErrorMessage(int nError, wchar_t* lpszMessage, int nMessageLen);
+
+	static inline void PrintLastError(const char* prefix = "") {
+		int nErrorCode = GetLastError();
+		char szError[1024] = {0};
+		GetErrorMessage(nErrorCode,szError,1023);
+		PRINTF("%s Error=%d:%s\n", prefix, nErrorCode, szError);
+	}
 protected:
 	SOCKET sock_;
 public:
@@ -137,7 +144,7 @@ public:
 #endif//
 	}
 
-	inline SOCKET Open(int nSockAf, int nSockType = SOCK_STREAM, int nSockProtocol = 0) { return Attach(Create(nSockAf, nSockType, nSockProtocol)); }
+	inline SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0) { return Attach(Create(nSockAf, nSockType, nSockProtocol)); }
 	inline SOCKET Attach(SOCKET Sock) { SOCKET oSock = sock_; sock_ = Sock; return oSock; }
 	inline SOCKET Detach() { return Attach(INVALID_SOCKET); }
 	inline int ShutDown(int nHow = Both) { return ShutDown(sock_, nHow); }
@@ -172,13 +179,6 @@ public:
 	inline int GetSendTimeOut() { return GetSendTimeOut(sock_); }
 	inline int GetRecvTimeOut() { return GetRecvTimeOut(sock_); }
 	inline int SetKeepAlive(u_long onoff, u_long time = 30*1000) { return SetKeepAlive(sock_, onoff, time); }
-
-	inline void PrintLastError(const char* prefix = "") {
-		int nErrorCode = GetLastError();
-		char szError[1024] = {0};
-		GetErrorMessage(nErrorCode,szError,1023);
-		PRINTF("%s Error=%d:%s\n", prefix, nErrorCode, szError);
-	}
 };
 
 }

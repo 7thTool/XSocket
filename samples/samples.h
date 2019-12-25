@@ -31,8 +31,10 @@
 #define USE_IPV6
 #ifdef USE_IPV6
 #define SockAddrType SOCKADDR_IN6
+#define AF_INETType AF_INET6
 #else
 #define SockAddrType SOCKADDR_IN
+#define AF_INETType AF_INET
 #endif//
 
 //UDP构建可靠数据传输
@@ -54,7 +56,7 @@
 #define DEFAULT_BUFSIZE	1024
 
 #ifdef USE_IPV6
-#define DEFAULT_IP		":::1"
+#define DEFAULT_IP		"::1"
 #define DEFAULT_PORT	6666
 //1、IPV6组播地址
 //	RFC4291定义组播地址格式如下；

@@ -194,11 +194,13 @@ const char* Socket::SockAddr2PortStr(const SOCKADDR* lpSockAddr, int nSockAddrLe
 	case AF_INET:
 	{
 		snprintf(str, len, "%d", N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port));
+		return str;
 	}
 	break;
 	case AF_INET6:
 	{
 		snprintf(str, len, "%s:%d", N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port));
+		return str;
 	}
 	break;
 	default:
@@ -218,6 +220,7 @@ const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, c
 		IpAddr2IpStr(&((SOCKADDR_IN*)lpSockAddr)->sin_addr, AF_INET, ip, 64);
 		port = N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port);
 		snprintf(str, len, "%s:%d", ip, port);
+		return str;
 	}
 	break;
 	case AF_INET6:
@@ -225,6 +228,7 @@ const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, c
 		IpAddr2IpStr(&((SOCKADDR_IN6*)lpSockAddr)->sin6_addr, AF_INET6, ip, 64);
 		port = N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
 		snprintf(str, len, "%s:%d", ip, port);
+		return str;
 	}
 	break;
 	default:
@@ -236,7 +240,7 @@ const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, c
 const char* Socket::Url2IpStr(const char* url, char* str, int len)
 {
 	struct addrinfo ai = {0}, *ai_res = nullptr;
-	ai.ai_family = PF_UNSPEC;
+	ai.ai_family = AF_UNSPEC;
 	ai.ai_socktype = SOCK_STREAM;
 #ifdef WIN32
 	ai.ai_flags = 0;
@@ -253,7 +257,15 @@ const char* Socket::Url2IpStr(const char* url, char* str, int len)
 
 SOCKET Socket::Create(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
 {
+#if 1
+	SOCKET Sock = socket(nSockAf, nSockType, nSockProtocol);
+	if(!IsSocket(Sock)) {
+		PrintLastError("socket ");
+	}
+	return Sock;
+#else
 	return socket(nSockAf, nSockType, nSockProtocol);
+#endif
 }
 
 bool Socket::IsSocket(SOCKET Sock)

@@ -62,14 +62,13 @@ public:
 	virtual ~SocketEx();
 
 	//只需重载Attach，因为Open和Detach都会调用Attach
-	SOCKET Open(int nSockAf, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
+	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
 	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
 	SOCKET Detach();
 
 	int ShutDown(int nHow = Both);
 	int Close();
 
-	int Bind(const char* lpszHostAddress, unsigned short nHostPort);
 	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	int Listen(int nConnectionBacklog = 5);
@@ -789,69 +788,6 @@ protected:
 };
 
 /*!
- *	@brief ConnectSocketExT 模板定义.
- *
- *	封装ConnectSocketExT，自适应IPV4/IPV6套接字
- */
-template<class TBase = SocketEx>
-class ConnectSocketExT : public ConnectSocketT<TBase>
-{
-	typedef ConnectSocketT<TBase> Base;
-protected:
-	addrinfo* ai_current_ = nullptr;
-public:
-	ConnectSocketExT()
-	{
-
-	}
-	virtual ~ConnectSocketExT() 
-	{
-	}
-
-	inline SOCKET Open(const char* lpszHostAddress)
-	{
-		struct addrinfo ai = {0};
-		ai.ai_family = PF_UNSPEC;
-		ai.ai_socktype = SOCK_STREAM;
-		#ifdef WIN32
-		ai.ai_flags = 0;
-		#else
-		ai.ai_flags = AI_DEFAULT;
-		#endif
-		ai.ai_flags = AI_PASSIVE;
-		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &ai, &ai_current_);
-		if(ret) {
-			PrintLastError("GetAddrInfo");
-			return INVALID_SOCKET;
-		}
-		return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
-	}
-
-	inline SOCKET OpenNext()
-	{
-		if (ai_current_) {
-			for(ai_current_ = ai_current_->ai_next; ai_current_; ai_current_ = ai_current_->ai_next)
-			{
-				return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
-			}
-		}
-		return INVALID_SOCKET;
-	}
-
-	inline int Connect(int nHostPort = 0)
-	{
-		ASSERT (Base::IsSocket());
-		if (ai_current_) {
-			XSocket::Socket::SetAddrPort(ai_current_->ai_addr, nHostPort);
-			return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
-		}
-		return SOCKET_ERROR;
-	}
-
-	inline int GetAddrType() { ai_current_?ai_current_->ai_family:Base::GetAddrType(); }
-};
-
-/*!
  *	@brief ListenSocketT 模板定义.
  *
  *	封装ListenSocket，适用于服务端监听Socket
@@ -907,6 +843,127 @@ protected:
 				}
 			}
 		//} while (bConitnue);
+	}
+};
+
+/*!
+ *	@brief HostSocketExT 模板定义.
+ *
+ *	封装HostSocketExT，支持字符串主机名套接字，自适应IPV4/IPV6套接字
+ */
+template<class TBase>
+class HostSocketExT : public TBase
+{
+	typedef TBase Base;
+protected:
+	addrinfo* ai_current_ = nullptr;
+public:
+	HostSocketExT()
+	{
+
+	}
+	virtual ~HostSocketExT() 
+	{
+	}
+
+	inline SOCKET Open(const char* lpszHostAddress, int nSockAf = AF_UNSPEC, int nSockType = SOCK_STREAM)
+	{
+		struct addrinfo ai = {0};
+		ai.ai_family = nSockAf;
+		ai.ai_socktype = nSockType;
+		#ifdef WIN32
+		ai.ai_flags = 0;
+		#else
+		ai.ai_flags = AI_DEFAULT;
+		#endif
+		ai.ai_flags = AI_PASSIVE;
+		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &ai, &ai_current_);
+		if(ret) {
+			PrintLastError("GetAddrInfo");
+			return INVALID_SOCKET;
+		}
+		if(ai_current_) {
+#if 1
+			for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
+			{
+				char buf[1024] = {0};
+				PRINTF("%s\n", SockAddr2Str(ai_next->ai_addr, ai_next->ai_addrlen, buf, 1024));
+			}
+#endif
+			return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
+		}
+		return INVALID_SOCKET;
+	}
+
+	inline SOCKET OpenNext()
+	{
+		if (ai_current_) {
+			for(ai_current_ = ai_current_->ai_next; ai_current_; ai_current_ = ai_current_->ai_next)
+			{
+				SOCKET Sock = Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
+				if(INVALID_SOCKET != Sock) {
+					return Sock;
+				}
+			}
+		}
+		return INVALID_SOCKET;
+	}
+
+	inline int GetAddrType() { ai_current_?ai_current_->ai_family:Base::GetAddrType(); }
+};
+
+/*!
+ *	@brief ConnectSocketExT 模板定义.
+ *
+ *	封装ConnectSocketExT，自适应IPV4/IPV6套接字
+ */
+template<class TBase = SocketEx>
+class ConnectSocketExT : public HostSocketExT<ConnectSocketT<TBase>>
+{
+	typedef HostSocketExT<ConnectSocketT<TBase>> Base;
+public:
+	ConnectSocketExT()
+	{
+
+	}
+	virtual ~ConnectSocketExT() 
+	{
+	}
+
+	inline int Connect(int nHostPort = 0)
+	{
+		ASSERT (Base::IsSocket());
+		if (ai_current_) {
+			XSocket::Socket::SetAddrPort(ai_current_->ai_addr, nHostPort);
+			return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
+		}
+		return SOCKET_ERROR;
+	}
+};
+
+/*!
+ *	@brief ListenSocketExT 模板定义.
+ *
+ *	封装ListenSocketExT，自适应IPV4/IPV6套接字
+ */
+template<class TBase>
+class ListenSocketExT : public HostSocketExT<ListenSocketT<TBase>>
+{
+	typedef HostSocketExT<ListenSocketT<TBase>> Base;
+public:
+	ListenSocketExT():Base()
+	{
+
+	}
+
+	inline int Bind(int nHostPort = 0)
+	{
+		ASSERT (Base::IsSocket());
+		if (ai_current_) {
+			XSocket::Socket::SetAddrPort(ai_current_->ai_addr, nHostPort);
+			return Base::Bind(ai_current_->ai_addr, ai_current_->ai_addrlen);
+		}
+		return SOCKET_ERROR;
 	}
 };
 
@@ -1596,9 +1653,13 @@ protected:
 		if(port_ <= 0) {
 			return false;
 		}
-		Base::Open();
+		Base::Open(AF_INET);
 		Base::SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-		Base::Bind(address_.c_str(), port_);
+		SOCKADDR_IN stAddr = {0};
+		stAddr.sin_family = AF_INET;
+		stAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)address_.c_str()));
+		stAddr.sin_port = H2N((u_short)port_);
+		Bind((SOCKADDR*)&stAddr, sizeof(stAddr));
 		Base::Listen();
 		return true;
 	}

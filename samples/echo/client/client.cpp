@@ -115,7 +115,7 @@ protected:
 	#ifndef USE_UDP
 		Base::Connect(addr_.c_str(), port_);
 	#else
-		Open(AF_INET,SOCK_DGRAM);
+		Open(AF_INETType,SOCK_DGRAM);
 		Select(FD_READ);
 	#ifdef WIN32
 		IOCtl(FIONBIO, 1);//设为非阻塞模式
@@ -124,10 +124,16 @@ protected:
 		IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
 		//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
 	#endif//
-		SOCKADDR_IN stAddr = {0};
-		stAddr.sin_family = AF_INET;
+		SockAddrType stAddr = {0};
+	#ifdef USE_IPV6
+		stAddr.sin6_family = AF_INET6;
+		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
+		stAddr.sin6_port = H2N((u_short)port_);
+	#else
+		stAddr.sin6_family = AF_INET;
 		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
 		stAddr.sin_port = H2N((u_short)port_);
+	#endif//
 		PostBuf("hello.",6,stAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 	#endif//
 		return true;

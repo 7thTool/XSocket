@@ -132,7 +132,7 @@ class server
 #else
 	typedef SocketManagerT<WorkSocketSet> Base;
 protected:
-	class listener : public SocketExImpl<listener,SimpleEvtSocketT<ListenSocketT<WorkSocket>>>
+	class listener : public SocketExImpl<listener,SimpleEvtSocketT<ListenSocketExT<WorkSocket>>>
 	, public std::enable_shared_from_this<listener>
 	{
 	protected:
@@ -191,9 +191,9 @@ public:
 		}
 
 		std::shared_ptr<listener> sock_ptr = std::make_shared<listener>(this);
-		sock_ptr->Open();
+		sock_ptr->Open(address);
 		sock_ptr->SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-		sock_ptr->Bind(address, port);
+		sock_ptr->Bind(port);
 		sock_ptr->Listen();
 		AddSocket(sock_ptr, FD_ACCEPT);
 

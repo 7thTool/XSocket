@@ -84,7 +84,7 @@ protected:
 	union 
 	{
 		PER_IO_OPERATION_DATA send_overlapped_;
-		char send_reserved_[sizeof(PER_IO_OPERATION_DATA)];
+		char send_reserved_[sizeof(SockAddr) + 16 + sizeof(SockAddr) + 16];
 	};
 	union 
 	{
@@ -148,42 +148,6 @@ public:
 		}
 		return Attach(Sock, nRole);
 	}
-
-	/*inline int Connect(const char* lpszHostAddress, int nHostPort)
-	{
-		Open(AF_INET6, SOCK_STREAM, 0);
-		if (IsSocket()) {
-			return INVALID_SOCKET;
-		}
-		DWORD ipv6only = 0;
-		if (SetSockOpt(IPPROTO_IPV6, IPV6_V6ONLY, (char *)&ipv6only, sizeof(ipv6only)) == SOCKET_ERROR) {
-			return INVALID_SOCKET;
-		}
-
-		char PortName[16] = {0};
-		snprintf(PortName, "%d", nHostPort);
-		SOCKADDR_STORAGE LocalAddr = {0};
-		SOCKADDR_STORAGE RemoteAddr = {0};
-		DWORD dwLocalAddr = sizeof(LocalAddr);
-		DWORD dwRemoteAddr = sizeof(RemoteAddr);
-		//struct timeval timeout = {0};
-		PER_IO_OPERATION_DATA* pOverlapped = &send_overlapped_;
-		memset(&pOverlapped->Overlapped, 0, sizeof(WSAOVERLAPPED));
-		pOverlapped->Buffer.buf	= NULL;
-		pOverlapped->Buffer.len	= 0;
-		pOverlapped->Flags = 0;
-		pOverlapped->OperationType = IOCP_OPERATION_CONNECT;
-		pOverlapped->NumberOfBytesSended = 0;
-		return WSAConnectByName((SOCKET)*this
-		, lpszHostAddress
-		, PortName
-		, &dwLocalAddr
-		,(SOCKADDR *)&LocalAddr
-		, &dwRemoteAddr
-		,(SOCKADDR *)&RemoteAddr
-		, NULL
-		,&pOverlapped->Overlapped);
-	}*/
 
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	{
@@ -262,27 +226,25 @@ public:
 			//MSDN说The parameter s is an unbound or a listening socket，
 			//还是诡异两个字connect操作干嘛要绑定？不知道，没人给解释，那绑定就对了，那么绑哪个？
 			//最好把你的地址结构像下面这样设置
+			//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
+			//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
 			switch(lpSockAddr->sa_family)
 			{
 			case AF_INET6:
 			{
-				/*SOCKADDR_IN6 addr;
+				SOCKADDR_IN6 addr = {0};
 				addr.sin6_family = AF_INET6;
-				addr.sin6_port = htons(0);
-				addr.sin6_addr.s_addr = htonl(ADDR_ANY);
-				//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
-				//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
-				Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN6));*/
+				addr.sin6_port = 0;
+				addr.sin6_addr = in6addr_any;
+				Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN6));
 			}
 			break;
 			default:
 			{	
-				SOCKADDR_IN addr;
+				SOCKADDR_IN addr = {0};
 				addr.sin_family = AF_INET;
 				addr.sin_port = htons(0);
-				addr.sin_addr.s_addr = htonl(ADDR_ANY);
-				//为什么端口这个地方用0，原因很简单，你去查查MSDN，这样表示他会在1000-4000这个范围（可能记错，想了解的话去查MSDN）找一个没被用到的port，
-				//这样的话最大程度保证你bind的成功，然后再把socket句柄丢给IOCP，然后调用ConnectEx这样就会看到熟悉的WSA_IO_PENDING了！
+				addr.sin_addr.s_addr = htonl(ADDR_ANY);//INADDR_ANY
 				Bind((const SOCKADDR*)&addr,sizeof(SOCKADDR_IN));
 			}
 			break;
@@ -305,7 +267,7 @@ public:
 				ASSERT(0);
 				return 0;
 			} else {
-				PrintLastError("ConnectEx is faile.d");
+				PrintLastError("ConnectEx is failed");
 				return SOCKET_ERROR;
 			}
 		}
@@ -358,7 +320,7 @@ public:
 		//调用AcceptEx函数，地址长度需要在原有的上面加上16个字节
 		int nAccept = lpfnAcceptEx((SOCKET)*this, pOverlapped->Sock,
 			pOverlapped->Buffer.buf, pOverlapped->Buffer.len, 
-			sizeof(SOCKADDR_IN) + 16, sizeof(SOCKADDR_IN) + 16, 
+			sizeof(SockAddr) + 16, sizeof(SockAddr) + 16, 
 			&pOverlapped->NumberOfBytesReceived, &(pOverlapped->Overlapped));
 		if(nAccept == 0) {
 			if(WSAGetLastError() != ERROR_IO_PENDING) {
@@ -513,6 +475,7 @@ public:
 					sock_count_++;
 					sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
+					SetHandleInformation((HANDLE) (SOCKET)*sock_ptr, HANDLE_FLAG_INHERIT, 0);
 					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, m_hIocp, (ULONG_PTR)(i + 1), 0);
 					ASSERT(hIocp);
 					if (hIocp != INVALID_HANDLE_VALUE) {
@@ -520,6 +483,25 @@ public:
 					} else {
 						PRINTF("CreateIoCompletionPort Error:%d\n", ::GetLastError());
 					}
+					// if (family == AF_INET6) {
+					// 	//uv_tcp_non_ifs_lsp_ipv6 = 1表示IPPROTO_IP协议使用真正地操作系统句柄，没有lsp封装
+					// 	non_ifs_lsp = uv_tcp_non_ifs_lsp_ipv6;
+					// } else {
+					// 	//同理
+					// 	non_ifs_lsp = uv_tcp_non_ifs_lsp_ipv4;
+					// }
+
+					// if (pSetFileCompletionNotificationModes &&
+					// 	!(handle->flags & UV_HANDLE_EMULATE_IOCP) && !non_ifs_lsp) {
+					// 	if (pSetFileCompletionNotificationModes((HANDLE) socket,
+					// 		FILE_SKIP_SET_EVENT_ON_HANDLE |
+					// 		FILE_SKIP_COMPLETION_PORT_ON_SUCCESS))//如果操作立刻完成，不再向iocp发送通知 
+					// 	{
+					// 	handle->flags |= UV_HANDLE_SYNC_BYPASS_IOCP;
+					// 	} else if (GetLastError() != ERROR_INVALID_FUNCTION) {
+					// 	return GetLastError();
+					// 	}
+					// }
 					AsyncSelect(i, evt);
 					return i;
 				} else {

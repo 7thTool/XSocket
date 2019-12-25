@@ -30,7 +30,7 @@ SocketEx::~SocketEx()
 SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 {
 	int nRole = SOCKET_ROLE_NONE;
-	SOCKET Sock = Socket::Open(nSockAf, nSockType, nSockProtocol);
+	SOCKET Sock = Socket::Create(nSockAf, nSockType, nSockProtocol);
 	if ((nSockAf==AF_INET&&nSockType==SOCK_DGRAM)) {
 		nRole = SOCKET_ROLE_WORK;
 #ifdef WIN32
@@ -92,22 +92,22 @@ SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 	return Socket::Accept(lpSockAddr,lpSockAddrLen);
 }
 
-int SocketEx::Bind(const char* lpszHostAddress, unsigned short nHostPort)
-{
-	SOCKADDR_IN sockAddr = {0};
-	if (lpszHostAddress == NULL) {
-		sockAddr.sin_addr.s_addr = H2N((u_long)INADDR_ANY);
-	} else {
-		sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)lpszHostAddress));
-		if (sockAddr.sin_addr.s_addr == INADDR_NONE) {
-			SetLastError(EINVAL);
-			return SOCKET_ERROR;
-		}
-	}
-	sockAddr.sin_family = AF_INET;
-	sockAddr.sin_port = H2N((u_short)nHostPort);
-	return Bind((SOCKADDR*)&sockAddr, sizeof(sockAddr));
-}
+// int SocketEx::Bind(const char* lpszHostAddress, unsigned short nHostPort)
+// {
+// 	SOCKADDR_IN sockAddr = {0};
+// 	if (lpszHostAddress == NULL) {
+// 		sockAddr.sin_addr.s_addr = H2N((u_long)INADDR_ANY);
+// 	} else {
+// 		sockAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)lpszHostAddress));
+// 		if (sockAddr.sin_addr.s_addr == INADDR_NONE) {
+// 			SetLastError(EINVAL);
+// 			return SOCKET_ERROR;
+// 		}
+// 	}
+// 	sockAddr.sin_family = AF_INET;
+// 	sockAddr.sin_port = H2N((u_short)nHostPort);
+// 	return Bind((SOCKADDR*)&sockAddr, sizeof(sockAddr));
+// }
 
 int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
