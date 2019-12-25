@@ -333,13 +333,6 @@ public:
 		}
 		return nAccept;
 	}
-
-	inline int GetAddrType() 
-	{ 
-		SockAddr addr = {0};
-		GetSockName(&addr, sizeof(SockAddr));
-		return addr.sa_family;
-	}
 	
 	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
@@ -452,18 +445,6 @@ public:
 		Base::Stop();
 	}
 
-	inline void AsyncSelect(int pos, int evt) {
-		if(evt & FD_READ) {
-			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(pos + 1), NULL);
-		}
-		if(evt & FD_WRITE) {
-			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(pos + 1), NULL);
-		}
-		if(evt & FD_ACCEPT) {
-			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(pos + 1), NULL);
-		}
-	}
-	
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
@@ -502,7 +483,15 @@ public:
 					// 	return GetLastError();
 					// 	}
 					// }
-					AsyncSelect(i, evt);
+					if(evt & FD_READ) {
+						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(pos + 1), NULL);
+					}
+					if(evt & FD_WRITE) {
+						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(pos + 1), NULL);
+					}
+					if(evt & FD_ACCEPT) {
+						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(pos + 1), NULL);
+					}
 					return i;
 				} else {
 					//测试可不可以增加Socket，返回true表示可以增加

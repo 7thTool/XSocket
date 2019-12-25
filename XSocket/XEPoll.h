@@ -47,97 +47,7 @@ public:
 	{
 		
 	}
-
-	inline int GetAddrType() 
-	{ 
-		SockAddr addr = {0};
-		GetSockName(&addr, sizeof(SockAddr));
-		return addr.sa_family;
-	}
-
-	int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
-	{
-		int nSendLen = Base::Send(lpBuf, nBufLen, nFlags);
-		if(nSendLen <= 0) {
-			int nErrorCode = Base::GetLastError();
-			switch(nErrorCode)
-			{
-			case 0:
-				break;
-			case EWOULDBLOCK:
-			case EINTR:
-				service()->AsyncSelect(this, FD_WRITE);
-				break;
-			default:
-				break;
-			}	
-		}
-		return nSendLen;
-	}
-
-	int Receive(char* lpBuf, int nBufLen, int nFlags = 0)
-	{
-		int nRecvLen = Base::Receive(lpBuf, nBufLen, nFlags);
-		if(nRecvLen <= 0) {
-			int nErrorCode = Base::GetLastError();
-			switch(nErrorCode)
-			{
-			case 0:
-				break;
-			case EWOULDBLOCK:
-			case EINTR:
-				service()->AsyncSelect(this, FD_READ);
-				break;
-			default:
-				break;
-			}	
-		}
-		return nRecvLen;
-	}
-
-	int SendTo(SOCKET Sock, const char* lpBuf, int nBufLen,
-		const SOCKADDR* lpSockAddr = 0, int nSockAddrLen = 0, int nFlags = MSG_NOSIGNAL)
-	{
-		int nSendLen = Base::SendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
-		if(nSendLen <= 0) {
-			int nErrorCode = Base::GetLastError();
-			switch(nErrorCode)
-			{
-			case 0:
-				break;
-			case EWOULDBLOCK:
-			case EINTR:
-				service()->AsyncSelect(this, FD_WRITE);
-				break;
-			default:
-				break;
-			}	
-		}
-		return nSendLen;
-	}
-
-	int ReceiveFrom(SOCKET Sock, char* lpBuf, int nBufLen, 
-		SOCKADDR* lpSockAddr = 0, int* lpSockAddrLen = 0, int nFlags = MSG_NOSIGNAL)
-	{
-		int nRecvLen = Base::ReceiveFrom(lpBuf, nBufLen, lpSockAddr, lpSockAddrLen, nFlags);
-		if(nRecvLen <= 0) {
-			int nErrorCode = Base::GetLastError();
-			switch(nErrorCode)
-			{
-			case 0:
-				break;
-			case EWOULDBLOCK:
-			case EINTR:
-				service()->AsyncSelect(this, FD_READ);
-				break;
-			default:
-				break;
-			}	
-		}
-		return nRecvLen;
-
-	}
-
+	
 	inline void Select(int lEvent) {  
 		int lAsyncEvent = 0;
 		if(!Base::IsSelect(FD_READ) && (lEvent & FD_READ)) {
@@ -146,18 +56,21 @@ public:
 		if(!Base::IsSelect(FD_WRITE) && (lEvent & FD_WRITE)) {
 			lAsyncEvent |= FD_WRITE;
 		}
-		if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
+		if(!Base::IsSelect(FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
 			lAsyncEvent |= FD_ACCEPT;
 		}
 		Base::Select(lEvent);
+		if(lAsyncEvent) {
+			service()->Select(this);
+		}
 		if(lAsyncEvent & FD_READ) {
-			Trigger(FD_READ, 0);
+			Base::Trigger(FD_READ, 0);
 		}
 		if(lAsyncEvent & FD_WRITE) {
-			Trigger(FD_WRITE, 0);
+			Base::Trigger(FD_WRITE, 0);
 		}
 		if(lAsyncEvent & FD_ACCEPT) {
-			Trigger(FD_ACCEPT, 0);
+			Base::Trigger(FD_ACCEPT, 0);
 		}
 	}
 };
@@ -189,11 +102,7 @@ public:
 		}
 	}
 
-	void AsyncSelect(SocketEx* sock_ptr, int evt) {
-		if(sock_ptr->IsSelect(evt,true)) {
-			return;
-		}
-		sock_ptr->Select(evt);
+	void Select(SocketEx* sock_ptr) {
 		int fd = *sock_ptr;
 		struct epoll_event event = {0};
 		event.data.ptr = (void*)sock_ptr;

@@ -18,6 +18,8 @@ else()
   add_definitions(-g -W -Wall -fPIC)
 endif()
 
+add_definitions(-D_DEBUG)
+
 FIND_PACKAGE(ZLIB REQUIRED)
 IF(ZLIB_FOUND)
 	MESSAGE(STATUS "zlib library status:")

@@ -209,6 +209,17 @@ typedef unsigned char byte;
 #define ENSURE assert
 #endif//
 
+#ifdef WIN32
+#define I64D "%I64d"
+#else
+#define I64D "%lld"
+#endif
+#ifdef WIN32
+#define I64U "%I64u"
+#else
+#define I64U "%llu"
+#endif
+
 #ifndef PRINTF
 #if 1
 #define PRINTF(format,...) printf(format, ##__VA_ARGS__)

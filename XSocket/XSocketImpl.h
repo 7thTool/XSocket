@@ -170,7 +170,7 @@ protected:
 			ASSERT(nBufLen>0);
 			nBufLen = Base::Receive(lpBuf,nBufLen);
 			if (nBufLen<0) {
-				nErrorCode = GetLastError();
+				nErrorCode = XSocket::Socket::GetLastError();
 				switch(nErrorCode)
 				{
 				case 0:
@@ -747,7 +747,7 @@ protected:
 			int nAddrLen = sizeof(SockAddr);
 			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&stAddr,&nAddrLen);
 			if (nBufLen<=0) {
-				nErrorCode = GetLastError();
+				nErrorCode = XSocket::Socket::GetLastError();
 				switch(nErrorCode)
 				{
 #ifdef WIN32
@@ -823,7 +823,7 @@ protected:
 	#endif//
 			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,sizeof(SockAddr));
 			if (nBufLen<=0) {
-				nErrorCode = GetLastError();
+				nErrorCode = XSocket::Socket::GetLastError();
 				switch(nErrorCode)
 				{
 #ifdef WIN32

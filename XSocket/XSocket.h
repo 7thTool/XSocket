@@ -179,7 +179,19 @@ public:
 	inline int GetSendTimeOut() { return GetSendTimeOut(sock_); }
 	inline int GetRecvTimeOut() { return GetRecvTimeOut(sock_); }
 	inline int SetKeepAlive(u_long onoff, u_long time = 30*1000) { return SetKeepAlive(sock_, onoff, time); }
+	inline int GetAddrType() { 
+		// SockAddr addr = {0};
+		// GetSockName(&addr, sizeof(SockAddr));
+		// return addr.sa_family;
+		int optval = 0;
+		GetSockOpt(SOL_SOCKET, SO_DOMAIN/*SO_PROTOTYPE*/, &optval, sizeof(optval));
+		return optval;
+	}
 };
+
+#ifndef PRINTLASTERROR
+#define PRINTLASTERROR XSocket::Socket::PrintLastError
+#endif
 
 }
 

@@ -822,7 +822,7 @@ protected:
 				Base::Trigger(FD_ACCEPT, (const char*)&stAddr, nAddrLen, (int)Sock);
 				//bConitnue = true;
 			} else {
-				nErrorCode = GetLastError();
+				nErrorCode = XSocket::Socket::GetLastError();
 				switch(nErrorCode)
 				{
 				case 0:
@@ -871,23 +871,18 @@ public:
 		struct addrinfo ai = {0};
 		ai.ai_family = nSockAf;
 		ai.ai_socktype = nSockType;
-		#ifdef WIN32
-		ai.ai_flags = 0;
-		#else
-		ai.ai_flags = AI_DEFAULT;
-		#endif
 		ai.ai_flags = AI_PASSIVE;
 		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &ai, &ai_current_);
 		if(ret) {
-			PrintLastError("GetAddrInfo");
+			PRINTLASTERROR("GetAddrInfo");
 			return INVALID_SOCKET;
 		}
 		if(ai_current_) {
-#if 1
+#ifdef _DEBUG
 			for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
 			{
 				char buf[1024] = {0};
-				PRINTF("%s\n", SockAddr2Str(ai_next->ai_addr, ai_next->ai_addrlen, buf, 1024));
+				PRINTF("%s\n", XSocket::Socket::SockAddr2IpStr(ai_next->ai_addr, ai_next->ai_addrlen, buf, 1024));
 			}
 #endif
 			return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
@@ -900,14 +895,13 @@ public:
 		if (ai_current_) {
 			for(ai_current_ = ai_current_->ai_next; ai_current_; ai_current_ = ai_current_->ai_next)
 			{
-				SOCKET Sock = Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
-				if(INVALID_SOCKET != Sock) {
-					return Sock;
-				}
+				return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
 			}
 		}
 		return INVALID_SOCKET;
 	}
+
+	inline bool IsAddrLast() { return ai_current_ && ai_current_->ai_next ? false : true; }
 
 	inline int GetAddrType() { ai_current_?ai_current_->ai_family:Base::GetAddrType(); }
 };
@@ -933,9 +927,9 @@ public:
 	inline int Connect(int nHostPort = 0)
 	{
 		ASSERT (Base::IsSocket());
-		if (ai_current_) {
-			XSocket::Socket::SetAddrPort(ai_current_->ai_addr, nHostPort);
-			return Base::Connect(ai_current_->ai_addr, ai_current_->ai_addrlen);
+		if (Base::ai_current_) {
+			XSocket::Socket::SetAddrPort(Base::ai_current_->ai_addr, nHostPort);
+			return Base::Connect(Base::ai_current_->ai_addr, Base::ai_current_->ai_addrlen);
 		}
 		return SOCKET_ERROR;
 	}
@@ -959,9 +953,9 @@ public:
 	inline int Bind(int nHostPort = 0)
 	{
 		ASSERT (Base::IsSocket());
-		if (ai_current_) {
-			XSocket::Socket::SetAddrPort(ai_current_->ai_addr, nHostPort);
-			return Base::Bind(ai_current_->ai_addr, ai_current_->ai_addrlen);
+		if (Base::ai_current_) {
+			XSocket::Socket::SetAddrPort(Base::ai_current_->ai_addr, nHostPort);
+			return Base::Bind(Base::ai_current_->ai_addr, Base::ai_current_->ai_addrlen);
 		}
 		return SOCKET_ERROR;
 	}
@@ -1435,13 +1429,6 @@ public:
 	{
     	
 	}
-
-	inline int GetAddrType() 
-	{ 
-		SockAddr addr = {0};
-		GetSockName(&addr, sizeof(SockAddr));
-		return addr.sa_family;
-	}
 };
 
 /*!
@@ -1657,9 +1644,9 @@ protected:
 		Base::SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
 		SOCKADDR_IN stAddr = {0};
 		stAddr.sin_family = AF_INET;
-		stAddr.sin_addr.s_addr = Ip2N(Url2Ip((char*)address_.c_str()));
-		stAddr.sin_port = H2N((u_short)port_);
-		Bind((SOCKADDR*)&stAddr, sizeof(stAddr));
+		stAddr.sin_addr.s_addr = XSocket::Socket::Ip2N(XSocket::Socket::Url2Ip((char*)address_.c_str()));
+		stAddr.sin_port = XSocket::Socket::H2N((u_short)port_);
+		Base::Bind((SOCKADDR*)&stAddr, sizeof(stAddr));
 		Base::Listen();
 		return true;
 	}

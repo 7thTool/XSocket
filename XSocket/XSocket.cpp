@@ -242,11 +242,6 @@ const char* Socket::Url2IpStr(const char* url, char* str, int len)
 	struct addrinfo ai = {0}, *ai_res = nullptr;
 	ai.ai_family = AF_UNSPEC;
 	ai.ai_socktype = SOCK_STREAM;
-#ifdef WIN32
-	ai.ai_flags = 0;
-#else
-	ai.ai_flags = AI_DEFAULT;
-#endif
 	ai.ai_flags = AI_PASSIVE;
 	int err = GetAddrInfo(url, nullptr, &ai, &ai_res);
 	if(err) {
