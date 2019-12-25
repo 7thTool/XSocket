@@ -431,6 +431,22 @@ int Socket::SetSockOpt(SOCKET Sock, int nLevel, int nOptionName, const void* lpO
 	return setsockopt(Sock, nLevel, nOptionName, (char*)lpOptionValue, nOptionLen);
 }
 
+int Socket::GetAddrType(SOCKET Sock) 
+{ 
+		int optval = 0;
+#ifdef SO_DOMAIN
+		GetSockOpt(Sock, SOL_SOCKET, SO_DOMAIN, &optval, sizeof(optval));
+#elif defined(SO_PROTOTYPE)
+		GetSockOpt(Sock, SOL_SOCKET, SO_PROTOTYPE, &optval, sizeof(optval));
+#else
+		SOCKADDR addr = {0};
+		int addrlen = sizeof(addr);
+		GetSockName(Sock, &addr, &addrlen);
+		return addr.sa_family;
+#endif
+		return optval;
+}
+
 int Socket::SetSendTimeOut(SOCKET Sock, int TimeOut)
 {
 #ifdef WIN32

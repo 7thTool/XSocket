@@ -97,6 +97,7 @@ public:
 	static int GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, int* lpOptionLen);
 	static int GetSockOpt(SOCKET Sock, int nLevel, int nOptionName, void* lpOptionValue, int nOptionLen);
 	static int SetSockOpt(SOCKET Sock, int nLevel, int nOptionName, const void* lpOptionValue, int nOptionLen);
+	static int GetAddrType(SOCKET Sock);
 	static int SetSendTimeOut(SOCKET Sock, int TimeOut);
 	static int SetRecvTimeOut(SOCKET Sock, int TimeOut);
 	static int GetSendTimeOut(SOCKET Sock);
@@ -179,14 +180,7 @@ public:
 	inline int GetSendTimeOut() { return GetSendTimeOut(sock_); }
 	inline int GetRecvTimeOut() { return GetRecvTimeOut(sock_); }
 	inline int SetKeepAlive(u_long onoff, u_long time = 30*1000) { return SetKeepAlive(sock_, onoff, time); }
-	inline int GetAddrType() { 
-		// SockAddr addr = {0};
-		// GetSockName(&addr, sizeof(SockAddr));
-		// return addr.sa_family;
-		int optval = 0;
-		GetSockOpt(SOL_SOCKET, SO_DOMAIN/*SO_PROTOTYPE*/, &optval, sizeof(optval));
-		return optval;
-	}
+	inline int GetAddrType() { return GetAddrType(sock_); }
 };
 
 #ifndef PRINTLASTERROR

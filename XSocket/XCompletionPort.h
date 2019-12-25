@@ -484,13 +484,13 @@ public:
 					// 	}
 					// }
 					if(evt & FD_READ) {
-						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(pos + 1), NULL);
+						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(i + 1), NULL);
 					}
 					if(evt & FD_WRITE) {
-						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(pos + 1), NULL);
+						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(i + 1), NULL);
 					}
 					if(evt & FD_ACCEPT) {
-						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(pos + 1), NULL);
+						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(i + 1), NULL);
 					}
 					return i;
 				} else {
