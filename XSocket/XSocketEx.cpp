@@ -232,7 +232,7 @@ void SocketEx::OnSend(const char* lpBuf, int nBufLen, int nFlags)
 void SocketEx::OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
 	char str[64] = {0};
-	PRINTF("(%p %p %u)::OnSendTo(%s:%d):%.*s\n", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+	PRINTF("(%p %p %u)::OnSendTo(%s):%.*s\n", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
 }
 
 void SocketEx::OnOOB(int nErrorCode)

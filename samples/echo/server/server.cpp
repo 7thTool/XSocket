@@ -229,9 +229,9 @@ protected:
 
 #else
 
-class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SocketEx>>>>
+class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx,SockAddrType>>>>>
 {
-	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SocketEx>>>> Base;
+	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx,SockAddrType>>>>> Base;
 protected:
 	std::string addr_;
 	u_short port_;
@@ -258,9 +258,19 @@ protected:
 		if(port_ <= 0) {
 			return false;
 		}
-		Open(AF_INET,SOCK_DGRAM);
+		Open(AF_INETType,SOCK_DGRAM);
 		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-		Bind(addr_.c_str(), port_);
+		SockAddrType stAddr = {0};
+	#ifdef USE_IPV6
+		stAddr.sin6_family = AF_INET6;
+		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
+		stAddr.sin6_port = H2N((u_short)port_);
+	#else
+		stAddr.sin_family = AF_INET;
+		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
+		stAddr.sin_port = H2N((u_short)port_);
+	#endif//
+		Bind((const SOCKADDR*)&stAddr, sizeof(stAddr));
 		Select(FD_READ);
 	#ifdef WIN32
 		IOCtl(FIONBIO, 1);//设为非阻塞模式
@@ -286,7 +296,8 @@ protected:
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
 	{
 		PRINTF("%.*s\n", nBufLen, lpBuf);
-		PRINTF("echo[(%s:%d)]:%.*s\n",N2Ip(SockAddr.sin_addr.s_addr),N2H(SockAddr.sin_port),nBufLen, lpBuf);
+		char str[64] = {0};
+		PRINTF("echo[%s]:%.*s\n", XSocket::Socket::SockAddr2Str((const SOCKADDR*)&SockAddr, sizeof(SockAddr), str, 64), nBufLen, lpBuf);
 		SendBuf(lpBuf,nBufLen,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}

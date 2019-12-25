@@ -59,11 +59,7 @@ class client
 #endif
 #endif//USE_MANAGER
 #else
-#ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SocketEx>>>>
-#else
-	: public SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketExT<SocketEx> > > >
-#endif//USE_MANAGER
+	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>>>>>
 #endif//USE_UDP
 {
 #ifndef USE_UDP
@@ -79,11 +75,7 @@ class client
 #endif
 #endif//USE_MANAGER
 #else
-#ifndef USE_MANAGER
-	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SocketEx>>>> Base;
-#else
-	typedef SocketExT<client,SimpleSocketArchitectureT<SimpleSocketArchitecture<ConnectSocketExT<SocketEx> > > > Base;
-#endif//USE_MANAGER
+	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>>>>> Base;
 #endif//USE_UDP
 protected:
 	//std::once_flag start_flag_;
@@ -115,7 +107,7 @@ protected:
 	#ifndef USE_UDP
 		Base::Connect(addr_.c_str(), port_);
 	#else
-		Open(AF_INETType,SOCK_DGRAM);
+		Open(addr_.c_str(),AF_INETType,SOCK_DGRAM);
 		Select(FD_READ);
 	#ifdef WIN32
 		IOCtl(FIONBIO, 1);//设为非阻塞模式
@@ -130,7 +122,7 @@ protected:
 		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
 		stAddr.sin6_port = H2N((u_short)port_);
 	#else
-		stAddr.sin6_family = AF_INET;
+		stAddr.sin_family = AF_INET;
 		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
 		stAddr.sin_port = H2N((u_short)port_);
 	#endif//
