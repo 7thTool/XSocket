@@ -109,13 +109,7 @@ protected:
 	#else
 		Open(addr_.c_str(),AF_INETType,SOCK_DGRAM);
 		Select(FD_READ);
-	#ifdef WIN32
-		IOCtl(FIONBIO, 1);//设为非阻塞模式
-	#else
-		int flags = IOCtl(F_GETFL,(u_long)0); 
-		IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
-		//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
-	#endif//
+		SetNonBlock();//设为非阻塞模式
 		SockAddrType stAddr = {0};
 	#ifdef USE_IPV6
 		stAddr.sin6_family = AF_INET6;

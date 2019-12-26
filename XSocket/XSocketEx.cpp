@@ -14,7 +14,7 @@
 namespace XSocket {
 
 SocketEx::SocketEx()
-:Socket(),role_(SOCKET_ROLE_NONE),event_(0)
+:Base(),role_(SOCKET_ROLE_NONE),event_(0)
 {
 	PRINTF("new Socket %p\n", this);
 }
@@ -30,7 +30,7 @@ SocketEx::~SocketEx()
 SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 {
 	int nRole = SOCKET_ROLE_NONE;
-	SOCKET Sock = Socket::Create(nSockAf, nSockType, nSockProtocol);
+	SOCKET Sock = Base::Create(nSockAf, nSockType, nSockProtocol);
 	if ((nSockAf==AF_INET&&nSockType==SOCK_DGRAM)) {
 		nRole = SOCKET_ROLE_WORK;
 #ifdef WIN32
@@ -59,7 +59,7 @@ SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 
 SOCKET SocketEx::Attach(SOCKET Sock, int Role)
 {
-	SOCKET oSock = Socket::Attach(Sock);
+	SOCKET oSock = Base::Attach(Sock);
 	if(Role != SOCKET_ROLE_NONE) {
 		OnRole(Role);
 	}
@@ -74,7 +74,7 @@ SOCKET SocketEx::Detach()
 
 int SocketEx::ShutDown(int nHow)
 {
-	return Socket::ShutDown(nHow);
+	return Base::ShutDown(nHow);
 }
 
 int SocketEx::Close()
@@ -82,14 +82,14 @@ int SocketEx::Close()
 	if(IsSocket()) {
 		PRINTF("Close Socket %p %u\n", this, (SOCKET)*this);
 		event_ = 0;
-		return Socket::Close(Detach());
+		return Base::Close(Detach());
 	}
 	return 0;
 }
 
 SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 {
-	return Socket::Accept(lpSockAddr,lpSockAddrLen);
+	return Base::Accept(lpSockAddr,lpSockAddrLen);
 }
 
 // int SocketEx::Bind(const char* lpszHostAddress, unsigned short nHostPort)
@@ -114,7 +114,7 @@ int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	PRINTF("Bind Socket %p %u\n", this, (SOCKET)*this);
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
-	int rlt = Socket::Bind(lpSockAddr,nSockAddrLen);
+	int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
 	return rlt;
 }
 
@@ -126,19 +126,8 @@ int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	OnRole(SOCKET_ROLE_CONNECT);
 	role_ = SOCKET_ROLE_CONNECT;
 	event_ |= FD_CONNECT;
-#ifdef WIN32
-	IOCtl(FIONBIO, 1);//设为非阻塞模式
-#else
-	int flags = IOCtl(F_GETFL,(u_long)0); 
-	IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
-	//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
-#endif//
-	int rlt = Socket::Connect(lpSockAddr, nSockAddrLen);
-	//让用户在OnConnect或者OnClose响应
-	//if (rlt==0) {
-	//	event_ &= ~FD_CONNECT;
-	//}
-	return rlt;
+	SetNonBlock();//设为非阻塞模式
+	return Base::Connect(lpSockAddr, nSockAddrLen);
 }
 
 int SocketEx::Listen(int nConnectionBacklog)
@@ -149,34 +138,28 @@ int SocketEx::Listen(int nConnectionBacklog)
 	OnRole(SOCKET_ROLE_LISTEN);
 	role_ = SOCKET_ROLE_LISTEN;
 	event_ |= FD_ACCEPT;
-#ifdef WIN32
-	IOCtl(FIONBIO, 1);//设为非阻塞模式
-#else
-	int flags = IOCtl(F_GETFL,(u_long)0); 
-	IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
-	//IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
-#endif//
-	return Socket::Listen(nConnectionBacklog);
+	SetNonBlock();//设为非阻塞模式
+	return Base::Listen(nConnectionBacklog);
 }
 
 int SocketEx::Send(const char* lpBuf, int nBufLen, int nFlags)
 {
-	return Socket::Send(lpBuf, nBufLen, nFlags);
+	return Base::Send(lpBuf, nBufLen, nFlags);
 }
 
 int SocketEx::Receive(char* lpBuf, int nBufLen, int nFlags)
 {
-	return Socket::Receive(lpBuf, nBufLen, nFlags);
+	return Base::Receive(lpBuf, nBufLen, nFlags);
 }
 
 int SocketEx::SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
-	return Socket::SendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+	return Base::SendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
 }
 
 int SocketEx::ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags)
 {
-	return Socket::ReceiveFrom(lpBuf, nBufLen, lpSockAddr, lpSockAddrLen, nFlags);
+	return Base::ReceiveFrom(lpBuf, nBufLen, lpSockAddr, lpSockAddrLen, nFlags);
 }
 
 void SocketEx::OnRole(int nRole)
@@ -276,10 +259,6 @@ void SocketEx::OnClose(int nErrorCode)
 #else
 	PRINTF("(%p %p %u)::OnClose:%d\n", Service::service(), this, (SOCKET)*this, nErrorCode);
 #endif//
-	//ASSERT(!IsSocket());
-	// if(IsSocket()) {
-	// 	Close();
-	// }
 }
 
 ///

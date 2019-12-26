@@ -57,6 +57,7 @@ enum
  */
 class XSOCKET_API SocketEx : public Socket
 {
+	typedef Socket Base;
 public:
 	SocketEx();
 	virtual ~SocketEx();
@@ -1672,14 +1673,7 @@ protected:
 				}
 				std::shared_ptr<Socket> sock_ptr = std::make_shared<Socket>();
 				sock_ptr->Attach(Sock,SOCKET_ROLE_WORK);
-				
-	#ifdef WIN32
-				sock_ptr->IOCtl(FIONBIO, 1);//设为非阻塞模式
-	#else
-				int flags = sock_ptr->IOCtl(F_GETFL,(u_long)0); 
-				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
-				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
-	#endif//
+				sock_ptr->SetNonBlock();//设为非阻塞模式
 				int pos = SockManager::AddSocket(sock_ptr, FD_READ|FD_OOB);
 				if(pos >= 0) {
 					//

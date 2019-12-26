@@ -550,6 +550,26 @@ int Socket::SetKeepAlive(SOCKET Sock, u_long onoff, u_long time)
 	return SOCKET_ERROR;
 }
 
+int Socket::SetBlock(SOCKET Sock)
+{
+#ifdef WIN32
+	return IOCtl(Sock, FIONBIO, (u_long)0);//设为阻塞模式
+#else
+	int flags = IOCtl(Sock, F_GETFL,(u_long)0); 
+	return IOCtl(Sock, F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
+#endif//
+}
+
+int Socket::SetNonBlock(SOCKET Sock)
+{
+#ifdef WIN32
+	return IOCtl(Sock, FIONBIO, 1);//设为非阻塞模式
+#else
+	int flags = IOCtl(Sock, F_GETFL,(u_long)0); 
+	return IOCtl(Sock, F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
+#endif//
+}
+
 int Socket::GetPeerName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 {
 #ifdef WIN32

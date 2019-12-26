@@ -155,7 +155,7 @@ public:
 		OnRole(SOCKET_ROLE_CONNECT);
 		role_ = SOCKET_ROLE_CONNECT;
 		event_ |= FD_CONNECT;
-		IOCtl(FIONBIO, 1);//设为非阻塞模式
+		SetNonBlock();//设为非阻塞模式
 
 		switch (lpSockAddr->sa_family)
 		{
