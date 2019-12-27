@@ -134,7 +134,7 @@ protected:
 	//
 	virtual void OnMessage(const HttpRequest& req)
 	{
-		PRINTF("%79s\n", req.body_.first);
+		PRINTF("%79s", req.body_.first);
 	}
 
 #ifdef USE_WEBSOCKET
@@ -144,7 +144,7 @@ protected:
 	}
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
-		PRINTF("%-79s\n", lpBuf);
+		PRINTF("%-79s", lpBuf);
 		SendWebSocketBuf("hello.", 6, WS_FINAL_FRAME|WS_OP_TEXT);
 	}
 #endif
@@ -158,7 +158,7 @@ protected:
 #ifdef USE_WEBSOCKET
 		Upgrade("localhost");
 #else
-		PRINTF("%s\n",http_get_raw.c_str());
+		PRINTF("%s",http_get_raw.c_str());
 		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
 #endif
 	}

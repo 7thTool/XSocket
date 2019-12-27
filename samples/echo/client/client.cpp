@@ -139,11 +139,13 @@ public:
 #ifndef USE_UDP
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
+		PRINTF("PostBuf:%.*s", nBufLen, lpBuf);
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
 	}
 #else
 	inline void PostBuf(const char* lpBuf, int nBufLen, const SockAddrType& addr, int nFlags = 0)
 	{
+		PRINTF("PostBuf:%.*s", nBufLen, lpBuf);
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,addr,nFlags));
 	}
 #endif
@@ -151,6 +153,7 @@ public:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {
+			PRINTF("SendBuf:%.*s", evt.buf.size(), evt.buf.c_str());
 #ifndef USE_UDP
 			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
 #else
@@ -165,7 +168,6 @@ protected:
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		Base::OnRecvBuf(lpBuf, nBufLen, nFlags);
-		PRINTF("say:hello.\n");
 		PostBuf("hello.",6,0);
 	}
 
@@ -175,13 +177,11 @@ protected:
 		if(!IsConnected()) {
 			return;
 		}
-		PRINTF("say:hello.\n");
 		SendBuf("hello.",6,0);
 	}
 #else
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
 	{
-		PRINTF("say:hello.\n");
 		PostBuf("hello.",6,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}

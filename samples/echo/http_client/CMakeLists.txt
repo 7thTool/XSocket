@@ -18,6 +18,10 @@ else()
   add_definitions(-g -W -Wall -fPIC)
 endif()
 
+IF(CMAKE_BUILD_TYPE STREQUAL Debug)
+add_definitions(-D_DEBUG)
+ENDIF()
+
 FIND_PACKAGE(ZLIB REQUIRED)
 IF(ZLIB_FOUND)
 	MESSAGE(STATUS "zlib library status:")

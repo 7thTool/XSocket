@@ -167,7 +167,7 @@ public:
 					if (SOCKET_ERROR != epoll_ctl(m_epfd, EPOLL_CTL_ADD, fd, &event)) {
 						//return i;
 					} else {
-						PRINTF("epoll_ctl err:%d\n", XSocket::Socket::GetLastError());
+						PRINTF("epoll_ctl err:%d", XSocket::Socket::GetLastError());
 					}
 					return i;
 				} else {
@@ -222,7 +222,7 @@ protected:
 				int nErrorCode = 0;
 				//参考NGIX逻辑...
 				if(evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) {
-					PRINTF("epoll_wait error: fd=%d event=%04XD\n" , fd, evt);
+					PRINTF("epoll_wait error: fd=%d event=%04XD" , fd, evt);
 				}
 				if ((evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) && (evt&(EPOLLIN|EPOLLOUT))==0) {
 					/*

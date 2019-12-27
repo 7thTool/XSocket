@@ -818,9 +818,6 @@ protected:
 			nBufLen = (int)(m_nSendBufLen-m_nSendLen);
 			lpAddr = m_pSendAddr;
 			ASSERT(lpBuf && nBufLen>0);
-	#if 0
-			PRINTF("echo:(%s:%d)\n",N2Ip(lpAddr->sin_addr.s_addr),N2H(lpAddr->sin_port));
-	#endif//
 			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,sizeof(SockAddr));
 			if (nBufLen<=0) {
 				nErrorCode = XSocket::Socket::GetLastError();
@@ -1064,16 +1061,21 @@ protected:
 template<class TBase = Service>
 class SimpleEventServiceT : public TBase
 {
+	typedef TBase Base;
 public:
 	typedef typename TBase::Event Event;
 
 protected:
 	//
-	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
-		if(evt.dst == sock_ptr) {
-			return true;
+	inline void RemoveSocket(SocketEx* sock_ptr) {
+		std::unique_lock<std::mutex> lock(Base::mutex_);
+		for(int i = Base::queue_.size() - 1; i >= 0; i--)
+		{
+			const Event& evt = Base::queue_[i];
+			if (evt.dst == sock_ptr) {
+				Base::queue_.erase(Base::queue_.begin() + i);
+			}
 		}
-		return false;
 	}
 	//
 	virtual void OnEvent(const Event& evt)

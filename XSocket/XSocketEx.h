@@ -50,6 +50,22 @@ enum
 	SOCKET_ROLE_CONNECT,		//!< Client端连接Socket
 };
 
+
+/*!
+ *	@brief Socket 标志定义.
+ *
+ *	给Socket增加标志位，一遍跟踪特定标志的Socket
+ */
+enum
+{
+	SOCKET_FLAG_DEBUG = 0x01, //调试标志，如果设置会额外输出该Socket的调试信息
+	SOCKET_FLAG_USER1 = 0x02, //用户自定义标志1
+	SOCKET_ROLE_USER2 = 0x04, //用户自定义标志2
+	SOCKET_ROLE_USER3 = 0x08, //用户自定义标志3
+	SOCKET_ROLE_USER4 = 0x10, //用户自定义标志4
+};
+
+
 /*!
  *	@brief 可伸缩的Socket封装.
  *
@@ -73,18 +89,22 @@ public:
 	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
 	int Listen(int nConnectionBacklog = 5);
-	SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
+	// SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 
-	int Send(const char* lpBuf, int nBufLen, int nFlags = 0);
-	int Receive(char* lpBuf, int nBufLen, int nFlags = 0);
-	int SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags = 0);
-	int ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags = 0);
+	// int Send(const char* lpBuf, int nBufLen, int nFlags = 0);
+	// int Receive(char* lpBuf, int nBufLen, int nFlags = 0);
+	// int SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags = 0);
+	// int ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags = 0);
 
 	inline int Role() { return role_; }
 	inline bool IsNoneRole() { return	Role()==SOCKET_ROLE_NONE; }
 	inline bool IsConnectSocket() { return Role()==SOCKET_ROLE_CONNECT; }
 	inline bool IsListenSocket() { return Role()==SOCKET_ROLE_LISTEN; }
 	inline bool IsWorkSocket() { return Role()==SOCKET_ROLE_WORK; }
+
+	inline void SetFlags(int flags) { flags_ = flags; }
+	inline int Flags() { return flags_; }
+	inline bool IsDebug() { return flags_ & SOCKET_FLAG_DEBUG; }
 
 	inline void AttachService(Service* svr) { OnAttachService(svr); }
 	inline void DetachService(Service* svr) { OnDetachService(svr); }
@@ -355,7 +375,7 @@ protected:
 #ifdef _DEBUG
 			//std::lock_guard<std::mutex> lock(mutex_);
 			if(!queue_.empty()) {
-				PRINTF("Queue is not empty, size=%u\n", queue_.size());
+				PRINTF("Queue is not empty, size=%u", queue_.size());
 			}
 #endif
 		}
@@ -495,20 +515,6 @@ public:
 
 protected:
 	//
-	inline void RemoveSocket(SocketEx* sock_ptr) {
-		std::unique_lock<std::mutex> lock(mutex_);
-		for(int i = queue_.size() - 1; i >= 0; i--)
-		{
-			const Event& evt = queue_[i];
-			if (IsSocketEvent(sock_ptr, evt)) {
-				queue_.erase(queue_.begin() + i);
-			}
-		}
-	}
-	inline bool IsSocketEvent(SocketEx* sock_ptr, const Event& evt) {
-		return false;
-	}
-
 	inline bool Pop(Event& evt) {
 		std::unique_lock<std::mutex> lock(mutex_);
 		if (!queue_.empty()) {
@@ -550,26 +556,26 @@ public:
 	typedef TEvent Event;
 public:
 	DealyEventT():Base(){}
-	DealyEventT(Event evt):Base(evt){}
-	DealyEventT(Event evt, size_t _delay, size_t _repeat):Base(evt),time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
+	DealyEventT(Event _evt, size_t _delay = 0, size_t _repeat = 0):Base(_evt),time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
 	DealyEventT(const This& o):Base((Event)o),time(o.time),delay(o.delay),repeat(o.repeat){}
-	inline bool IsPoint()
+	inline bool IsActive() const
 	{
+		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
 		if(delay.count() > 0 && repeat >= 0) {
-			if((std::chrono::steady_clock::now()-time) > delay) {
+			if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-time) > delay) {
 				return true;
 			}
 			return false;
 		}
 		return true;
 	}
-	inline bool IsRepeat()
+	inline bool IsRepeat() const
 	{
 		return repeat > 0;
 	}
 	inline void Update() {
 		if(delay.count() > 0 && repeat > 0) {
-			time = std::chrono::steady_clock::now();//std::chrono::microseconds(evt.millis);
+			time = std::chrono::steady_clock::now();
 			//dealy;
 			if(repeat == (size_t)-1) {
 				--repeat;
@@ -599,38 +605,26 @@ public:
 	}
 
 	inline void PostDelay(const Event& evt, size_t mills = 0, size_t repeat = 0) {
-		if(mills) {
-			Base::Post(DelayEvent(evt,mills,repeat));
-		} else {
-			Base::Post(DelayEvent(evt));
-		}
+		Base::Post(DelayEvent(evt,mills,repeat));
 	}
 
 protected:
-
+	//
 	virtual void OnEvent(const Event& evt)
 	{
 		
 	}
 
-	virtual void OnRunOnce()
+	virtual void OnEvent(const DelayEvent& evt)
 	{
-		DelayEvent evt;
-		for(size_t i = 0, j = Base::queue_.size(); i < j; i++)
-		{
-			if (Base::Pop(evt)) {
-				if(evt.IsPoint()) {
-					OnEvent(evt);
-					evt.Update();
-					if(evt.IsRepeat()) {
-						Base::Post(evt);
-					}
-				} else {
-					Base::Post(evt);
-				}
-			} else {
-				break;
+		if(evt.IsActive()) {
+			OnEvent((const Event&)evt);
+			if(evt.IsRepeat()) {
+				const_cast<DelayEvent&>(evt).Update();
+				Base::Post(evt);
 			}
+		} else {
+			Base::Post(evt);
 		}
 	}
 };
@@ -882,8 +876,8 @@ public:
 #ifdef _DEBUG
 			for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
 			{
-				char buf[1024] = {0};
-				PRINTF("%s\n", XSocket::Socket::SockAddr2IpStr(ai_next->ai_addr, ai_next->ai_addrlen, buf, 1024));
+				char buf[64] = {0};
+				PRINTF("%s", XSocket::Socket::SockAddr2IpStr(ai_next->ai_addr, ai_next->ai_addrlen, buf, 64));
 			}
 #endif
 			return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
@@ -1667,7 +1661,7 @@ protected:
 	{
 				//测试下还能不能再接收SOCKET
 				if(SockManager::AddSocket(NULL) < 0) {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
 					XSocket::Socket::Close(Sock);
 					return;
 				}
@@ -1678,7 +1672,7 @@ protected:
 				if(pos >= 0) {
 					//
 				} else {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
 					sock_ptr->Trigger(FD_CLOSE, 0);
 				}
 	}

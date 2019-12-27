@@ -581,7 +581,7 @@ protected:
 				char hex[1024] = {0};
 				int hexlen = 1024;
 				HexEncode((const byte*)lpBuf, nBufLen, hex, &hexlen);
-				PRINTF("%.*s\n", hexlen, hex);
+				PRINTF("%.*s", hexlen, hex);
 #endif//
 				// SOCKS 4
 				// ---------------------------------------------------------------------------
@@ -640,7 +640,7 @@ protected:
 				char hex[1024] = {0};
 				int hexlen = 1024;
 				HexEncode((const byte*)lpBuf, nBufLen, hex, &hexlen);
-				PRINTF("%.*s\n", hexlen, hex);
+				PRINTF("%.*s", hexlen, hex);
 #endif//
 				switch (m_ProxyState) 
 				{

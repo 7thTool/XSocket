@@ -92,6 +92,7 @@ public:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {
+			PRINTF("echo:%.*s", evt.buf.size(), evt.buf.c_str());
 			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
 		}
 	}
@@ -107,13 +108,14 @@ protected:
 			return;
 		}
 		lpBuf[nBufLen] = 0;
-		PRINTF("%s\n", lpBuf);
-		PRINTF("echo:%s\n", lpBuf);
+		PRINTF("%s", lpBuf);
+		PRINTF("echo:%s", lpBuf);
 		Send(lpBuf,nBufLen);*/
 	}
 
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
 	{
+		PRINTF("recv:%.*s", nBufLen, lpBuf);
 		PostBuf(lpBuf,nBufLen,0);
 		Base::OnRecvBuf(lpBuf,nBufLen,nFlags);
 	}
@@ -148,7 +150,7 @@ protected:
 		{
 				//测试下还能不能再接收SOCKET
 				if(srv_->AddSocket(NULL) < 0) {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
 					XSocket::Socket::Close(Sock);
 					return;
 				}
@@ -166,7 +168,7 @@ protected:
 				if(pos >= 0) {
 					//
 				} else {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.\n");
+					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
 					sock_ptr->Trigger(FD_CLOSE, 0);
 				}
 		}
@@ -289,9 +291,10 @@ protected:
 
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
 	{
-		PRINTF("%.*s\n", nBufLen, lpBuf);
 		char str[64] = {0};
-		PRINTF("echo[%s]:%.*s\n", XSocket::Socket::SockAddr2Str((const SOCKADDR*)&SockAddr, sizeof(SockAddr), str, 64), nBufLen, lpBuf);
+		XSocket::Socket::SockAddr2Str((const SOCKADDR*)&SockAddr, sizeof(SockAddr), str, 64);
+		PRINTF("recv[%s]:%.*s", str, nBufLen, lpBuf);
+		PRINTF("echo[%s]:%.*s", str, nBufLen, lpBuf);
 		SendBuf(lpBuf,nBufLen,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}

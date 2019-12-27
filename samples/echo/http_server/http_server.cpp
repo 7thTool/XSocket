@@ -83,7 +83,7 @@ protected:
 	//
 	virtual void OnMessage(const HttpRequest& req)
 	{
-		PRINTF("%79s\n", req.body_.first);
+		PRINTF("%79s", req.body_.first);
 	}
 
 #ifdef USE_WEBSOCKET
@@ -113,7 +113,7 @@ public:
 		{
 		case 'x':
 		case 'X':
-			printf("server worker count is [%d]\n", GetSocketCount());
+			printf("server worker count is [%d]", GetSocketCount());
 			break;
 		case 'q':
 		case 'Q':

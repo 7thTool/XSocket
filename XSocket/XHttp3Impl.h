@@ -170,7 +170,7 @@ protected:
 
 // 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
 // 	{
-// 		//PRINTF("%-79s\n", lpBuf);
+// 		//PRINTF("%-79s", lpBuf);
 // 		if (IsUpgrade()) {
 // #ifdef USE_WEBSOCKET
 // 			if(!IsWSDone()) {

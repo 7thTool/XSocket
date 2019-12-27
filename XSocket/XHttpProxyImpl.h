@@ -411,7 +411,7 @@ unsigned long getip46(int family, unsigned char *name,  struct sockaddr *sa){
 				char hex[1024] = {0};
 				int hexlen = 1024;
 				HexEncode((const byte*)lpBuf, nBufLen, hex, &hexlen);
-				PRINTF("%.*s\n", hexlen, hex);
+				PRINTF("%.*s", hexlen, hex);
 #endif//
 				// SOCKS 4
 				// ---------------------------------------------------------------------------
@@ -472,10 +472,10 @@ unsigned long getip46(int family, unsigned char *name,  struct sockaddr *sa){
 				//thread_local bool http_parser_thread_init = false;
 				//if(!http_parser_thread_init) {
 				//	http_parser_thread_init = true;
-					PRINTF("http_parser_thread_init\n");
+					PRINTF("http_parser_thread_init");
 					settings.on_message_begin = [](http_parser *parser) { return 0; };
 					settings.on_url = [](http_parser* parser, const char *at, size_t length) { 
-						PRINTF("on_url %.*s\n", length, at);
+						PRINTF("on_url %.*s", length, at);
 						ProxyParam* param = (ProxyParam*)parser->data;
 						if(!param) {
 							return 0;
@@ -505,7 +505,7 @@ unsigned long getip46(int family, unsigned char *name,  struct sockaddr *sa){
 						return 0;
 					};
 					settings.on_status = [](http_parser* parser, const char *at, size_t length) {  
-						PRINTF("on_status %.*s\n", length, at);
+						PRINTF("on_status %.*s", length, at);
 						return 0; 
 					};
 					settings.on_header_field = [](http_parser* parser, const char *at, size_t length) {  
@@ -540,7 +540,7 @@ unsigned long getip46(int family, unsigned char *name,  struct sockaddr *sa){
 						return 0; 
 					};
 					settings.on_header_value = [](http_parser* parser, const char *at, size_t length) {  
-						PRINTF("%.*s\n", length, at);
+						PRINTF("%.*s", length, at);
 						ProxyParam* param = (ProxyParam*)parser->data;
 						if(!param) {
 							return 0;
@@ -600,7 +600,7 @@ unsigned long getip46(int family, unsigned char *name,  struct sockaddr *sa){
 					};
 					settings.on_headers_complete = [](http_parser *parser) { return 0; };
 					settings.on_body = [] (http_parser* parser, const char *at, size_t length) {  
-						PRINTF("on_body %.*s\n", length, at);
+						PRINTF("on_body %.*s", length, at);
 						return 0; 
 					};
 					settings.on_message_complete = [](http_parser* parser) { return 0; };
@@ -724,7 +724,7 @@ unsigned long getip46(int family, unsigned char *name,  struct sockaddr *sa){
 				char hex[1024] = {0};
 				int hexlen = 1024;
 				HexEncode((const byte*)lpBuf, nBufLen, hex, &hexlen);
-				PRINTF("%.*s\n", hexlen, hex);
+				PRINTF("%.*s", hexlen, hex);
 #endif//
 				switch (m_ProxyState) 
 				{

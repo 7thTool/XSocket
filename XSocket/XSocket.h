@@ -119,7 +119,7 @@ public:
 		int nErrorCode = GetLastError();
 		char szError[1024] = {0};
 		GetErrorMessage(nErrorCode,szError,1023);
-		PRINTF("%s Error=%d:%s\n", prefix, nErrorCode, szError);
+		PRINTF("%s Error=%d:%s", prefix, nErrorCode, szError);
 	}
 protected:
 	SOCKET sock_;

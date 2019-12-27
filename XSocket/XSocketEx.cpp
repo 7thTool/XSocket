@@ -14,17 +14,28 @@
 namespace XSocket {
 
 SocketEx::SocketEx()
-:Base(),role_(SOCKET_ROLE_NONE),event_(0)
+:Base()
+,role_(SOCKET_ROLE_NONE)
+#ifdef _DEBUG
+,flags_(SOCKET_FLAG_DEBUG)
+#else
+,flags_(SOCKET_FLAG_DEBUG)
+#endif
+,event_(0)
 {
-	PRINTF("new Socket %p\n", this);
+#ifdef _DEBUG
+	PRINTF("new Socket %p", this);
+#endif
 }
 
 SocketEx::~SocketEx()
 {
-	PRINTF("delete Socket %p\n", this);
 	ASSERT(!IsSocket());
+#ifdef _DEBUG
+	PRINTF("delete Socket %p", this);
 	role_ = SOCKET_ROLE_NONE;
 	event_ = 0;
+#endif
 }
 
 SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
@@ -49,7 +60,7 @@ SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 			if (EWOULDBLOCK == err) {
 				
 			} else {
-				PRINTF("WSAIoctl(SIO_UDP_CONNRESET) Error: %d\n", err);
+				PRINTF("WSAIoctl(SIO_UDP_CONNRESET) Error: %d", err);
 			}
 		}
 #endif//
@@ -80,16 +91,13 @@ int SocketEx::ShutDown(int nHow)
 int SocketEx::Close()
 {
 	if(IsSocket()) {
-		PRINTF("Close Socket %p %u\n", this, (SOCKET)*this);
+		if(IsDebug()) {
+			PRINTF("Close Socket %p %u", this, (SOCKET)*this);
+		}
 		event_ = 0;
 		return Base::Close(Detach());
 	}
 	return 0;
-}
-
-SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
-{
-	return Base::Accept(lpSockAddr,lpSockAddrLen);
 }
 
 // int SocketEx::Bind(const char* lpszHostAddress, unsigned short nHostPort)
@@ -111,7 +119,9 @@ SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 
 int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
-	PRINTF("Bind Socket %p %u\n", this, (SOCKET)*this);
+	if(IsDebug()) {
+		PRINTF("Bind Socket %p %u", this, (SOCKET)*this);
+	}
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
@@ -120,7 +130,9 @@ int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 
 int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
-	PRINTF("Connect Socket %p %u\n", this, (SOCKET)*this);
+	if(IsDebug()) {
+		PRINTF("Connect Socket %p %u", this, (SOCKET)*this);
+	}
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	OnRole(SOCKET_ROLE_CONNECT);
@@ -132,7 +144,9 @@ int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 
 int SocketEx::Listen(int nConnectionBacklog)
 {
-	PRINTF("Listen Socket %p %u\n", this, (SOCKET)*this);
+	if(IsDebug()) {
+		PRINTF("Listen Socket %p %u", this, (SOCKET)*this);
+	}
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	OnRole(SOCKET_ROLE_LISTEN);
@@ -142,39 +156,50 @@ int SocketEx::Listen(int nConnectionBacklog)
 	return Base::Listen(nConnectionBacklog);
 }
 
-int SocketEx::Send(const char* lpBuf, int nBufLen, int nFlags)
-{
-	return Base::Send(lpBuf, nBufLen, nFlags);
-}
+// SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
+// {
+// 	return Base::Accept(lpSockAddr,lpSockAddrLen);
+// }
 
-int SocketEx::Receive(char* lpBuf, int nBufLen, int nFlags)
-{
-	return Base::Receive(lpBuf, nBufLen, nFlags);
-}
+// int SocketEx::Send(const char* lpBuf, int nBufLen, int nFlags)
+// {
+// 	return Base::Send(lpBuf, nBufLen, nFlags);
+// }
 
-int SocketEx::SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
-{
-	return Base::SendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
-}
+// int SocketEx::Receive(char* lpBuf, int nBufLen, int nFlags)
+// {
+// 	return Base::Receive(lpBuf, nBufLen, nFlags);
+// }
 
-int SocketEx::ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags)
-{
-	return Base::ReceiveFrom(lpBuf, nBufLen, lpSockAddr, lpSockAddrLen, nFlags);
-}
+// int SocketEx::SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+// {
+// 	return Base::SendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+// }
+
+// int SocketEx::ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags)
+// {
+// 	return Base::ReceiveFrom(lpBuf, nBufLen, lpSockAddr, lpSockAddrLen, nFlags);
+// }
 
 void SocketEx::OnRole(int nRole)
 {
-	
+	if(IsDebug()) {
+		PRINTF("(%p %u)::OnRole role=%d-%d flags=%d event=%d", this, (SOCKET)*this, nRole, role_, flags_, event_);
+	}
 }
 
 void SocketEx::OnAttachService(Service* pSvr)
 {
-	PRINTF("(%p %p %u)::OnAttachService\n", pSvr, this, (SOCKET)*this);
+	if(IsDebug()) {
+		PRINTF("(%p %p %u)::OnAttachService", pSvr, this, (SOCKET)*this);
+	}
 }
 
 void SocketEx::OnDetachService(Service* pSvr)
 {
-	PRINTF("(%p %p %u)::OnDetachService\n", pSvr, this, (SOCKET)*this);
+	if(IsDebug()) {
+		PRINTF("(%p %p %u)::OnDetachService", pSvr, this, (SOCKET)*this);
+	}
 }
 
 void SocketEx::OnIdle(int nErrorCode)
@@ -185,80 +210,105 @@ void SocketEx::OnIdle(int nErrorCode)
 void SocketEx::OnReceive(int nErrorCode)
 {
 	if(nErrorCode) {
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnReceive:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+		}
 		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnReceive(const char* lpBuf, int nBufLen, int nFlags)
 {
-	PRINTF("(%p %p %u)::OnReceive:%.*s\n", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+	if(IsDebug()) {
+		PRINTF("(%p %p %u)::OnReceive:%.*s", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+	}
 }
 
 void SocketEx::OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
-	char str[64] = {0};
-	PRINTF("(%p %p %u)::OnReceiveFrom(%s): %.*s\n", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+	if(IsDebug()) {
+		char str[64] = {0};
+		PRINTF("(%p %p %u)::OnReceiveFrom(%s): %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+	}
 }
 
 void SocketEx::OnSend(int nErrorCode)
 {
 	if(nErrorCode) {
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnSend:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+		}
 		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnSend(const char* lpBuf, int nBufLen, int nFlags)
 {
-	PRINTF("(%p %p %u)::OnSend:%.*s\n", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+	if(IsDebug()) {
+		PRINTF("(%p %p %u)::OnSend:%.*s", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+	}
 }
 
 void SocketEx::OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 {
-	char str[64] = {0};
-	PRINTF("(%p %p %u)::OnSendTo(%s):%.*s\n", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+	if(IsDebug()) {
+		char str[64] = {0};
+		PRINTF("(%p %p %u)::OnSendTo(%s):%.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+	}
 }
 
 void SocketEx::OnOOB(int nErrorCode)
 {
 	if(nErrorCode) {
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnOOB:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+		}
 		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnOOB(const char* lpBuf, int nBufLen, int nFlags)
 {
-	PRINTF("(%p %p %u)::OnOOB:%.*s\n", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+	if(IsDebug()) {
+		PRINTF("(%p %p %u)::OnOOB:%.*s", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+	}
 }
 
 void SocketEx::OnAccept(int nErrorCode)
 {
 	if(nErrorCode) {
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnAccept:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+		}
 		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock)
 {
-	PRINTF("(%p %p %u)::OnAccept:%d\n", Service::service(), this, (SOCKET)*this, Sock);
+	if(IsDebug()) {
+		char str[64] = {0};
+		PRINTF("(%p %p %u)::OnAccept(%s):%u", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), Sock);
+	}
 }
 
 void SocketEx::OnConnect(int nErrorCode)
 {
-	PRINTF("(%p %p %u)::OnConnect:%d\n", Service::service(), this, (SOCKET)*this, nErrorCode);
 	if(nErrorCode) {
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnConnect:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+		}
 		Trigger(FD_CLOSE,nErrorCode);
 	}
 }
 
 void SocketEx::OnClose(int nErrorCode)
 {
-#ifdef _DEBUG
-	char szError[1024] = {0};
-	GetErrorMessage(nErrorCode,szError,1023);
-	PRINTF("(%p %p %u)::OnClose:%d %s\n", Service::service(), this, (SOCKET)*this, nErrorCode, szError);
-#else
-	PRINTF("(%p %p %u)::OnClose:%d\n", Service::service(), this, (SOCKET)*this, nErrorCode);
-#endif//
+	if(IsDebug()) {
+		char szError[1024] = {0};
+		GetErrorMessage(nErrorCode,szError,1023);
+		PRINTF("(%p %p %u)::OnClose:%d %s", Service::service(), this, (SOCKET)*this, nErrorCode, szError);
+	}
 }
 
 ///
@@ -280,7 +330,9 @@ Service::Service():stop_flag_(true)
 bool Service::OnInit()
 {
 	s_thread_service_ = this;
-	PRINTF("thread id="I64U", service=%p\n", std::this_thread::get_id(), s_thread_service_);
+#ifdef _DEBUG
+	PRINTF("thread id="I64U", service=%p", std::this_thread::get_id(), s_thread_service_);
+#endif
 	return true;
 }
 

@@ -75,13 +75,13 @@ protected:
 			freeaddrinfo(res);
 			res = NULL;
 			Send(lpBuf, nBufLen, SockAddr, 0);
-			PRINTF("say:%s\n", lpBuf);
+			PRINTF("say:%s", lpBuf);
 #else
 			SockAddr.sin_family = AF_INET;
 			SockAddr.sin_addr.s_addr = inet_addr(DEFAULT_MULTICAST_IP);
 			SockAddr.sin_port = H2N((u_short)DEFAULT_MULTICAST_PORT);
 			Send(lpBuf, nBufLen, SockAddr, 0);
-			PRINTF("say:%s\n", lpBuf);
+			PRINTF("say:%s", lpBuf);
 #endif//
 		}
 		
@@ -101,10 +101,10 @@ protected:
 			return;
 		}
 		lpBuf[nBufLen] = 0;
-		PRINTF("%s\n", lpBuf);
+		PRINTF("%s", lpBuf);
 		//nBufLen = sprintf(lpBuf,"%d", ++m_incr);
 		//Send(lpBuf,nBufLen,SOCKET_PACKET_FLAG_TEMPBUF);
-		//PRINTF("say:%s\n", lpBuf);
+		//PRINTF("say:%s", lpBuf);
 	}
 
 protected:
@@ -175,7 +175,7 @@ void run()
 		err = c[i].Bind((SOCKADDR*)&addr, addrlen);
 		if ( SOCKET_ERROR == err ) {
 			c[i].GetErrorMessageA(c[i].GetLastError(),buf,DEFAULT_BUFSIZE);
-			PRINTF("%s\n",buf);
+			PRINTF("%s",buf);
 		}
 
 		struct ipv6_mreq mreq; 
