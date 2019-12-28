@@ -574,12 +574,11 @@ protected:
 		// 第4种情况:
 		// If a socket handle associated with a completion port is closed, GetQueuedCompletionStatus returns ERROR_SUCCESS, with lpNumberOfBytes equal zero. 
 		// 如果关联到一个完成端口的一个socket句柄被关闭了，则GetQueuedCompletionStatus返回ERROR_SUCCESS（也是0）,并且lpNumberOfBytes等于0
-		BOOL bStatus = FALSE;
 		do {
 		ULONG_PTR Key = 0;
 		DWORD dwTransfer = 0;
 		PER_IO_OPERATION_DATA *lpOverlapped = NULL;
-		bStatus = GetQueuedCompletionStatus(
+		BOOL bStatus = GetQueuedCompletionStatus(
 			m_hIocp,
 			&dwTransfer,
 			(PULONG_PTR)&Key,
@@ -614,10 +613,12 @@ protected:
 			std::shared_ptr<Socket> sock_ptr = sock_ptrs_[Pos - 1];
 			lock.unlock();
 			if(sock_ptr) {
+				bool bContinue = false;
 				switch (dwTransfer)
 				{
 				case IOCP_OPERATION_TRYRECEIVE:
 				{
+					bContinue = true;
 					if (!sock_ptr->IsSelect(FD_READ)) {
 						sock_ptr->Select(FD_READ);
 					}
@@ -625,6 +626,7 @@ protected:
 				break;
 				case IOCP_OPERATION_TRYSEND:
 				{
+					bContinue = true;
 					if (!sock_ptr->IsSelect(FD_WRITE)) {
 						sock_ptr->Select(FD_WRITE);
 					}
@@ -632,6 +634,7 @@ protected:
 				break;
 				case IOCP_OPERATION_TRYACCEPT:
 				{
+					bContinue = true;
 					if (!sock_ptr->IsSelect(FD_ACCEPT)) {
 						sock_ptr->Select(FD_ACCEPT);
 					}
@@ -640,11 +643,11 @@ protected:
 				default:
 				break;
 				}
-				if(!lpOverlapped) {
-					PRINTF("GetQueuedCompletionStatus lpOverlapped is nullptr");
-					sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
+				if(bContinue) {
+					continue;
 				}
-				if (!bStatus) {
+				if (!bStatus || !lpOverlapped) {
+					PRINTF("GetQueuedCompletionStatus bStatus=%d lpOverlapped=%p", bStatus, lpOverlapped);
 					if (sock_ptr->IsListenSocket()) {
 						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_ACCEPT, nErrorCode);
@@ -656,7 +659,7 @@ protected:
 						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_CLOSE, nErrorCode);
 					}
-					if(lpOverlapped->OperationType == IOCP_OPERATION_ACCEPT) {
+					if(lpOverlapped && lpOverlapped->OperationType == IOCP_OPERATION_ACCEPT) {
 						if(lpOverlapped->Sock != INVALID_SOCKET) {
 							XSocket::Socket::Close(lpOverlapped->Sock);
 							lpOverlapped->Sock = INVALID_SOCKET;
@@ -759,8 +762,10 @@ protected:
 					}
 				}
 			}
+		} else {
+			break;
 		}
-		} while(bStatus);
+		} while(true);
 	}
 };
 
