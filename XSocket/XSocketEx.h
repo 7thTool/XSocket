@@ -437,6 +437,10 @@ public:
 	inline bool IsStopFlag() {
 		return stop_flag_;
 	}
+	
+	inline bool IsEventService() const { return false; }
+
+	inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
 
 	inline void RemoveSocket(SocketEx* sock_ptr) {}
 
@@ -507,6 +511,8 @@ public:
 	{
 		queue_.reserve(1024);
 	}
+
+	inline bool IsEventService() const { return true; }
 
 	inline void Post(const Event& evt) {
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -975,16 +981,15 @@ public:
 	typedef TSocket Socket;
 	//static const u_short SOCKET_SETSIZE = uFD_SETSize;
 protected:
-	u_short sock_count_;
+	u_short sock_count_ = 0;
 	std::shared_ptr<Socket> sock_ptrs_[uFD_SETSize];
-	u_short sock_idle_next_;
+	//u_short sock_idle_next_ = 0;
+	bool use_timeout_ = !Service::IsEventService();
+	size_t millis_timeout_ = 0;
 	std::mutex mutex_;
 public:
 	SocketSetT()
 	{
-		sock_count_ = 0;
-		//memset(sock_ptrs_,0,sizeof(sock_ptrs_));
-		sock_idle_next_ = 0;
 	}
 
 	void Stop()
@@ -995,6 +1000,23 @@ public:
 	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
 	inline size_t GetSocketCount() { return sock_count_; }
 
+	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
+	inline size_t GetWaitTimeOut() { return millis_timeout_; }
+	inline size_t GetWaitingTimeOut() {
+		if(use_timeout_) {
+			return millis_timeout_;
+		}
+		return 0;
+	}
+
+	inline void SelectSocket(SocketEx* sock_ptr, int evt) {
+		if(evt & FD_IDLE) {
+			if(use_timeout_) {
+				use_timeout_ = false;
+			}
+		}
+	}
+
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
@@ -1003,9 +1025,10 @@ public:
 		{
 			if(sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
+					sock_count_++;
 					sock_ptr->AttachService(this);
 					sock_ptr->Select(evt);
-					sock_count_++;
+					SelectSocket(sock_ptr.get(), evt);
 					sock_ptrs_[i] = sock_ptr;
 					return i;
 				} else {
@@ -1121,11 +1144,14 @@ protected:
 
 	virtual void OnIdle(int nErrorCode)
 	{
-		int next = sock_idle_next_, next_end = sock_idle_next_ + 20;
-		sock_idle_next_ = next_end % uFD_SETSize;
-		for (; next < next_end; next++)
+		//int next = sock_idle_next_, next_end = sock_idle_next_ + 20;
+		//sock_idle_next_ = next_end % uFD_SETSize;
+		//for (; next < next_end; next++)
+		//{
+		//	int i = next % uFD_SETSize;
+		int i = 0, j = 0;
+		for (; i < uFD_SETSize && j <= 20; i++)
 		{
-			int i = next % uFD_SETSize;
 			if (sock_ptrs_[i]) {
 				std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
 				if (sock_ptr) {
@@ -1135,10 +1161,16 @@ protected:
 							RemoveSocketByPos(i);
 						}
 					} else if(sock_ptr->IsSelect(FD_IDLE)) {
+						j++;
 						sock_ptr->RemoveSelect(FD_IDLE);
 						sock_ptr->Trigger(FD_IDLE, Tick());
 					}
 				}
+			}
+		}
+		if(i >= uFD_SETSize) {
+			if(!Service::IsEventService()) {
+				use_timeout_ = true;
 			}
 		}
 	}
@@ -1424,6 +1456,17 @@ public:
 	{
     	
 	}
+
+	inline void Select(int lEvent) {  
+		int lAsyncEvent = 0;
+		if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
+			lAsyncEvent |= FD_IDLE;
+		}
+		Base::Select(lEvent);
+		if(lAsyncEvent) {
+			service()->SelectSocket(this,lAsyncEvent);
+		}
+	}
 };
 
 /*!
@@ -1458,7 +1501,7 @@ protected:
 		FD_ZERO(&readfds);
 		fd_set writefds;
 		FD_ZERO(&writefds);
-		struct timeval tv = {0, 0};
+		struct timeval tv = {0, Base::GetWaitingTimeOut()*1000};
 		std::unique_lock<std::mutex> lock(Base::mutex_);
 		{
 			for (size_t i=0; i<uFD_SETSize; ++i)

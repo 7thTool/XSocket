@@ -59,9 +59,12 @@ public:
 		if(!Base::IsSelect(FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
 			lAsyncEvent |= FD_ACCEPT;
 		}
+		if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
+			lAsyncEvent |= FD_IDLE;
+		}
 		Base::Select(lEvent);
 		if(lAsyncEvent) {
-			service()->Select(this);
+			service()->SelectSocket(this,lAsyncEvent);
 		}
 		if(lAsyncEvent & FD_READ) {
 			Base::Trigger(FD_READ, 0);
@@ -102,7 +105,8 @@ public:
 		}
 	}
 
-	void Select(SocketEx* sock_ptr) {
+	void SelectSocket(SocketEx* sock_ptr, int evt) {
+		Base::SelectSocket(sock_ptr, evt);
 		int fd = *sock_ptr;
 		struct epoll_event event = {0};
 		event.data.ptr = (void*)sock_ptr;
@@ -138,6 +142,7 @@ public:
 					Base::sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
 					sock_ptr->SocketEx::Select(evt);
+					SelectSocket(sock_ptr.get(), evt);
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
 					event.data.ptr = (void *)sock_ptr.get();
@@ -207,7 +212,7 @@ protected:
 		int nfds = 0;
 		struct epoll_event events[uFD_SETSize] = {0};
 		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
-		nfds = epoll_wait(m_epfd, events, uFD_SETSize, 0);
+		nfds = epoll_wait(m_epfd, events, uFD_SETSize, Base::GetWaitingTimeOut());
 		if (nfds > 0) {
 			for (i = 0; i < nfds; ++i)
 			{

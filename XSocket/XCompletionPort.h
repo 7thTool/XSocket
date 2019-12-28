@@ -427,17 +427,20 @@ public:
 		int lAsyncEvent = 0;
 		if(!(event_ & FD_READ) && (lEvent & FD_READ)) {
 			lAsyncEvent |= FD_READ;
-			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)this, &receive_overlapped_.Overlapped);
 		}
 		if(!(event_ & FD_WRITE) && (lEvent & FD_WRITE)) {
 			lAsyncEvent |= FD_WRITE;
-			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)this, &send_overlapped_.Overlapped);
 		}
 		if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
 			lAsyncEvent |= FD_ACCEPT;
-			//PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCPET, (ULONG_PTR)this, &receive_overlapped_.Overlapped);
+		}
+		if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
+			lAsyncEvent |= FD_IDLE;
 		}
 		Base::Select(lEvent);
+		if(lAsyncEvent) {
+			service()->SelectSocket(this,lAsyncEvent);
+		}
 		if(lAsyncEvent & FD_READ) {
 			Trigger(FD_READ, 0);
 		}
@@ -500,7 +503,8 @@ public:
 					sock_count_++;
 					sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
-					SetHandleInformation((HANDLE) (SOCKET)*sock_ptr, HANDLE_FLAG_INHERIT, 0);
+					SelectSocket(sock_ptr.get(), evt);
+					//SetHandleInformation((HANDLE) (SOCKET)*sock_ptr, HANDLE_FLAG_INHERIT, 0);
 					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, m_hIocp, (ULONG_PTR)(i + 1), 0);
 					ASSERT(hIocp);
 					if (hIocp != INVALID_HANDLE_VALUE) {
@@ -579,7 +583,7 @@ protected:
 			&dwTransfer,
 			(PULONG_PTR)&Key,
 			(LPOVERLAPPED *)&lpOverlapped,
-			0/*INFINITE*/);
+			Base::GetWaitingTimeOut()/*INFINITE*/);
 		if (dwTransfer == IOCP_OPERATION_EXIT) { //
 			PRINTF("GetQueuedCompletionStatus Eixt");
 			return;
