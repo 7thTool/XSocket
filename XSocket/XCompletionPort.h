@@ -574,16 +574,17 @@ protected:
 		// 第4种情况:
 		// If a socket handle associated with a completion port is closed, GetQueuedCompletionStatus returns ERROR_SUCCESS, with lpNumberOfBytes equal zero. 
 		// 如果关联到一个完成端口的一个socket句柄被关闭了，则GetQueuedCompletionStatus返回ERROR_SUCCESS（也是0）,并且lpNumberOfBytes等于0
-
+		BOOL bStatus = FALSE;
+		do {
 		ULONG_PTR Key = 0;
 		DWORD dwTransfer = 0;
 		PER_IO_OPERATION_DATA *lpOverlapped = NULL;
-		BOOL bStatus = GetQueuedCompletionStatus(
+		bStatus = GetQueuedCompletionStatus(
 			m_hIocp,
 			&dwTransfer,
 			(PULONG_PTR)&Key,
 			(LPOVERLAPPED *)&lpOverlapped,
-			Base::GetWaitingTimeOut()/*INFINITE*/);
+			0/*INFINITE*/);
 		if (dwTransfer == IOCP_OPERATION_EXIT) { //
 			PRINTF("GetQueuedCompletionStatus Eixt");
 			return;
@@ -612,38 +613,38 @@ protected:
 			std::unique_lock<std::mutex> lock(mutex_);
 			std::shared_ptr<Socket> sock_ptr = sock_ptrs_[Pos - 1];
 			lock.unlock();
-			if (dwTransfer == IOCP_OPERATION_TRYRECEIVE) { //
-				if(sock_ptr) {
+			if(sock_ptr) {
+				switch (dwTransfer)
+				{
+				case IOCP_OPERATION_TRYRECEIVE:
+				{
 					if (!sock_ptr->IsSelect(FD_READ)) {
 						sock_ptr->Select(FD_READ);
 					}
 				}
-				return;
-			}
-			if (dwTransfer == IOCP_OPERATION_TRYSEND) { //
-				if(sock_ptr) {
+				break;
+				case IOCP_OPERATION_TRYSEND:
+				{
 					if (!sock_ptr->IsSelect(FD_WRITE)) {
 						sock_ptr->Select(FD_WRITE);
 					}
 				}
-				return;
-			}
-			if (dwTransfer == IOCP_OPERATION_TRYACCEPT) { //
-				if(sock_ptr) {
+				break;
+				case IOCP_OPERATION_TRYACCEPT:
+				{
 					if (!sock_ptr->IsSelect(FD_ACCEPT)) {
 						sock_ptr->Select(FD_ACCEPT);
 					}
 				}
-				return;
-			}
-			if(!lpOverlapped) {
-				if (sock_ptr) {
+				break;
+				default:
+				break;
+				}
+				if(!lpOverlapped) {
+					PRINTF("GetQueuedCompletionStatus lpOverlapped is nullptr");
 					sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
 				}
-				return;
-			}
-			if (!bStatus) {
-				if (sock_ptr) {
+				if (!bStatus) {
 					if (sock_ptr->IsListenSocket()) {
 						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_ACCEPT, nErrorCode);
@@ -661,9 +662,7 @@ protected:
 							lpOverlapped->Sock = INVALID_SOCKET;
 						}
 					}
-				}
-			} else {
-				if (sock_ptr) {
+				} else {
 					switch (lpOverlapped->OperationType)
 					{	
 					case IOCP_OPERATION_ACCEPT:
@@ -761,6 +760,7 @@ protected:
 				}
 			}
 		}
+		} while(bStatus);
 	}
 };
 

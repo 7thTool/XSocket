@@ -438,8 +438,6 @@ public:
 		return stop_flag_;
 	}
 	
-	inline bool IsEventService() const { return false; }
-
 	inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
 
 	inline void RemoveSocket(SocketEx* sock_ptr) {}
@@ -984,7 +982,7 @@ protected:
 	u_short sock_count_ = 0;
 	std::shared_ptr<Socket> sock_ptrs_[uFD_SETSize];
 	//u_short sock_idle_next_ = 0;
-	bool use_timeout_ = !Service::IsEventService();
+	bool use_timeout_ = 0;
 	size_t millis_timeout_ = 0;
 	std::mutex mutex_;
 public:
@@ -1169,9 +1167,7 @@ protected:
 			}
 		}
 		if(i >= uFD_SETSize) {
-			if(!Service::IsEventService()) {
-				use_timeout_ = true;
-			}
+			use_timeout_ = true;
 		}
 	}
 };
