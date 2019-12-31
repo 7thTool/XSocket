@@ -171,7 +171,53 @@ public:
 			OnOOB(lpBuf, nBufLen, nFlags);
 			break;
 		case FD_ACCEPT:
-			OnAccept((const SOCKADDR *)lpBuf, nBufLen, (SOCKET)nFlags);
+			break;
+		case FD_CONNECT:
+			break;
+		case FD_CLOSE:
+			break;
+		case FD_IDLE:
+			break;
+		default:
+			break;
+		}
+	}
+
+	inline void Trigger(int evt, SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) { 
+		if(!IsSocket()) { 
+			return;
+		}
+		switch (evt)
+		{
+		case FD_ACCEPT:
+			OnAccept(Sock, lpSockAddr, nSockAddrLen);
+			break;
+		case FD_CONNECT:
+			break;
+		case FD_CLOSE:
+			break;
+		case FD_IDLE:
+			break;
+		default:
+			break;
+		}
+	}
+
+	inline void Trigger(int evt, const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags) { 
+		if(!IsSocket()) { 
+			return;
+		}
+		switch (evt)
+		{
+		case FD_READ:
+			OnReceiveFrom(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+			break;
+		case FD_WRITE:
+			OnSendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+			break;
+		case FD_OOB:
+			break;
+		case FD_ACCEPT:
 			break;
 		case FD_CONNECT:
 			break;
@@ -268,7 +314,7 @@ protected:
 	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
 	 */
 	virtual void OnAccept(int nErrorCode);
-	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock);
+	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen);
 
 	/*!
 	 *	@brief 通知正在连接的客户端套接字连接建立完成，可能成功或者失败.
@@ -363,61 +409,6 @@ protected:
 		pT->Close();
 	}
 };
-
-	template <class Ty>
-	class QueueT
-	{
-	public:
-		QueueT() { }
-		QueueT(const QueueT<Ty>&) = delete;
-		QueueT& operator=(const QueueT<Ty>&) = delete;
-		~QueueT() { 
-#ifdef _DEBUG
-			//std::lock_guard<std::mutex> lock(mutex_);
-			if(!queue_.empty()) {
-				PRINTF("Queue is not empty, size=%u", queue_.size());
-			}
-#endif
-		}
-
-		void push(const Ty& o)
-		{
-			std::lock_guard<std::mutex> lock(mutex_);
-			queue_.push(o);
-			//if (timeout_) {
-				cv_.notify_one();
-			//}
-		}
-		bool pop(Ty& o, size_t timeout = 0)
-		{
-			std::unique_lock<std::mutex> lock(mutex_);
-			if(queue_.empty()) {
-				if (timeout) {
-					if (!cv_.wait_for(lock, std::chrono::milliseconds(timeout),
-						[this]() { return !queue_.empty(); })) { 
-						return false; 
-					}
-				} else {
-					return false;
-				}
-			} 
-			o = queue_.front();
-			queue_.pop();
-			return true;
-		}
-		size_t size()
-		{
-			return queue_.size();
-		}
-		bool empty()
-		{
-			return queue_.empty();
-		}
-	private:
-		std::queue<Ty> queue_;
-		std::mutex mutex_;
-		std::condition_variable cv_;
-	};
 
 /*!
  *	@brief Service 定义.
@@ -818,7 +809,7 @@ protected:
 			int nAddrLen = sizeof(stAddr);
 			SOCKET Sock = Base::Accept((SOCKADDR*)&stAddr, &nAddrLen);
 	 		if(XSocket::Socket::IsSocket(Sock)) {
-				Base::Trigger(FD_ACCEPT, (const char*)&stAddr, nAddrLen, (int)Sock);
+				Base::Trigger(FD_ACCEPT, Sock, (const SOCKADDR*)&stAddr, nAddrLen);
 				//bConitnue = true;
 			} else {
 				nErrorCode = XSocket::Socket::GetLastError();
@@ -1696,7 +1687,7 @@ protected:
 		}
 	}
 
-	virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) 
+	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) 
 	{
 				//测试下还能不能再接收SOCKET
 				if(SockManager::AddSocket(NULL) < 0) {

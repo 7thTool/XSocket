@@ -27,6 +27,7 @@ namespace XSocket {
 #define IOCP_OPERATION_TRYRECEIVE DWORD(-2)
 #define IOCP_OPERATION_TRYSEND DWORD(-3)
 #define IOCP_OPERATION_TRYACCEPT DWORD(-4)
+#define IOCP_OPERATION_NOTIFY DWORD(-5)
 
 /*!
  *	@brief CompletionPort OVERLAPPED 定义.
@@ -466,30 +467,35 @@ public:
 	typedef TService Service;
 	typedef TSocket Socket;
 protected:
-	HANDLE m_hIocp;
+	HANDLE hIocp_;
 public:
 	CompletionPortSocketSetT()
 	{
 		SYSTEM_INFO SystemInfo = {0};
 		GetSystemInfo(&SystemInfo);
-		m_hIocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, SystemInfo.dwNumberOfProcessors);
-		ASSERT(m_hIocp!=INVALID_HANDLE_VALUE);
+		hIocp_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, SystemInfo.dwNumberOfProcessors);
+		ASSERT(hIocp_!=INVALID_HANDLE_VALUE);
 	}
 
 	~CompletionPortSocketSetT()
 	{
-		if(m_hIocp!=INVALID_HANDLE_VALUE) {
-			CloseHandle(m_hIocp);
-			m_hIocp = INVALID_HANDLE_VALUE;
+		if(hIocp_!=INVALID_HANDLE_VALUE) {
+			CloseHandle(hIocp_);
+			hIocp_ = INVALID_HANDLE_VALUE;
 		}
 	}
 
 	void Stop()
 	{
-		if(m_hIocp!=INVALID_HANDLE_VALUE) {
-			PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_EXIT, 0, NULL);
+		if(hIocp_!=INVALID_HANDLE_VALUE) {
+			PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_EXIT, 0, NULL);
 		}
 		Base::Stop();
+	}
+
+	void Notify(void* data)
+	{
+		PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_NOTIFY, data, NULL);
 	}
 
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
@@ -505,11 +511,11 @@ public:
 					sock_ptr->AttachService(this);
 					SelectSocket(sock_ptr.get(), evt);
 					//SetHandleInformation((HANDLE) (SOCKET)*sock_ptr, HANDLE_FLAG_INHERIT, 0);
-					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, m_hIocp, (ULONG_PTR)(i + 1), 0);
+					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, hIocp_, (ULONG_PTR)(i + 1), 0);
 					ASSERT(hIocp);
 					if (hIocp != INVALID_HANDLE_VALUE) {
 #ifdef _DEBUG
-						PRINTF("CreateIoCompletionPort: %ld by %ld", hIocp, m_hIocp);
+						PRINTF("CreateIoCompletionPort: %ld by %ld", hIocp, hIocp_);
 #endif
 					} else {
 						PRINTF("CreateIoCompletionPort Error:%d", ::GetLastError());
@@ -534,13 +540,13 @@ public:
 					// 	}
 					// }
 					if(evt & FD_READ) {
-						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(i + 1), NULL);
+						PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_TRYRECEIVE, (ULONG_PTR)(i + 1), NULL);
 					}
 					if(evt & FD_WRITE) {
-						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(i + 1), NULL);
+						PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_TRYSEND, (ULONG_PTR)(i + 1), NULL);
 					}
 					if(evt & FD_ACCEPT) {
-						PostQueuedCompletionStatus(m_hIocp, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(i + 1), NULL);
+						PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(i + 1), NULL);
 					}
 					return i;
 				} else {
@@ -555,6 +561,11 @@ public:
 
 protected:
 	//
+	virtual void OnNotify(void* data)
+	{
+
+	}
+
 	virtual void OnRunOnce()
 	{
 		Base::OnRunOnce();
@@ -579,13 +590,17 @@ protected:
 		DWORD dwTransfer = 0;
 		PER_IO_OPERATION_DATA *lpOverlapped = NULL;
 		BOOL bStatus = GetQueuedCompletionStatus(
-			m_hIocp,
+			hIocp_,
 			&dwTransfer,
 			(PULONG_PTR)&Key,
 			(LPOVERLAPPED *)&lpOverlapped,
 			0/*INFINITE*/);
 		if (dwTransfer == IOCP_OPERATION_EXIT) { //
 			PRINTF("GetQueuedCompletionStatus Eixt");
+			return;
+		}
+		if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
+			OnNotify((void*)Key);
 			return;
 		}
 		int Pos = Key;
@@ -696,7 +711,7 @@ protected:
 							// 	(LPSOCKADDR*)&lpLocalAddr, &nLocalAddrLen,
 							// 	(LPSOCKADDR*)&lpRemoteAddr, &nRemoteAddrLen);
 							//sprintf(pClientComKey->sIP, "%d", addrClient->sin_port );	//cliAdd.sin_port );
-							sock_ptr->Trigger(FD_ACCEPT, nullptr, 0, (int)lpOverlapped->Sock);
+							sock_ptr->Trigger(FD_ACCEPT, lpOverlapped->Sock, nullptr, 0);
 						}
 						if (sock_ptr->IsSocket()) {
 							if (sock_ptr->IsSelect(FD_ACCEPT)) {

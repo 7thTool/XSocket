@@ -146,7 +146,7 @@ protected:
 
 	protected:
 		//
-		virtual void OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock) 
+		virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) 
 		{
 				//测试下还能不能再接收SOCKET
 				if(srv_->AddSocket(NULL) < 0) {

@@ -284,7 +284,7 @@ void SocketEx::OnAccept(int nErrorCode)
 	}
 }
 
-void SocketEx::OnAccept(const SOCKADDR* lpSockAddr, int nSockAddrLen, SOCKET Sock)
+void SocketEx::OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
 	if(IsDebug()) {
 		char str[64] = {0};

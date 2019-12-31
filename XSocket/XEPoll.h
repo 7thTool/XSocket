@@ -91,18 +91,37 @@ public:
 	typedef TService Service;
 	typedef TSocket Socket;
 protected:
-	int m_epfd;
+	int epfd_;
+	int evfd_;
 public:
-	EPollSocketSetT():m_epfd(0)
+	EPollSocketSetT():epfd_(0)
 	{
-		m_epfd = epoll_create(uFD_SETSize);
+		epfd_ = epoll_create(uFD_SETSize);
+		if(evfd_) {
+			evfd_ = eventfd(0, EFD_NONBLOCK);
+			epoll_event event = {0};
+			event.data.ptr = nullptr;
+			event.data.fd = evfd_;
+			event.events = EPOLLIN | EPOLLERR;
+			epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
+		}
 	}
 	~EPollSocketSetT() 
 	{
-		if (m_epfd) {
-			close(m_epfd);
-			m_epfd = 0;
+		if (epfd_) {
+			if(evfd_) {
+				epoll_ctl(epfd_, EPOLL_CTL_DEL, evfd_, nullptr);
+				close(evfd_);
+				evfd_ = 0;
+			}
+			close(epfd_);
+			epfd_ = 0;
 		}
+	}
+
+	void Notify(void* data)
+	{
+		write(epfd_, &data, sizeof(data));
 	}
 
 	void SelectSocket(SocketEx* sock_ptr, int evt) {
@@ -127,7 +146,7 @@ public:
 		if (sock_ptr->IsSelect(FD_WRITE|FD_CONNECT)) {
 			event.events |= EPOLLOUT;
 		}
-		epoll_ctl(m_epfd,EPOLL_CTL_MOD,fd,&event);
+		epoll_ctl(epfd_,EPOLL_CTL_MOD,fd,&event);
 	}
 	
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
@@ -169,7 +188,7 @@ public:
 					if (evt & (FD_WRITE|FD_CONNECT)) {
 						event.events |= EPOLLOUT;
 					}
-					if (SOCKET_ERROR != epoll_ctl(m_epfd, EPOLL_CTL_ADD, fd, &event)) {
+					if (SOCKET_ERROR != epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &event)) {
 						//return i;
 					} else {
 						PRINTF("epoll_ctl err:%d", XSocket::Socket::GetLastError());
@@ -195,7 +214,7 @@ public:
 				int fd = *sock_ptr;
 				struct epoll_event event = {0};
 				event.data.ptr = (void *)sock_ptr.get();
-				epoll_ctl(m_epfd, EPOLL_CTL_DEL, fd, &event);
+				epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, &event);
 				return Base::RemoveSocketByPos(i);
 			}
 		}
@@ -203,6 +222,11 @@ public:
 	}
 
 protected:
+	//
+	virtual void OnNotify(void* data)
+	{
+
+	}
 
 	virtual void OnRunOnce()
 	{
@@ -212,7 +236,7 @@ protected:
 		int nfds = 0;
 		struct epoll_event events[uFD_SETSize] = {0};
 		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
-		nfds = epoll_wait(m_epfd, events, uFD_SETSize, Base::GetWaitingTimeOut());
+		nfds = epoll_wait(epfd_, events, uFD_SETSize, Base::GetWaitingTimeOut());
 		if (nfds > 0) {
 			for (i = 0; i < nfds; ++i)
 			{
@@ -220,6 +244,12 @@ protected:
 				struct epoll_event event = events[i];
 				std::shared_ptr<Socket> sock_ptr = Base::FindSocket((Socket *)event.data.ptr);
 				if(!sock_ptr) {
+					if(epfd_ == event.data.fd) {
+						void* data = 0;
+						if(sizeof(void*) == read(event.data.fd, &data, sizeof(void*))) {
+							OnNotify(data);
+						}
+					}
 					continue;
 				}
 				unsigned int evt = event.events;
@@ -270,7 +300,7 @@ protected:
 // 				if (sock_ptr->IsSocket()) {
 // 					event.data.ptr = (void *)sock_ptr;
 // 					event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLONESHOT;
-// 					epoll_ctl(m_epfd, EPOLL_CTL_MOD, fd, &event);
+// 					epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &event);
 // 				}
 // #endif //
 			}
