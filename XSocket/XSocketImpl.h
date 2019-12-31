@@ -766,7 +766,7 @@ protected:
 					break;
 				}
 			} else {
-				Trigger(FD_READ, lpBuf,nBufLen,(SOCKADDR*)&stAddr,nAddrLen, 0);
+				Base::Trigger(FD_READ, lpBuf, nBufLen,(const SOCKADDR*)&stAddr, nAddrLen, 0);
 				bConitnue = Base::IsSocket();
 			}
 		} while(bConitnue);
@@ -838,7 +838,7 @@ protected:
 					break;
 				}
 			} else {
-				Trigger(FD_WRITE, lpBuf,nBufLen,(const SOCKADDR*)lpAddr,sizeof(SockAddr),0);
+				Base::Trigger(FD_WRITE, lpBuf, nBufLen, (const SOCKADDR*)lpAddr, sizeof(SockAddr), 0);
 				bConitnue = Base::IsSocket(); //继续发送
 			}
 		} while(bConitnue);

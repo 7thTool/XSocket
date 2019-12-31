@@ -20,6 +20,7 @@
 
 #include "XSocketEx.h"
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 
 namespace XSocket {
 

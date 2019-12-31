@@ -222,7 +222,7 @@ typedef unsigned char byte;
 
 #ifndef PRINTF
 #ifdef _DEBUG
-#define PRINTF(format,...) printf("File: "__FILE__", Line: %d: "format"\n", __LINE__, ##__VA_ARGS__)
+#define PRINTF(format,...) printf("File: %s, Line: %d: "format"\n", __FILE__, __LINE__, ##__VA_ARGS__)
 #else
 #define PRINTF(format,...) printf(format"\n", ##__VA_ARGS__)
 #endif//
