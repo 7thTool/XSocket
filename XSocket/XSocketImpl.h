@@ -169,29 +169,10 @@ protected:
 			nBufLen = (int)(m_nRecvBufLen-m_nRecvLen);
 			ASSERT(nBufLen>0);
 			nBufLen = Base::Receive(lpBuf,nBufLen);
-			if (nBufLen<0) {
-				nErrorCode = XSocket::Socket::GetLastError();
-				switch(nErrorCode)
-				{
-				case 0:
-					break;
-#ifdef WIN32
-				case WSAEWOULDBLOCK:
-				case WSA_IO_PENDING:
-					break;
-#else
-				case EWOULDBLOCK:
-					break;
-				case EINTR:
-					bConitnue = true;
-					break;
-#endif//
-				default:
-					Base::Trigger(FD_CLOSE, nErrorCode);
-					break;
-				}
+			if (nBufLen<=0) {
+				Base::OnReceive(XSocket::Socket::GetLastError());
 			} else if(nBufLen == 0) {
-				Base::Trigger(FD_CLOSE, Base::GetLastError());
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
 				OnReceive(lpBuf, nBufLen, 0);
 				bConitnue = Base::IsSocket();
@@ -206,7 +187,7 @@ protected:
 		int nParseBufLen = m_nRecvLen;
 		int nParseFlags = ParseBuf(m_pRecvBuf, nParseBufLen);
 		if(!nParseFlags) {
-			Base::Trigger(FD_CLOSE, Base::GetLastError());
+			Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 		}
 		if (SOCKET_PACKET_FLAG_COMPLETE & nParseFlags) {
 			OnRecvBuf(m_pRecvBuf, nParseBufLen, nParseFlags);
@@ -242,27 +223,9 @@ protected:
 			ASSERT(lpBuf && nBufLen>0);
 			nBufLen = Base::Send(lpBuf,nBufLen);
 			if (nBufLen<0) {
-				nErrorCode = Base::GetLastError();
-				switch(nErrorCode)
-				{
-				case 0:
-					break;
-#ifdef WIN32
-				case WSAEWOULDBLOCK:
-				case WSA_IO_PENDING:
-					break;
-#else
-				case EWOULDBLOCK:
-					break;
-				case EINTR:
-					break;
-#endif//
-				default:
-					Base::Trigger(FD_CLOSE, nErrorCode);
-					break;
-				}
+				Base::OnSend(XSocket::Socket::GetLastError());
 			} else if(nBufLen == 0) {
-				Base::Trigger(FD_CLOSE, Base::GetLastError());
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
 				OnSend(lpBuf, nBufLen, 0);
 				bConitnue = Base::IsSocket(); //继续发送
@@ -746,25 +709,10 @@ protected:
 			SockAddr stAddr;
 			int nAddrLen = sizeof(SockAddr);
 			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&stAddr,&nAddrLen);
-			if (nBufLen<=0) {
-				nErrorCode = XSocket::Socket::GetLastError();
-				switch(nErrorCode)
-				{
-#ifdef WIN32
-				case WSAEWOULDBLOCK:
-				case WSA_IO_PENDING:
-					break;
-#else
-				case EWOULDBLOCK:
-					break;
-				case EINTR:
-					bConitnue = true;
-					break;
-#endif//
-				default:
-					Base::Trigger(FD_CLOSE, nErrorCode);
-					break;
-				}
+			if (nBufLen<0) {
+				Base::OnReceive(XSocket::Socket::GetLastError());
+			} else if(nBufLen == 0) {
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
 				Base::Trigger(FD_READ, lpBuf, nBufLen,(const SOCKADDR*)&stAddr, nAddrLen, 0);
 				bConitnue = Base::IsSocket();
@@ -782,7 +730,7 @@ protected:
 			int nPacketBufLen = nParseBufLen;
 			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, *(SockAddr*)lpAddr);
 			if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
-				//Base::Trigger(FD_CLOSE, Base::GetLastError());
+				//Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 				break;
 			}
 			OnRecvBuf(lpParseBuf, nPacketBufLen, *(SockAddr*)lpAddr);
@@ -819,24 +767,10 @@ protected:
 			lpAddr = m_pSendAddr;
 			ASSERT(lpBuf && nBufLen>0);
 			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,sizeof(SockAddr));
-			if (nBufLen<=0) {
-				nErrorCode = XSocket::Socket::GetLastError();
-				switch(nErrorCode)
-				{
-#ifdef WIN32
-				case WSAEWOULDBLOCK:
-				case WSA_IO_PENDING:
-					break;
-#else
-				case EWOULDBLOCK:
-					break;
-				case EINTR:
-					break;
-#endif//
-				default:
-					Base::Trigger(FD_CLOSE, nErrorCode);
-					break;
-				}
+			if (nBufLen<0) {
+				Base::OnSend(XSocket::Socket::GetLastError());
+			} else if(nBufLen == 0) {
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
 				Base::Trigger(FD_WRITE, lpBuf, nBufLen, (const SOCKADDR*)lpAddr, sizeof(SockAddr), 0);
 				bConitnue = Base::IsSocket(); //继续发送

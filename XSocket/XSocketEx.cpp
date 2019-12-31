@@ -202,6 +202,27 @@ void SocketEx::OnDetachService(Service* pSvr)
 	}
 }
 
+inline bool IsNBErrorCode(int nErrorCode)
+{
+	switch (nErrorCode)
+	{
+	case 0:
+		break;
+#ifdef WIN32
+	case WSAEWOULDBLOCK:
+	case WSA_IO_PENDING:
+		break;
+#else
+	case EWOULDBLOCK:
+		break;
+	case EINTR:
+		break;
+#endif //
+	default:
+		break;
+	}
+}
+
 void SocketEx::OnIdle(int nErrorCode)
 {
 	
@@ -209,7 +230,7 @@ void SocketEx::OnIdle(int nErrorCode)
 
 void SocketEx::OnReceive(int nErrorCode)
 {
-	if(nErrorCode) {
+	if(!IsNBErrorCode(nErrorCode)) {
 		if(IsDebug()) {
 			PRINTF("(%p %p %u)::OnReceive:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
 		}
@@ -234,7 +255,7 @@ void SocketEx::OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpS
 
 void SocketEx::OnSend(int nErrorCode)
 {
-	if(nErrorCode) {
+	if(!IsNBErrorCode(nErrorCode)) {
 		if(IsDebug()) {
 			PRINTF("(%p %p %u)::OnSend:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
 		}
@@ -259,7 +280,7 @@ void SocketEx::OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAd
 
 void SocketEx::OnOOB(int nErrorCode)
 {
-	if(nErrorCode) {
+	if(!IsNBErrorCode(nErrorCode)) {
 		if(IsDebug()) {
 			PRINTF("(%p %p %u)::OnOOB:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
 		}
@@ -276,7 +297,7 @@ void SocketEx::OnOOB(const char* lpBuf, int nBufLen, int nFlags)
 
 void SocketEx::OnAccept(int nErrorCode)
 {
-	if(nErrorCode) {
+	if(!IsNBErrorCode(nErrorCode)) {
 		if(IsDebug()) {
 			PRINTF("(%p %p %u)::OnAccept:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
 		}
@@ -294,7 +315,7 @@ void SocketEx::OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLe
 
 void SocketEx::OnConnect(int nErrorCode)
 {
-	if(nErrorCode) {
+	if(!IsNBErrorCode(nErrorCode)) {
 		if(IsDebug()) {
 			PRINTF("(%p %p %u)::OnConnect:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
 		}
