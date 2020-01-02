@@ -8,16 +8,16 @@
 
 namespace XSocket {
 
-size_t Tick()
-{
-#ifdef WIN32
-	return GetTickCount();
-#else
-	struct timespec ts;
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-	return (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-#endif//
-}
+// size_t Tick()
+// {
+// #ifdef WIN32
+// 	return GetTickCount();
+// #else
+// 	struct timespec ts;
+// 	clock_gettime(CLOCK_MONOTONIC, &ts);
+// 	return (ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+// #endif//
+// }
 
 long Socket::Init()
 {

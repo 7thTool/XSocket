@@ -99,6 +99,9 @@ public:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {
+			if(!IsSocket()) {
+				return;
+			}
 			PRINTF("echo:%.*s", evt.buf.size(), evt.buf.c_str());
 			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
 		}
@@ -203,7 +206,7 @@ public:
 		sock_ptr->Open(address);
 		sock_ptr->SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
 		sock_ptr->Bind(port);
-		sock_ptr->Listen();
+		sock_ptr->Listen(1024);
 		AddSocket(sock_ptr, FD_ACCEPT);
 
 		return true;

@@ -258,7 +258,7 @@ protected:
 	 *
 	 *	OnIdle函数是后台在计算空闲的情况，给SocketEx用于做一些空闲处理动作，比如检查超时
 	 *	、清理垃圾数据等等
-	 *	@param nErrorCode 标示进入空闲时间，可以使用GetTickCount()-nErrorCode计算OnIdle耗时
+	 *	@param nErrorCode 标示进入空闲时间，可以使用std::chrono::steady_clock::now()-nErrorCode计算OnIdle耗时
 	 */
 	virtual void OnIdle(int nErrorCode);
 
@@ -442,24 +442,22 @@ protected:
 	{
 		if(OnInit()) {
 			while (!IsStopFlag()) {
-				size_t tick_count = Tick();
+				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
 				OnRunOnce();
 				if(IsStopFlag()) {
 					break;
 				}
 				if(!notify_data_) {
-				//size_t tick_span = Tick() - tick_count;
-				//if(tick_span < 20 || tick_span > 100) {
-					OnIdle(Tick());
+					OnIdle(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
 					if(IsStopFlag()) {
 						break;
 					}
-					size_t tick_span = Tick() - tick_count;
-					if(tick_span < 20) {
+					static const std::chrono::microseconds max_span(20);
+					std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
+					if(tp_span < max_span) {
 						//std::this_thread::yield();
-						std::this_thread::sleep_for(std::chrono::milliseconds(20-tick_span));
+						std::this_thread::sleep_for(std::chrono::nanoseconds(1));
 					}
-				//}
 				}
 			}
 		}
@@ -705,20 +703,35 @@ class ConnectSocketT : public TBase
 	typedef ConnectSocketT<TBase> This;
 	typedef TBase Base;
 protected:
-	bool m_bConnected;
-	unsigned long m_ConnectTime;
-	unsigned long m_ConnectTimeOut;
+	bool connected_;
+	size_t connect_time_;
+	size_t connect_timeout_;
 
 public:
-	ConnectSocketT():Base(), m_bConnected(false), m_ConnectTime(0), m_ConnectTimeOut(0) {}
+	ConnectSocketT():Base(), connected_(false), connect_time_(0), connect_timeout_(0) {}
 	//virtual ~ConnectSocketT() {}
 
 	int Close()
 	{
 		int rlt = Base::Close();
-		m_bConnected = false;
-		m_ConnectTime = 0;
+		connected_ = false;
+		connect_time_ = 0;
 		return rlt;
+	}
+
+	void SetConnectTimeOut(size_t TimeOut)
+	{
+		connect_timeout_ = TimeOut;
+	}
+
+	size_t GetConnectTimeOut()
+	{
+		return connect_timeout_;
+	}
+
+	size_t GetConnectTime()
+	{
+		return connect_time_;
 	}
 
 	bool IsConnecting()
@@ -726,35 +739,20 @@ public:
 		if(IsConnected()) {
 			return false;
 		}
-		return m_ConnectTime;
+		return connect_time_;
 	}
 
 	bool IsConnected()
 	{
-		return m_bConnected;
-	}
-
-	void SetConnectTimeOut(unsigned long TimeOut)
-	{
-		m_ConnectTimeOut = TimeOut;
-	}
-
-	unsigned long GetConnectTimeOut()
-	{
-		return m_ConnectTimeOut;
+		return connected_;
 	}
 
 	bool IsConnectTimeOut() 
 	{ 
-		if(m_ConnectTimeOut && (Tick() >= (m_ConnectTime + m_ConnectTimeOut))) {
+		if(connect_timeout_ && (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() >= (connect_time_ + connect_timeout_))) {
 			return true;
 		}
 		return false;
-	}
-
-	unsigned long GetConnectTime()
-	{
-		return m_ConnectTime;
 	}
 
 protected:
@@ -763,7 +761,7 @@ protected:
 		Base::OnIdle(nErrorCode);
 
 		//ASSERT(IsConnectSocket());
-		if(Base::IsSelect(FD_CONNECT) && m_ConnectTimeOut) {
+		if(Base::IsSelect(FD_CONNECT) && connect_timeout_) {
 			if(IsConnectTimeOut()) {
 				OnConnect(ETIMEDOUT);
 			}
@@ -775,7 +773,7 @@ protected:
 		Base::OnRole(nRole);
 
 		//ASSERT(nRole==SOCKET_ROLE_CONNECT);
-		m_ConnectTime = Tick();
+		connect_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 	}
 
 	virtual void OnConnect(int nErrorCode)
@@ -783,8 +781,8 @@ protected:
 		Base::OnConnect(nErrorCode);
 
 		if(!nErrorCode) {
-			m_bConnected = true;
-			m_ConnectTime = Tick() - m_ConnectTime; //记住连接耗时
+			connected_ = true;
+			connect_time_ = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() - connect_time_; //记住连接耗时
 			Base::Select(FD_READ|FD_OOB);
 		}
 	}
@@ -1185,7 +1183,7 @@ protected:
 					} else if(sock_ptr->IsSelect(FD_IDLE)) {
 						j++;
 						sock_ptr->RemoveSelect(FD_IDLE);
-						sock_ptr->Trigger(FD_IDLE, Tick());
+						sock_ptr->Trigger(FD_IDLE, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 					}
 				}
 			}

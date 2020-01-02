@@ -28,7 +28,7 @@ namespace XSocket {
 	//std::chrono::high_resolution_clock::now()
 	//to_time_t() time_point转换成time_t秒
 	//from_time_t() 从time_t转换成time_point
-	XSOCKET_API size_t Tick();
+	//XSOCKET_API size_t Tick();
 
 /*!
  *	@brief Socket封装.

@@ -160,6 +160,9 @@ public:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {
+			if(!IsSocket()) {
+				return;
+			}
 			PRINTF("SendBuf:%.*s", evt.buf.size(), evt.buf.c_str());
 #ifndef USE_UDP
 			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
@@ -212,7 +215,7 @@ protected:
 public:
 
 #ifdef USE_MANAGER
-	manager(int nMaxSocketCount):Base(nMaxSocketCount)
+	manager(int nMaxSocketCount):Base((nMaxSocketCount + ClientSocketSet::GetMaxSocketCount() - 1) / ClientSocketSet::GetMaxSocketCount())
 #else
 	manager(int nMaxSocketCount)
 #endif
