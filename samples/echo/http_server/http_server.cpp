@@ -35,7 +35,7 @@ typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> WorkService;
 #elif defined(USE_IOCP)
 typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> WorkService;
 #else
-typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> WorkService;
+typedef SimpleEventServiceT<DelayEventServiceT<Event,SelectService>> WorkService;
 #endif//
 
 #ifdef USE_EPOLL
@@ -104,9 +104,9 @@ protected:
 };
 
 class server 
-	: public SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SelectSocketT<ThreadService,SocketEx>>>,WorkSocketSet>
+	: public SelectServerT<SelectService,SocketExImpl<server,ListenSocketT<SelectSocketT<SelectService,SocketEx>>>,WorkSocketSet>
 {
-	typedef SelectServerT<ThreadService,SocketExImpl<server,ListenSocketT<SelectSocketT<ThreadService,SocketEx>>>,WorkSocketSet> Base;
+	typedef SelectServerT<SelectService,SocketExImpl<server,ListenSocketT<SelectSocketT<SelectService,SocketEx>>>,WorkSocketSet> Base;
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{

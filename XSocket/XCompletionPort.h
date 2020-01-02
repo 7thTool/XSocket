@@ -462,6 +462,7 @@ class CompletionPortServiceT : public TService
 	typedef TService Base;
 protected:
 	HANDLE hIocp_;
+	size_t millis_timeout_ = 0;
 public:
 	CompletionPortServiceT()
 	{
@@ -479,6 +480,9 @@ public:
 		}
 	}
 
+	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
+	inline size_t GetWaitTimeOut() { return millis_timeout_; }
+
 	void Stop()
 	{
 		if(hIocp_!=INVALID_HANDLE_VALUE) {
@@ -486,7 +490,7 @@ public:
 		}
 		Base::Stop();
 	}
-
+	
 	inline void PostNotify(void* data)
 	{
 		PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_NOTIFY, (ULONG_PTR)data, NULL);

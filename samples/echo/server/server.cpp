@@ -43,7 +43,7 @@ typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> WorkService;
 #elif defined(USE_IOCP)
 typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> WorkService;
 #else
-typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> WorkService;
+typedef SimpleEventServiceT<DelayEventServiceT<Event,SelectService>> WorkService;
 #endif//
 
 

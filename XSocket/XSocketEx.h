@@ -971,6 +971,45 @@ public:
 //////////////////////////////////////////////////////////////////////////
 
 /*!
+ *	@brief SelectServiceT 模板定义.
+ *
+ *	封装SelectServiceT
+ */
+template<class TService = Service>
+class SelectServiceT : public TService
+{
+	typedef TService Base;
+public:
+	typedef TService Service;
+protected:
+	bool use_timeout_ = 0;
+	size_t millis_timeout_ = 0;
+public:
+
+	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
+	inline size_t GetWaitTimeOut() { return millis_timeout_; }
+
+	inline void PostNotify(void* data) { 
+		Base::PostNotify(data);
+		if(use_timeout_) {
+			use_timeout_ = false;
+		}
+	}
+	
+protected:
+	//
+	inline size_t GetWaitingTimeOut() {
+		if(use_timeout_) {
+			return millis_timeout_;
+		}
+		return 0;
+	}
+};
+
+typedef ThreadServiceT<SelectServiceT<Service>> SelectService;
+
+
+/*!
  *	@brief SocketSetT 模板定义.
  *
  *	封装SocketSet，实现最多管理uFD_SETSize数Socket
@@ -978,6 +1017,7 @@ public:
 template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
 class SocketSetT : public TService
 {
+	typedef TService Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
@@ -986,8 +1026,6 @@ protected:
 	u_short sock_count_ = 0;
 	std::shared_ptr<Socket> sock_ptrs_[uFD_SETSize];
 	//u_short sock_idle_next_ = 0;
-	bool use_timeout_ = 0;
-	size_t millis_timeout_ = 0;
 	std::mutex mutex_;
 public:
 	SocketSetT()
@@ -1001,22 +1039,6 @@ public:
 
 	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
 	inline size_t GetSocketCount() { return sock_count_; }
-
-	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
-	inline size_t GetWaitTimeOut() { return millis_timeout_; }
-	inline size_t GetWaitingTimeOut() {
-		if(use_timeout_) {
-			return millis_timeout_;
-		}
-		return 0;
-	}
-
-	inline void PostNotify(void* data) { 
-		Base::PostNotify(void* data);
-		if(use_timeout_) {
-			use_timeout_ = false;
-		}
-	}
 
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
@@ -1301,7 +1323,7 @@ protected:
  *
  *	封装SelectSvrSocket，实现对select模型管理一个客户端连接Socket
  */
-template<class TService = ThreadService, class TBase = SocketEx>
+template<class TService = SelectService, class TBase = SocketEx>
 class SelectOneSocketT : public TBase, public TService
 {
 	typedef SelectOneSocketT<TService,TBase> This;
@@ -1336,7 +1358,7 @@ protected:
 		FD_ZERO(&exceptfds);
 		maxfds = fd + 1;
 		FD_SET(fd, &exceptfds);
-		struct timeval tv = {0, 0};
+		struct timeval tv = {0, Service::GetWaitingTimeOut()*1000};
 		if (Base::IsListenSocket()) {
 			fd_set readfds;
 			FD_ZERO(&readfds);
@@ -1469,7 +1491,7 @@ public:
  *
  *	封装SelectSocketSet，实现对select模型封装，最多管理uFD_SETSize数Socket
  */
-template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
+template<class TService = SelectService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
 class SelectSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
 {
 	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;

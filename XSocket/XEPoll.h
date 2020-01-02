@@ -64,6 +64,9 @@ public:
 			lAsyncEvent |= FD_IDLE;
 		}
 		Base::Select(lEvent);
+		if(lAsyncEvent) {
+			service()->SelectSocket(this,lAsyncEvent);
+		}
 		if(lAsyncEvent & FD_READ) {
 			Base::Trigger(FD_READ, 0);
 		}
@@ -88,17 +91,20 @@ class EPollServiceT : public TService
 protected:
 	int epfd_;
 	int evfd_;
+	size_t millis_timeout_ = 0;
 public:
-	EPollServiceT():epfd_(0)
+	EPollServiceT():epfd_(0),evfd_(0)
 	{
-		epfd_ = epoll_create(uFD_SETSize);
-		if(evfd_) {
+		epfd_ = epoll_create(1024); //大于0即可，保险方式设置1024足够了
+		if(epfd_) {
 			evfd_ = eventfd(0, EFD_NONBLOCK);
-			epoll_event event = {0};
-			event.data.ptr = nullptr;
-			event.data.fd = evfd_;
-			event.events = EPOLLIN | EPOLLERR;
-			epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
+			if(evfd_) {
+				struct epoll_event event = {0};
+				event.data.ptr = nullptr;
+				event.data.fd = evfd_;
+				event.events = EPOLLIN | EPOLLERR;
+				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
+			}
 		}
 	}
 	~EPollServiceT() 
@@ -114,9 +120,12 @@ public:
 		}
 	}
 
+	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
+	inline size_t GetWaitTimeOut() { return millis_timeout_; }
+
 	inline void PostNotify(void* data)
 	{
-		write(epfd_, &data, sizeof(data));
+		write(evfd_, &data, sizeof(data));
 	}
 
 protected:
@@ -130,19 +139,17 @@ protected:
 	{
 		Base::OnRunOnce();
 
-		int i;
-		int nfds = 0;
-		struct epoll_event events[uFD_SETSize] = {0};
+		struct epoll_event events[1024] = {0};
 		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
-		nfds = epoll_wait(epfd_, events, uFD_SETSize, Base::GetWaitingTimeOut());
+		int nfds = epoll_wait(epfd_, events, 1024, millis_timeout_);
 		if (nfds > 0) {
-			for (i = 0; i < nfds; ++i)
+			for (int i = 0; i < nfds; ++i)
 			{
-				struct epoll_event event = events[i];
-				if(epfd_ == event.data.fd) {
+				const struct epoll_event& event = events[i];
+				if(evfd_ == event.data.fd) {
 					void* data = 0;
 					if(sizeof(void*) == read(event.data.fd, &data, sizeof(void*))) {
-						OnNotify(data);
+						this->OnNotify(data);
 					}
 				} else {
 					OnEPollEvent(event);
@@ -177,7 +184,7 @@ public:
 	}
 
 	void SelectSocket(SocketEx* sock_ptr, int evt) {
-		Base::SelectSocket(sock_ptr, evt);
+		//Base::SelectSocket(sock_ptr, evt);
 		int fd = *sock_ptr;
 		struct epoll_event event = {0};
 		event.data.ptr = (void*)sock_ptr;

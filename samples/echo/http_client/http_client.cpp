@@ -69,7 +69,7 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef DelayEventServiceT<Event,ThreadService> ClientService;
+typedef DelayEventServiceT<Event,SelectService> ClientService;
 
 class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>>
 {
