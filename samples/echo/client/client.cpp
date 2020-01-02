@@ -33,7 +33,14 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
+
+#ifdef USE_EPOLL
+typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> ClientService;
+#elif defined(USE_IOCP)
+typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> ClientService;
+#else
 typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> ClientService;
+#endif//
 
 #ifndef USE_UDP
 #ifdef USE_EPOLL

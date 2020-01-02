@@ -29,8 +29,14 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
+
+#ifdef USE_EPOLL
+typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> WorkService;
+#elif defined(USE_IOCP)
+typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> WorkService;
+#else
 typedef SimpleEventServiceT<DelayEventServiceT<Event,ThreadService>> WorkService;
-//typedef ThreadService WorkService;
+#endif//
 
 #ifdef USE_EPOLL
 typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;

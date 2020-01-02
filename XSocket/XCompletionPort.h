@@ -24,10 +24,10 @@
 namespace XSocket {
 
 #define IOCP_OPERATION_EXIT DWORD(-1)
-#define IOCP_OPERATION_TRYRECEIVE DWORD(-2)
-#define IOCP_OPERATION_TRYSEND DWORD(-3)
-#define IOCP_OPERATION_TRYACCEPT DWORD(-4)
-#define IOCP_OPERATION_NOTIFY DWORD(-5)
+#define IOCP_OPERATION_NOTIFY DWORD(-2)
+#define IOCP_OPERATION_TRYRECEIVE DWORD(-3)
+#define IOCP_OPERATION_TRYSEND DWORD(-4)
+#define IOCP_OPERATION_TRYACCEPT DWORD(-5)
 
 /*!
  *	@brief CompletionPort OVERLAPPED 定义.
@@ -439,9 +439,6 @@ public:
 			lAsyncEvent |= FD_IDLE;
 		}
 		Base::Select(lEvent);
-		if(lAsyncEvent) {
-			service()->SelectSocket(this,lAsyncEvent);
-		}
 		if(lAsyncEvent & FD_READ) {
 			Trigger(FD_READ, 0);
 		}
@@ -455,21 +452,18 @@ public:
 };
 
 /*!
- *	@brief CompletionPortSocketSet 模板定义.
+ *	@brief CompletionPortService 模板定义.
  *
- *	封装CompletionPortSocketSet，实现对CompletionPort模型封装，最多管理uFD_SETSize数Socket
+ *	封装CompletionPortService，实现对CompletionPort模型封装
  */
-template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class CompletionPortSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+template<class TService = Service>
+class CompletionPortServiceT : public TService
 {
-	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
-public:
-	typedef TService Service;
-	typedef TSocket Socket;
+	typedef TService Base;
 protected:
 	HANDLE hIocp_;
 public:
-	CompletionPortSocketSetT()
+	CompletionPortServiceT()
 	{
 		SYSTEM_INFO SystemInfo = {0};
 		GetSystemInfo(&SystemInfo);
@@ -477,7 +471,7 @@ public:
 		ASSERT(hIocp_!=INVALID_HANDLE_VALUE);
 	}
 
-	~CompletionPortSocketSetT()
+	~CompletionPortServiceT()
 	{
 		if(hIocp_!=INVALID_HANDLE_VALUE) {
 			CloseHandle(hIocp_);
@@ -493,9 +487,104 @@ public:
 		Base::Stop();
 	}
 
-	void Notify(void* data)
+	inline void PostNotify(void* data)
 	{
-		PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_NOTIFY, data, NULL);
+		PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_NOTIFY, (ULONG_PTR)data, NULL);
+	}
+
+protected:
+	//
+	virtual bool OnCompletion(BOOL bStatus, ULONG_PTR Key, DWORD dwTransfer, WSAOVERLAPPED* lpOverlapped)
+	{
+		return false;
+	}
+	//
+	virtual void OnRunOnce()
+	{
+		Base::OnRunOnce();
+
+		// 第1种情况:
+		// If the function dequeues a completion packet for a successful I/O operation from the completion port, the return value is nonzero. The function stores information in the variables pointed to by the lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped parameters.
+		// 如果函数从完成端口取出一个成功I/O操作的完成包，返回值为非0。函数在指向lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped的参数中存储相关信息。
+
+		// 第2种情况:
+		// If *lpOverlapped is NULL and the function does not dequeue a completion packet from the completion port, the return value is zero. The function does not store information in the variables pointed to by the lpNumberOfBytesTransferred and lpCompletionKey parameters. To get extended error information, call GetLastError. If the function did not dequeue a completion packet because the wait timed out, GetLastError returns WAIT_TIMEOUT. 
+		// 如果 *lpOverlapped为空并且函数没有从完成端口取出完成包，返回值则为0。函数则不会在lpNumberOfBytes and lpCompletionKey所指向的参数中存储信息。调用GetLastError可以得到一个扩展错误信息。如果函数由于等待超时而未能出列完成包，GetLastError返回WAIT_TIMEOUT.
+
+		// 第3种情况:
+		// If *lpOverlapped is not NULL and the function dequeues a completion packet for a failed I/O operation from the completion port, the return value is zero. The function stores information in the variables pointed to by lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped. To get extended error information, call GetLastError
+		// 如果 *lpOverlapped不为空并且函数从完成端口出列一个失败I/O操作的完成包，返回值为0。函数在指向lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped的参数指针中存储相关信息。调用GetLastError可以得到扩展错误信息 。
+
+		// 第4种情况:
+		// If a socket handle associated with a completion port is closed, GetQueuedCompletionStatus returns ERROR_SUCCESS, with lpNumberOfBytes equal zero. 
+		// 如果关联到一个完成端口的一个socket句柄被关闭了，则GetQueuedCompletionStatus返回ERROR_SUCCESS（也是0）,并且lpNumberOfBytes等于0
+		do {
+		ULONG_PTR Key = 0;
+		DWORD dwTransfer = 0;
+		WSAOVERLAPPED *lpOverlapped = NULL;
+		BOOL bStatus = GetQueuedCompletionStatus(
+			hIocp_,
+			&dwTransfer,
+			(PULONG_PTR)&Key,
+			(LPOVERLAPPED *)&lpOverlapped,
+			0/*INFINITE*/);
+		// if(!bStatus) {
+		//	PRINTF("GetQueuedCompletionStatus Error:%d ", ::GetLastError());
+		// 	if(NULL == lpOverlapped) {
+		// 	 	//处理第2种情况
+		// 		//continue;
+		// 	}
+		// 	DWORD dwErr = GetLastError();
+		// 	if(Pos == 0) {
+		// 		//continue;
+		// 	} else {
+		// 		//处理第3和第4种情况
+		// 		if (WAIT_TIMEOUT == dwErr) {
+		// 			//
+		// 		} else {
+		// 			//
+		// 		}
+		// 		//continue;
+		// 	}
+		// } 
+		if (dwTransfer == IOCP_OPERATION_EXIT) { //
+			PRINTF("GetQueuedCompletionStatus Eixt");
+			return;
+		}
+		if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
+			OnNotify((void*)Key);
+			return;
+		}
+		if(!OnCompletion(bStatus, Key, dwTransfer, lpOverlapped)) {
+			break;
+		}
+		} while(true);
+	}
+};
+
+typedef ThreadServiceT<CompletionPortServiceT<Service>> CompletionPortService;
+
+/*!
+ *	@brief CompletionPortSocketSet 模板定义.
+ *
+ *	封装CompletionPortSocketSet，实现对CompletionPort模型封装，最多管理uFD_SETSize数Socket
+ */
+template<class TService = CompletionPortService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
+class CompletionPortSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+{
+	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
+public:
+	typedef TService Service;
+	typedef TSocket Socket;
+public:
+	CompletionPortSocketSetT()
+	{
+		
+	}
+
+	~CompletionPortSocketSetT()
+	{
+		
 	}
 
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
@@ -509,7 +598,6 @@ public:
 					sock_count_++;
 					sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
-					SelectSocket(sock_ptr.get(), evt);
 					//SetHandleInformation((HANDLE) (SOCKET)*sock_ptr, HANDLE_FLAG_INHERIT, 0);
 					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, hIocp_, (ULONG_PTR)(i + 1), 0);
 					ASSERT(hIocp);
@@ -561,68 +649,10 @@ public:
 
 protected:
 	//
-	virtual void OnNotify(void* data)
+	virtual bool OnCompletion(BOOL bStatus, ULONG_PTR Key, DWORD dwTransfer, WSAOVERLAPPED* lpOverlap)
 	{
-
-	}
-
-	virtual void OnRunOnce()
-	{
-		Base::OnRunOnce();
-
-		// 第1种情况:
-		// If the function dequeues a completion packet for a successful I/O operation from the completion port, the return value is nonzero. The function stores information in the variables pointed to by the lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped parameters.
-		// 如果函数从完成端口取出一个成功I/O操作的完成包，返回值为非0。函数在指向lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped的参数中存储相关信息。
-
-		// 第2种情况:
-		// If *lpOverlapped is NULL and the function does not dequeue a completion packet from the completion port, the return value is zero. The function does not store information in the variables pointed to by the lpNumberOfBytesTransferred and lpCompletionKey parameters. To get extended error information, call GetLastError. If the function did not dequeue a completion packet because the wait timed out, GetLastError returns WAIT_TIMEOUT. 
-		// 如果 *lpOverlapped为空并且函数没有从完成端口取出完成包，返回值则为0。函数则不会在lpNumberOfBytes and lpCompletionKey所指向的参数中存储信息。调用GetLastError可以得到一个扩展错误信息。如果函数由于等待超时而未能出列完成包，GetLastError返回WAIT_TIMEOUT.
-
-		// 第3种情况:
-		// If *lpOverlapped is not NULL and the function dequeues a completion packet for a failed I/O operation from the completion port, the return value is zero. The function stores information in the variables pointed to by lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped. To get extended error information, call GetLastError
-		// 如果 *lpOverlapped不为空并且函数从完成端口出列一个失败I/O操作的完成包，返回值为0。函数在指向lpNumberOfBytesTransferred, lpCompletionKey, and lpOverlapped的参数指针中存储相关信息。调用GetLastError可以得到扩展错误信息 。
-
-		// 第4种情况:
-		// If a socket handle associated with a completion port is closed, GetQueuedCompletionStatus returns ERROR_SUCCESS, with lpNumberOfBytes equal zero. 
-		// 如果关联到一个完成端口的一个socket句柄被关闭了，则GetQueuedCompletionStatus返回ERROR_SUCCESS（也是0）,并且lpNumberOfBytes等于0
-		do {
-		ULONG_PTR Key = 0;
-		DWORD dwTransfer = 0;
-		PER_IO_OPERATION_DATA *lpOverlapped = NULL;
-		BOOL bStatus = GetQueuedCompletionStatus(
-			hIocp_,
-			&dwTransfer,
-			(PULONG_PTR)&Key,
-			(LPOVERLAPPED *)&lpOverlapped,
-			0/*INFINITE*/);
-		if (dwTransfer == IOCP_OPERATION_EXIT) { //
-			PRINTF("GetQueuedCompletionStatus Eixt");
-			return;
-		}
-		if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
-			OnNotify((void*)Key);
-			return;
-		}
+		PER_IO_OPERATION_DATA* lpOverlapped = (PER_IO_OPERATION_DATA*)lpOverlap;
 		int Pos = Key;
-		// if(!bStatus) {
-		//	PRINTF("GetQueuedCompletionStatus Error:%d ", ::GetLastError());
-		// 	if(NULL == lpOverlapped) {
-		// 	 	//处理第2种情况
-		// 		//continue;
-		// 	}
-		// 	DWORD dwErr = GetLastError();
-		// 	if(Pos == 0) {
-		// 		//continue;
-		// 	} else {
-		// 		//处理第3和第4种情况
-		// 		if (WAIT_TIMEOUT == dwErr) {
-		// 			//
-		// 		} else {
-		// 			//
-		// 		}
-		// 		//continue;
-		// 	}
-		// } 
 		if (Pos > 0 && Pos <= uFD_SETSize) {
 			std::unique_lock<std::mutex> lock(mutex_);
 			std::shared_ptr<Socket> sock_ptr = sock_ptrs_[Pos - 1];
@@ -659,7 +689,7 @@ protected:
 				break;
 				}
 				if(bContinue) {
-					continue;
+					return true;
 				}
 				if (!bStatus || !lpOverlapped) {
 					PRINTF("GetQueuedCompletionStatus bStatus=%d lpOverlapped=%p", bStatus, lpOverlapped);
@@ -777,10 +807,9 @@ protected:
 					}
 				}
 			}
-		} else {
-			break;
+			return true;
 		}
-		} while(true);
+		return false;
 	}
 };
 

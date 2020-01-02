@@ -420,6 +420,7 @@ class Service
 protected:
     //停止标记，默认停止状态，启动后停止状态为false
     std::atomic<bool> stop_flag_;
+	void* notify_data_ = nullptr;
 public:
 	static Service* service();
 
@@ -429,7 +430,9 @@ public:
 		return stop_flag_;
 	}
 	
-	inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
+	inline void PostNotify(void* data) { notify_data_ = data; }
+	
+	//inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
 
 	inline void RemoveSocket(SocketEx* sock_ptr) {}
 
@@ -444,6 +447,7 @@ protected:
 				if(IsStopFlag()) {
 					break;
 				}
+				if(!notify_data_) {
 				//size_t tick_span = Tick() - tick_count;
 				//if(tick_span < 20 || tick_span > 100) {
 					OnIdle(Tick());
@@ -456,6 +460,7 @@ protected:
 						std::this_thread::sleep_for(std::chrono::milliseconds(20-tick_span));
 					}
 				//}
+				}
 			}
 		}
 		OnTerm();
@@ -468,9 +473,18 @@ protected:
 
 	}
 
+	virtual void OnNotify(void* data)
+	{
+
+	}
+
 	virtual void OnRunOnce()
 	{
-		
+		if(notify_data_) {
+			void* data = notify_data_;
+			notify_data_ = nullptr;
+			OnNotify(data);
+		}
 	}
 
 	virtual void OnIdle(int nErrorCode)
@@ -501,11 +515,10 @@ public:
 		queue_.reserve(1024);
 	}
 
-	inline bool IsEventService() const { return true; }
-
 	inline void Post(const Event& evt) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		queue_.emplace_back(evt);
+		Base::PostNotify((void*)queue_.size());
 	}
 
 protected:
@@ -520,12 +533,7 @@ protected:
 		return false;
 	}
 
-	virtual void OnEvent(const Event& evt)
-	{
-		
-	}
-
-	virtual void OnRunOnce()
+	virtual void OnNotify(void* data)
 	{
 		for(size_t i = 0, j = queue_.size(); i < j; i++)
 		{
@@ -534,6 +542,11 @@ protected:
 				OnEvent(evt);
 			}
 		}
+	}
+
+	virtual void OnEvent(const Event& evt)
+	{
+		
 	}
 };
 
@@ -998,11 +1011,10 @@ public:
 		return 0;
 	}
 
-	inline void SelectSocket(SocketEx* sock_ptr, int evt) {
-		if(evt & FD_IDLE) {
-			if(use_timeout_) {
-				use_timeout_ = false;
-			}
+	inline void PostNotify(void* data) { 
+		Base::PostNotify(void* data);
+		if(use_timeout_) {
+			use_timeout_ = false;
 		}
 	}
 
@@ -1017,7 +1029,6 @@ public:
 					sock_count_++;
 					sock_ptr->AttachService(this);
 					sock_ptr->Select(evt);
-					SelectSocket(sock_ptr.get(), evt);
 					sock_ptrs_[i] = sock_ptr;
 					return i;
 				} else {
@@ -1156,9 +1167,6 @@ protected:
 					}
 				}
 			}
-		}
-		if(i >= uFD_SETSize) {
-			use_timeout_ = true;
 		}
 	}
 };
@@ -1444,16 +1452,16 @@ public:
     	
 	}
 
-	inline void Select(int lEvent) {  
-		int lAsyncEvent = 0;
-		if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
-			lAsyncEvent |= FD_IDLE;
-		}
-		Base::Select(lEvent);
-		if(lAsyncEvent) {
-			service()->SelectSocket(this,lAsyncEvent);
-		}
-	}
+	// inline void Select(int lEvent) {  
+	// 	int lAsyncEvent = 0;
+	// 	if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
+	// 		lAsyncEvent |= FD_IDLE;
+	// 	}
+	// 	Base::Select(lEvent);
+	// 	if(lAsyncEvent) {
+	// 		service()->SelectSocket(this,lAsyncEvent);
+	// 	}
+	// }
 };
 
 /*!

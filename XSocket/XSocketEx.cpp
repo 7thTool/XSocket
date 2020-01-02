@@ -207,20 +207,25 @@ inline bool IsNBErrorCode(int nErrorCode)
 	switch (nErrorCode)
 	{
 	case 0:
+		return true;
 		break;
 #ifdef WIN32
 	case WSAEWOULDBLOCK:
 	case WSA_IO_PENDING:
+		return true;
 		break;
 #else
 	case EWOULDBLOCK:
+		return true;
 		break;
 	case EINTR:
+		return true;
 		break;
 #endif //
 	default:
 		break;
 	}
+	return false;
 }
 
 void SocketEx::OnIdle(int nErrorCode)

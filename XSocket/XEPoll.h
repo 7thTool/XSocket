@@ -64,9 +64,6 @@ public:
 			lAsyncEvent |= FD_IDLE;
 		}
 		Base::Select(lEvent);
-		if(lAsyncEvent) {
-			service()->SelectSocket(this,lAsyncEvent);
-		}
 		if(lAsyncEvent & FD_READ) {
 			Base::Trigger(FD_READ, 0);
 		}
@@ -80,22 +77,19 @@ public:
 };
 
 /*!
- *	@brief EPollSocketSet 模板定义.
+ *	@brief EPollServiceT 模板定义.
  *
- *	封装EPollSocketSet，实现epoll模型
+ *	封装EPollServiceT，实现epoll模型
  */
-template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class EPollSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+template<class TService = Service>
+class EPollServiceT : public TService
 {
-	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
-public:
-	typedef TService Service;
-	typedef TSocket Socket;
+	typedef TService Base;
 protected:
 	int epfd_;
 	int evfd_;
 public:
-	EPollSocketSetT():epfd_(0)
+	EPollServiceT():epfd_(0)
 	{
 		epfd_ = epoll_create(uFD_SETSize);
 		if(evfd_) {
@@ -107,7 +101,7 @@ public:
 			epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
 		}
 	}
-	~EPollSocketSetT() 
+	~EPollServiceT() 
 	{
 		if (epfd_) {
 			if(evfd_) {
@@ -120,9 +114,66 @@ public:
 		}
 	}
 
-	void Notify(void* data)
+	inline void PostNotify(void* data)
 	{
 		write(epfd_, &data, sizeof(data));
+	}
+
+protected:
+	//
+	virtual void OnEPollEvent(const epoll_event& event)
+	{
+		//
+	}
+	
+	virtual void OnRunOnce()
+	{
+		Base::OnRunOnce();
+
+		int i;
+		int nfds = 0;
+		struct epoll_event events[uFD_SETSize] = {0};
+		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
+		nfds = epoll_wait(epfd_, events, uFD_SETSize, Base::GetWaitingTimeOut());
+		if (nfds > 0) {
+			for (i = 0; i < nfds; ++i)
+			{
+				struct epoll_event event = events[i];
+				if(epfd_ == event.data.fd) {
+					void* data = 0;
+					if(sizeof(void*) == read(event.data.fd, &data, sizeof(void*))) {
+						OnNotify(data);
+					}
+				} else {
+					OnEPollEvent(event);
+				}
+			}
+		} else {
+			//
+		}
+	}
+};
+
+typedef ThreadServiceT<EPollServiceT<Service>> EPollService;
+
+/*!
+ *	@brief EPollSocketSet 模板定义.
+ *
+ *	封装EPollSocketSet，实现epoll模型
+ */
+template<class TService = EPollService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
+class EPollSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+{
+	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
+public:
+	typedef TService Service;
+	typedef TSocket Socket;
+public:
+	EPollSocketSetT()
+	{
+	}
+	~EPollSocketSetT() 
+	{
 	}
 
 	void SelectSocket(SocketEx* sock_ptr, int evt) {
@@ -147,7 +198,7 @@ public:
 		if (sock_ptr->IsSelect(FD_WRITE|FD_CONNECT)) {
 			event.events |= EPOLLOUT;
 		}
-		epoll_ctl(epfd_,EPOLL_CTL_MOD,fd,&event);
+		epoll_ctl(Base::epfd_,EPOLL_CTL_MOD,fd,&event);
 	}
 	
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
@@ -162,7 +213,6 @@ public:
 					Base::sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
 					sock_ptr->SocketEx::Select(evt);
-					SelectSocket(sock_ptr.get(), evt);
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
 					event.data.ptr = (void *)sock_ptr.get();
@@ -189,7 +239,7 @@ public:
 					if (evt & (FD_WRITE|FD_CONNECT)) {
 						event.events |= EPOLLOUT;
 					}
-					if (SOCKET_ERROR != epoll_ctl(epfd_, EPOLL_CTL_ADD, fd, &event)) {
+					if (SOCKET_ERROR != epoll_ctl(Base::epfd_, EPOLL_CTL_ADD, fd, &event)) {
 						//return i;
 					} else {
 						PRINTF("epoll_ctl err:%d", XSocket::Socket::GetLastError());
@@ -215,7 +265,7 @@ public:
 				int fd = *sock_ptr;
 				struct epoll_event event = {0};
 				event.data.ptr = (void *)sock_ptr.get();
-				epoll_ctl(epfd_, EPOLL_CTL_DEL, fd, &event);
+				epoll_ctl(Base::epfd_, EPOLL_CTL_DEL, fd, &event);
 				return Base::RemoveSocketByPos(i);
 			}
 		}
@@ -224,90 +274,63 @@ public:
 
 protected:
 	//
-	virtual void OnNotify(void* data)
+	virtual void OnEPollEvent(const epoll_event& event)
 	{
-
-	}
-
-	virtual void OnRunOnce()
-	{
-		Base::OnRunOnce();
-
-		int i;
-		int nfds = 0;
-		struct epoll_event events[uFD_SETSize] = {0};
-		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
-		nfds = epoll_wait(epfd_, events, uFD_SETSize, Base::GetWaitingTimeOut());
-		if (nfds > 0) {
-			for (i = 0; i < nfds; ++i)
-			{
-				std::unique_lock<std::mutex> lock(Base::mutex_);
-				struct epoll_event event = events[i];
-				std::shared_ptr<Socket> sock_ptr = Base::FindSocket((Socket *)event.data.ptr);
-				if(!sock_ptr) {
-					if(epfd_ == event.data.fd) {
-						void* data = 0;
-						if(sizeof(void*) == read(event.data.fd, &data, sizeof(void*))) {
-							OnNotify(data);
-						}
-					}
-					continue;
-				}
-				unsigned int evt = event.events;
-				int fd = *sock_ptr;
-				int nErrorCode = 0;
-				//参考NGIX逻辑...
-				if(evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) {
-					PRINTF("epoll_wait error: fd=%d event=%04XD" , fd, evt);
-				}
-				if ((evt&(EPOLLRDHUP|EPOLLERR|EPOLLHUP)) && (evt&(EPOLLIN|EPOLLOUT))==0) {
-					/*
-					 * if the error events were returned without EPOLLIN or EPOLLOUT,
-					 * then add these flags to handle the events at least in one
-					 * active handler
-					 */
-					evt |= EPOLLIN|EPOLLOUT;
-				}
-				if (sock_ptr->IsSocket() && (evt & EPOLLPRI)) {
-					//有紧急数据
-					if (sock_ptr->IsSelect(FD_OOB)) {
-						sock_ptr->Trigger(FD_OOB, 0);
-					}
-				}
-				if (sock_ptr->IsSocket() && (evt & EPOLLIN)) {
-					//有新的可读数据
-					if (sock_ptr->IsSelect(FD_ACCEPT)) {
-						sock_ptr->Trigger(FD_ACCEPT, 0);
-					} else {
-						if (sock_ptr->IsSelect(FD_READ)) {
-							sock_ptr->Trigger(FD_READ, 0);
-						}
-					}
-				}
-				if (sock_ptr->IsSocket() && (evt & EPOLLOUT)) {
-					//有新的可写数据
-					if (sock_ptr->IsSelect(FD_CONNECT)) {
-						sock_ptr->RemoveSelect(FD_CONNECT);
-						if (nErrorCode == 0) {
-							sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, (void *)&nErrorCode, sizeof(nErrorCode));
-						}
-						sock_ptr->Trigger(FD_CONNECT, nErrorCode);
-					} 
-					else if (sock_ptr->IsSelect(FD_WRITE)) {
-						sock_ptr->Trigger(FD_WRITE, 0);
-					}
-				}
-// #ifndef USE_EPOLLET
-// 				if (sock_ptr->IsSocket()) {
-// 					event.data.ptr = (void *)sock_ptr;
-// 					event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLONESHOT;
-// 					epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &event);
-// 				}
-// #endif //
-			}
-		} else {
-			//
+		std::unique_lock<std::mutex> lock(Base::mutex_);
+		std::shared_ptr<Socket> sock_ptr = Base::FindSocket((Socket *)event.data.ptr);
+		if (!sock_ptr) {
+			return;
 		}
+		unsigned int evt = event.events;
+		int fd = *sock_ptr;
+		int nErrorCode = 0;
+		//参考NGIX逻辑...
+		if (evt & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) {
+			PRINTF("epoll_wait error: fd=%d event=%04XD", fd, evt);
+		}
+		if ((evt & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) && (evt & (EPOLLIN | EPOLLOUT)) == 0) {
+			/*
+			 * if the error events were returned without EPOLLIN or EPOLLOUT,
+			 * then add these flags to handle the events at least in one
+			 * active handler
+			 */
+			evt |= EPOLLIN | EPOLLOUT;
+		}
+		if (sock_ptr->IsSocket() && (evt & EPOLLPRI)) {
+			//有紧急数据
+			if (sock_ptr->IsSelect(FD_OOB)) {
+				sock_ptr->Trigger(FD_OOB, 0);
+			}
+		}
+		if (sock_ptr->IsSocket() && (evt & EPOLLIN)) {
+			//有新的可读数据
+			if (sock_ptr->IsSelect(FD_ACCEPT)) {
+				sock_ptr->Trigger(FD_ACCEPT, 0);
+			} else {
+				if (sock_ptr->IsSelect(FD_READ)) {
+					sock_ptr->Trigger(FD_READ, 0);
+				}
+			}
+		}
+		if (sock_ptr->IsSocket() && (evt & EPOLLOUT)) {
+			//有新的可写数据
+			if (sock_ptr->IsSelect(FD_CONNECT)) {
+				sock_ptr->RemoveSelect(FD_CONNECT);
+				if (nErrorCode == 0) {
+					sock_ptr->GetSockOpt(SOL_SOCKET, SO_ERROR, (void *)&nErrorCode, sizeof(nErrorCode));
+				}
+				sock_ptr->Trigger(FD_CONNECT, nErrorCode);
+			} else if (sock_ptr->IsSelect(FD_WRITE)) {
+				sock_ptr->Trigger(FD_WRITE, 0);
+			}
+		}
+// #ifndef USE_EPOLLET
+// 		if (sock_ptr->IsSocket()) {
+// 			event.data.ptr = (void *)sock_ptr;
+// 			event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLONESHOT;
+// 			epoll_ctl(epfd_, EPOLL_CTL_MOD, fd, &event);
+// 		}
+// #endif //
 	}
 };
 
