@@ -166,14 +166,7 @@ protected:
 				}
 				std::shared_ptr<worker> sock_ptr = std::make_shared<worker>();
 				sock_ptr->Attach(Sock,SOCKET_ROLE_WORK);
-				
-	#ifdef WIN32
-				sock_ptr->IOCtl(FIONBIO, 1);//设为非阻塞模式
-	#else
-				int flags = sock_ptr->IOCtl(F_GETFL,(u_long)0); 
-				sock_ptr->IOCtl(F_SETFL, (u_long)(flags|O_NONBLOCK)); //设为非阻塞模式
-				//sock_ptr->IOCtl(F_SETFL, (u_long)(flags&~O_NONBLOCK)); //设为阻塞模式
-	#endif//
+				sock_ptr->SetNonBlock();//设为非阻塞模式
 				int pos = srv_->AddSocket(sock_ptr, FD_READ|FD_OOB);
 				if(pos >= 0) {
 					//

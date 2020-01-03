@@ -314,7 +314,12 @@ protected:
 			 * then add these flags to handle the events at least in one
 			 * active handler
 			 */
-			evt |= EPOLLIN | EPOLLOUT;
+			if (sock_ptr->IsSelect(FD_READ|FD_ACCEPT)) {
+				evt |= EPOLLIN;
+			}
+			if (sock_ptr->IsSelect(FD_CONNECT|FD_WRITE)) {
+				evt |=  EPOLLOUT;
+			}
 		}
 		if (sock_ptr->IsSocket() && (evt & EPOLLPRI)) {
 			//有紧急数据

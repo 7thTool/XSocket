@@ -422,7 +422,7 @@ protected:
     std::atomic<bool> stop_flag_;
 	uint32_t idle_flag_:1; //空闲处理标志
 	uint32_t notify_flag_:1; //通知处理标志
-	uint32_t millis_timeout_:30; //服务等待时间（毫秒）
+	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
 public:
 
 public:
@@ -434,8 +434,8 @@ public:
 		return stop_flag_;
 	}
 
-	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
-	inline size_t GetWaitTimeOut() { return millis_timeout_; }
+	inline void SetWaitTimeOut(size_t millis) { wait_timeout_ = millis; }
+	inline size_t GetWaitTimeOut() { return wait_timeout_; }
 	
 	inline void PostNotify() { notify_flag_ = true; idle_flag_ = false; }
 	
@@ -453,35 +453,6 @@ protected:
 		return GetWaitTimeOut();
 	}
 
-	virtual void OnRun()
-	{
-		if(OnInit()) {
-			while (!IsStopFlag()) {
-				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
-				size_t wait_time = GetWaitingTimeOut();
-				OnRunOnce();
-				if(IsStopFlag()) {
-					break;
-				}
-				if(idle_flag_) {
-					OnIdle(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
-					if(IsStopFlag()) {
-						break;
-					}
-					if(!wait_time) {
-						static const std::chrono::microseconds max_span(50);
-						std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
-						if(tp_span < max_span) {
-							//std::this_thread::yield();
-							std::this_thread::sleep_for(std::chrono::nanoseconds(1));
-						}
-					}
-				}
-			}
-		}
-		OnTerm();
-	}
-
 	virtual bool OnInit();
 
 	virtual void OnTerm()
@@ -494,6 +465,11 @@ protected:
 
 	}
 
+	virtual void OnIdle(int nErrorCode)
+	{
+
+	}
+	
 	virtual void OnRunOnce()
 	{
 		if(notify_flag_) {
@@ -502,10 +478,33 @@ protected:
 			OnNotify();
 		}
 	}
-
-	virtual void OnIdle(int nErrorCode)
+	
+	virtual void OnRun()
 	{
-
+		if(OnInit()) {
+			while (!IsStopFlag()) {
+				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
+				OnRunOnce();
+				if(idle_flag_) {
+					if(IsStopFlag()) {
+						break;
+					}
+					OnIdle(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
+					if(IsStopFlag()) {
+						break;
+					}
+					if(!wait_timeout_) {
+						static const std::chrono::microseconds max_span(50);
+						std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
+						if(tp_span < max_span) {
+							//std::this_thread::yield();
+							std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+						}
+					}
+				}
+			}
+		}
+		OnTerm();
 	}
 };
 
