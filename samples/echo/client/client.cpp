@@ -238,8 +238,8 @@ public:
 			std::shared_ptr<client> sp_client = std::make_shared<client>();
 	#ifndef USE_UDP
 			sp_client->Open(DEFAULT_IP);
-			AddSocket(sp_client,FD_CONNECT);
 			sp_client->Connect(DEFAULT_PORT);
+			AddSocket(sp_client);
 	#else
 			sp_client->Open(AF_INET,SOCK_DGRAM);
 			AddSocket(sp_client);
@@ -272,12 +272,15 @@ public:
 #ifdef WIN32
 int _tmain(int argc, _TCHAR* argv[])
 #else
-int main()
+int main(int argc, char* argv[])
 #endif//
 {
 	Socket::Init();
-	
-	manager m(DEFAULT_CLIENT_COUNT);
+	int client_count = DEFAULT_CLIENT_COUNT;
+	if(argc > 1) {
+		client_count = atoi(argv[1]);
+	}
+	manager m(client_count);
 	m.Start();
 	getchar();
 	m.Stop();

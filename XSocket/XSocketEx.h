@@ -945,7 +945,7 @@ public:
 
 	inline int Connect(int nHostPort = 0)
 	{
-		ASSERT (Base::IsSocket());
+		ASSERT(Base::IsSocket());
 		if (Base::ai_current_) {
 			XSocket::Socket::SetAddrPort(Base::ai_current_->ai_addr, nHostPort);
 			return Base::Connect(Base::ai_current_->ai_addr, Base::ai_current_->ai_addrlen);

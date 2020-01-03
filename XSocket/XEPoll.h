@@ -249,13 +249,13 @@ public:
 	#endif
 					//| EPOLLONESHOT //只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
 					;
-					if(evt & (FD_READ|FD_ACCEPT)) {
+					if (sock_ptr->IsSelect(FD_READ|FD_ACCEPT)) {
 						event.events |= EPOLLIN;
 					}
-					if (evt & FD_OOB) {
+					if (sock_ptr->IsSelect(FD_OOB)) {
 						event.events |= EPOLLPRI;
 					}
-					if (evt & (FD_WRITE|FD_CONNECT)) {
+					if (sock_ptr->IsSelect(FD_WRITE|FD_CONNECT)) {
 						event.events |= EPOLLOUT;
 					}
 					if (SOCKET_ERROR != epoll_ctl(Base::epfd_, EPOLL_CTL_ADD, fd, &event)) {
@@ -297,6 +297,7 @@ protected:
 	{
 		std::unique_lock<std::mutex> lock(Base::mutex_);
 		std::shared_ptr<Socket> sock_ptr = Base::FindSocket((Socket *)event.data.ptr);
+		lock.unlock();
 		if (!sock_ptr) {
 			return;
 		}
