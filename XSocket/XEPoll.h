@@ -304,10 +304,11 @@ protected:
 		unsigned int evt = event.events;
 		int fd = *sock_ptr;
 		int nErrorCode = 0;
-		//参考NGIX逻辑...
+#ifdef _DEBUG
 		if (evt & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) {
-			PRINTF("epoll_wait error: fd=%d event=%04XD", fd, evt);
+			PRINTF("epoll_wait error: fd=%d event=%u", fd, evt);
 		}
+#endif
 		if ((evt & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) && (evt & (EPOLLIN | EPOLLOUT)) == 0) {
 			/*
 			 * if the error events were returned without EPOLLIN or EPOLLOUT,
@@ -317,7 +318,7 @@ protected:
 			if (sock_ptr->IsSelect(FD_READ|FD_ACCEPT)) {
 				evt |= EPOLLIN;
 			}
-			if (sock_ptr->IsSelect(FD_CONNECT|FD_WRITE)) {
+			if (sock_ptr->IsSelect(FD_WRITE|FD_CONNECT)) {
 				evt |=  EPOLLOUT;
 			}
 		}
