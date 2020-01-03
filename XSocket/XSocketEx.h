@@ -420,7 +420,11 @@ class Service
 protected:
     //停止标记，默认停止状态，启动后停止状态为false
     std::atomic<bool> stop_flag_;
-	void* notify_data_ = nullptr;
+	uint32_t idle_flag_:1; //空闲处理标志
+	uint32_t notify_flag_:1; //通知处理标志
+	uint32_t millis_timeout_:30; //服务等待时间（毫秒）
+public:
+
 public:
 	static Service* service();
 
@@ -429,8 +433,11 @@ public:
 	inline bool IsStopFlag() {
 		return stop_flag_;
 	}
+
+	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
+	inline size_t GetWaitTimeOut() { return millis_timeout_; }
 	
-	inline void PostNotify(void* data) { notify_data_ = data; }
+	inline void PostNotify() { notify_flag_ = true; idle_flag_ = false; }
 	
 	//inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
 
@@ -438,25 +445,36 @@ public:
 
 protected:
 	//
+	inline size_t GetWaitingTimeOut()
+	{
+		if(notify_flag_) {
+			return 0;
+		}
+		return GetWaitTimeOut();
+	}
+
 	virtual void OnRun()
 	{
 		if(OnInit()) {
 			while (!IsStopFlag()) {
 				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
+				size_t wait_time = GetWaitingTimeOut();
 				OnRunOnce();
 				if(IsStopFlag()) {
 					break;
 				}
-				if(!notify_data_) {
+				if(idle_flag_) {
 					OnIdle(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
 					if(IsStopFlag()) {
 						break;
 					}
-					static const std::chrono::microseconds max_span(20);
-					std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
-					if(tp_span < max_span) {
-						//std::this_thread::yield();
-						std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+					if(!wait_time) {
+						static const std::chrono::microseconds max_span(50);
+						std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
+						if(tp_span < max_span) {
+							//std::this_thread::yield();
+							std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+						}
 					}
 				}
 			}
@@ -471,17 +489,17 @@ protected:
 
 	}
 
-	virtual void OnNotify(void* data)
+	virtual void OnNotify()
 	{
 
 	}
 
 	virtual void OnRunOnce()
 	{
-		if(notify_data_) {
-			void* data = notify_data_;
-			notify_data_ = nullptr;
-			OnNotify(data);
+		if(notify_flag_) {
+			notify_flag_ = false;
+			idle_flag_ = true;
+			OnNotify();
 		}
 	}
 
@@ -516,7 +534,7 @@ public:
 	inline void Post(const Event& evt) {
 		std::lock_guard<std::mutex> lock(mutex_);
 		queue_.emplace_back(evt);
-		Base::PostNotify((void*)queue_.size());
+		Base::PostNotify();
 	}
 
 protected:
@@ -531,7 +549,7 @@ protected:
 		return false;
 	}
 
-	virtual void OnNotify(void* data)
+	virtual void OnNotify()
 	{
 		for(size_t i = 0, j = queue_.size(); i < j; i++)
 		{
@@ -979,29 +997,7 @@ class SelectServiceT : public TService
 	typedef TService Base;
 public:
 	typedef TService Service;
-protected:
-	bool use_timeout_ = 0;
-	size_t millis_timeout_ = 0;
 public:
-
-	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
-	inline size_t GetWaitTimeOut() { return millis_timeout_; }
-
-	inline void PostNotify(void* data) { 
-		Base::PostNotify(data);
-		if(use_timeout_) {
-			use_timeout_ = false;
-		}
-	}
-	
-protected:
-	//
-	inline size_t GetWaitingTimeOut() {
-		if(use_timeout_) {
-			return millis_timeout_;
-		}
-		return 0;
-	}
 };
 
 typedef ThreadServiceT<SelectServiceT<Service>> SelectService;
@@ -1241,6 +1237,20 @@ public:
 		{
 			sockset_ptrs_[i]->Stop();
 		}
+	}
+
+	inline void SetWaitTimeOut(size_t millis) { 
+		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
+		{
+			sockset_ptrs_[i]->SetWaitTimeOut(millis);
+		}
+	}
+	inline size_t GetWaitTimeOut() { 
+		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
+		{
+			return sockset_ptrs_[i]->GetWaitTimeOut();
+		}
+		return 0; 
 	}
 
 	inline size_t GetSocketSetCount() { return sockset_ptrs_.size(); }

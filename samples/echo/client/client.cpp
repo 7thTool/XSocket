@@ -219,8 +219,10 @@ public:
 #else
 	manager(int nMaxSocketCount)
 #endif
-	{
-		
+	{	
+#ifdef USE_MANAGER
+		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);
+#endif//
 	}
 	~manager()
 	{

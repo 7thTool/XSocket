@@ -91,7 +91,6 @@ class EPollServiceT : public TService
 protected:
 	int epfd_;
 	int evfd_;
-	size_t millis_timeout_ = 0;
 public:
 	EPollServiceT():epfd_(0),evfd_(0)
 	{
@@ -119,17 +118,26 @@ public:
 			epfd_ = 0;
 		}
 	}
-
-	inline void SetWaitTimeOut(size_t millis) { millis_timeout_ = millis; }
-	inline size_t GetWaitTimeOut() { return millis_timeout_; }
+	
+	inline void PostNotify()
+	{
+		Base::PostNotify();
+		const size_t data = 0;
+		write(evfd_, (void*)data, sizeof(data));
+	}
 
 	inline void PostNotify(void* data)
 	{
-		write(evfd_, &data, sizeof(data));
+		write(evfd_, (void*)data, sizeof(data));
 	}
 
 protected:
 	//
+	virtual void OnNotify(void* data)
+	{
+
+	}
+
 	virtual void OnEPollEvent(const epoll_event& event)
 	{
 		//
@@ -141,7 +149,7 @@ protected:
 
 		struct epoll_event events[1024] = {0};
 		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
-		int nfds = epoll_wait(epfd_, events, 1024, millis_timeout_);
+		int nfds = epoll_wait(epfd_, events, 1024, Base::GetWaitingTimeOut());
 		if (nfds > 0) {
 			for (int i = 0; i < nfds; ++i)
 			{
@@ -149,7 +157,11 @@ protected:
 				if(evfd_ == event.data.fd) {
 					void* data = 0;
 					if(sizeof(void*) == read(event.data.fd, &data, sizeof(void*))) {
-						this->OnNotify(data);
+						if(data) {
+							OnNotify(data);
+						} else {
+							//return;
+						}
 					}
 				} else {
 					OnEPollEvent(event);

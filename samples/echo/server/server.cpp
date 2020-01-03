@@ -191,7 +191,7 @@ public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base((nMaxSocketCount+WorkSocketSet::GetMaxSocketCount()-1)/WorkSocketSet::GetMaxSocketCount())
 #endif
 	{
-
+		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);
 	}
 
 #if 1
