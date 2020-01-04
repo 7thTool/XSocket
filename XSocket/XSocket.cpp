@@ -8,6 +8,12 @@
 
 namespace XSocket {
 
+	//std::chrono::duration<int,std::milli>
+	//std::chrono::system_clock::now();
+	//std::chrono::steady_clock::now();
+	//std::chrono::high_resolution_clock::now()
+	//to_time_t() time_point转换成time_t秒
+	//from_time_t() 从time_t转换成time_point
 // size_t Tick()
 // {
 // #ifdef WIN32
@@ -250,6 +256,65 @@ const char* Socket::Url2IpStr(const char* url, char* str, int len)
 	return SockAddr2IpStr(ai_res->ai_addr, ai_res->ai_addrlen, str, len);
 }
 
+int Socket::CreatePairs(SOCKET* sv, int svlen)
+{
+	int i;
+	for(i = 0; i < svlen; i++)
+	{
+    	sv[i] = socket(AF_INET, SOCK_DGRAM, 0);
+		if(sv[i] == INVALID_SOCKET) {
+			break;
+		}
+	}
+	if(i >= svlen) {
+		struct sockaddr_in name = {0};
+		name.sin_family = AF_INET;
+		name.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+		socklen_t namelen = sizeof(name);
+		if (bind(sv[0], (sockaddr*)&name, namelen) != SOCKET_ERROR) {
+			if (getsockname(sv[0], (sockaddr*)&name, &namelen) != SOCKET_ERROR) {
+				for(i = 1; i < svlen; i++)
+				{
+					if (connect(sv[i], (sockaddr*)&name, namelen) == SOCKET_ERROR) {
+						break;
+					}
+				}
+				if(i >= svlen) {
+					return 0;
+				}
+			}
+		}
+    } 
+	ClosePairs(sv, svlen);
+    return -1;
+}
+
+void Socket::ClosePairs(SOCKET* sv, int svlen)
+{
+	for(int i = 0; i < svlen; i++)
+	{
+		Close(sv[i]);
+	}
+}
+
+int Socket::ReadPair(SOCKET Sock, char* lpBuf, int nBufLen)
+{
+#ifdef WIN32
+	return recv(Sock, lpBuf, nBufLen, MSG_NOSIGNAL);
+#else
+	return read(Sock, lpBuf, nBufLen);
+#endif
+}
+
+int Socket::WritePair(SOCKET Sock, const char* lpBuf, int nBufLen)
+{
+#ifdef WIN32
+	return send(Sock, lpBuf, nBufLen, MSG_NOSIGNAL);
+#else
+	return write(Sock, lpBuf, nBufLen);
+#endif
+}
+
 SOCKET Socket::Create(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
 {
 #if 1
@@ -276,14 +341,17 @@ int Socket::ShutDown(SOCKET Sock, int nHow)
 int Socket::Close(SOCKET Sock)
 {
 #ifdef WIN32
-	return closesocket(Sock);
+	if(Sock != INVALID_SOCKET) {
+		return closesocket(Sock);
+	}
 #else //LINUX
 	//套节子的判断 应该是 > 0 因为合法的套节子
 	//在LINUX下面是 > 0的
 	if(Sock>0) {
-		close(Sock);
+		return close(Sock);
 	}
 #endif//
+	return 0;
 }
 
 SOCKET Socket::Accept(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)

@@ -22,14 +22,6 @@
 
 namespace XSocket {
 
-	//std::chrono::duration<int,std::milli>
-	//std::chrono::system_clock::now();
-	//std::chrono::steady_clock::now();
-	//std::chrono::high_resolution_clock::now()
-	//to_time_t() time_point转换成time_t秒
-	//from_time_t() 从time_t转换成time_point
-	//XSOCKET_API size_t Tick();
-
 /*!
  *	@brief Socket封装.
  *
@@ -70,6 +62,23 @@ public:
 	static const char* SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, char* str, int len);
 
 	static const char* Url2IpStr(const char* url, char* str, int len);
+
+	static int CreatePairs(SOCKET* sv, int svlen);
+	static void ClosePairs(SOCKET* sv, int svlen);
+	static inline int CreatePair(int d, int type, int protocol, SOCKET sv[2])
+	{
+	#ifdef WIN32
+		return CreatePairs(sv, 2);
+	#else
+		return socketpair(d, type, protocol, sv);
+	#endif//
+	}
+	static inline void ClosePair(SOCKET sv[2])
+	{
+		ClosePairs(sv, 2);
+	}
+	static int ReadPair(SOCKET Sock, char* lpBuf, int nBufLen);
+	static int WritePair(SOCKET Sock, const char* lpBuf, int nBufLen);
 	
 	static SOCKET Create(int nSockAf, int nSockType, int nSockProtocol);
 

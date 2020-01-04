@@ -25,9 +25,10 @@ namespace XSocket {
 
 #define IOCP_OPERATION_EXIT DWORD(-1)
 #define IOCP_OPERATION_NOTIFY DWORD(-2)
-#define IOCP_OPERATION_TRYRECEIVE DWORD(-3)
-#define IOCP_OPERATION_TRYSEND DWORD(-4)
-#define IOCP_OPERATION_TRYACCEPT DWORD(-5)
+#define IOCP_OPERATION_NOTIFYDATA DWORD(-3)
+#define IOCP_OPERATION_TRYRECEIVE DWORD(-4)
+#define IOCP_OPERATION_TRYSEND DWORD(-5)
+#define IOCP_OPERATION_TRYACCEPT DWORD(-6)
 
 /*!
  *	@brief CompletionPort OVERLAPPED 定义.
@@ -495,7 +496,7 @@ public:
 
 	inline void PostNotify(void* data)
 	{
-		PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_NOTIFY, (ULONG_PTR)data, NULL);
+		PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_NOTIFYDATA, (ULONG_PTR)data, NULL);
 	}
 
 protected:
@@ -537,11 +538,10 @@ protected:
 			return;
 		}
 		if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
-			if(Key) {
-				OnNotify((void*)Key);
-			} else {
-				return;
-			}
+			//
+		}
+		if (dwTransfer == IOCP_OPERATION_NOTIFYDATA) { //
+			OnNotify((void*)Key);
 		}
 		if(!OnCompletion(bStatus, Key, dwTransfer, lpOverlapped)) {
 			break;

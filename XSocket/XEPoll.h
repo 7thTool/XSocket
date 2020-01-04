@@ -89,26 +89,47 @@ class EPollServiceT : public TService
 {
 	typedef TService Base;
 protected:
-	int epfd_;
-	int evfd_;
+	int epfd_ = 0;
+	int evfd_ = 0;
+	int evfd_pair_[2] = {0};
 public:
-	EPollServiceT():epfd_(0),evfd_(0)
+	EPollServiceT()
 	{
 		epfd_ = epoll_create(1024); //大于0即可，保险方式设置1024足够了
 		if(epfd_) {
 			evfd_ = eventfd(0, EFD_NONBLOCK);
-			if(evfd_) {
+			if(!evfd_) {
+        		PRINTF("create event fd failed, errno(%d): %s\n", errno, strerror(errno));
+			} else {
 				struct epoll_event event = {0};
 				event.data.ptr = nullptr;
 				event.data.fd = evfd_;
 				event.events = EPOLLIN | EPOLLERR;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
 			}
+			//if(socketpair(AF_UNIX, SOCK_STREAM, 0, evfd_pair_) == -1) { //OK
+			if(pipe(evfd_pair_) == -1) { //OK
+			//if(Socket::CreatePair(AF_UNIX, SOCK_STREAM, 0, evfd_pair_) == -1) { //OK
+        		PRINTF("create fd pair failed, errno(%d): %s\n", errno, strerror(errno));
+    		} else {
+				struct epoll_event event = {0};
+				event.data.ptr = nullptr;
+				event.data.fd = evfd_pair_[0];
+				event.events = EPOLLIN | EPOLLERR;
+				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_pair_[0], &event);
+			}
 		}
 	}
 	~EPollServiceT() 
 	{
 		if (epfd_) {
+			if(evfd_pair_[0]) {
+				epoll_ctl(epfd_, EPOLL_CTL_DEL, evfd_pair_[0], nullptr);
+				close(evfd_pair_[0]);
+				close(evfd_pair_[1]);
+				evfd_pair_[0] = 0;
+				evfd_pair_[1] = 0;
+			}
 			if(evfd_) {
 				epoll_ctl(epfd_, EPOLL_CTL_DEL, evfd_, nullptr);
 				close(evfd_);
@@ -122,20 +143,20 @@ public:
 	inline void PostNotify()
 	{
 		Base::PostNotify();
-		const size_t data = 0;
-		write(evfd_, (void*)data, sizeof(data));
+		const size_t data = 1;
+		write(evfd_, &data, sizeof(data));
 	}
 
 	inline void PostNotify(void* data)
 	{
-		write(evfd_, (void*)data, sizeof(data));
+		write(evfd_pair_[1], &data, sizeof(data));
 	}
 
 protected:
 	//
 	virtual void OnNotify(void* data)
 	{
-
+		//PRINTF("OnNotify %p", data);
 	}
 
 	virtual void OnEPollEvent(const epoll_event& event)
@@ -155,13 +176,14 @@ protected:
 			{
 				const struct epoll_event& event = events[i];
 				if(evfd_ == event.data.fd) {
+					size_t data = 0;
+					if(sizeof(size_t) == read(event.data.fd, &data, sizeof(data))) {
+						//PRINTF("OnNotify %u", data);
+					}
+				} else if(evfd_pair_[0] == event.data.fd) {
 					void* data = 0;
-					if(sizeof(void*) == read(event.data.fd, &data, sizeof(void*))) {
-						if(data) {
-							OnNotify(data);
-						} else {
-							//return;
-						}
+					if(sizeof(void*) == read(event.data.fd, &data, sizeof(data))) {
+						OnNotify(data);
 					}
 				} else {
 					OnEPollEvent(event);
