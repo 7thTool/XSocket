@@ -14,7 +14,7 @@ using namespace XSocket;
 
 class worker;
 
-class Event
+class WorkEvent : public DealyEvent
 {
 public:
 	worker* dst = nullptr;
@@ -25,11 +25,11 @@ public:
 #endif
 	int flags;
 
-	Event() {}
+	WorkEvent() {}
 #ifndef USE_UDP
-	Event(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+	WorkEvent(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 #else
-	Event(worker* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+	WorkEvent(worker* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
 #endif
 
 	// inline int get_id() { return evt; }
@@ -37,14 +37,26 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-
+class WorkEventService : public
 #ifdef USE_EPOLL
-typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> WorkService;
+EventServiceT<WorkEvent,EPollService>
 #elif defined(USE_IOCP)
-typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> WorkService;
+EventServiceT<WorkEvent,CompletionPortService>
 #else
-typedef SimpleEventServiceT<DelayEventServiceT<Event,SelectService>> WorkService;
+EventServiceT<WorkEvent,SelectService>
 #endif//
+{
+public:
+
+	inline worker* IsSocketEvent(const Event& evt)
+	{
+		return evt.dst;
+	}
+	inline bool IsActive(Event& evt) { return evt.IsActive(); }
+	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
+	inline void UpdateRepeat(Event& evt) { evt.Update(); }
+};
+typedef SimpleSocketEvtServiceT<WorkEventService> WorkService;
 
 
 class WorkSocket;

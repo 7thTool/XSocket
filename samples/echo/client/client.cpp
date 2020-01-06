@@ -10,7 +10,7 @@ using namespace XSocket;
 
 class client;
 
-class Event
+class ClientEvent : public DealyEvent
 {
 public:
 	client* dst = nullptr;
@@ -21,11 +21,11 @@ public:
 #endif
 	int flags;
 
-	Event() {}
+	ClientEvent() {}
 #ifndef USE_UDP
-	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+	ClientEvent(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 #else
-	Event(client* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+	ClientEvent(client* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
 #endif
 
 	// inline int get_id() { return evt; }
@@ -33,14 +33,26 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-
+class ClientEventService : public
 #ifdef USE_EPOLL
-typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> ClientService;
+EventServiceT<ClientEvent,EPollService>
 #elif defined(USE_IOCP)
-typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> ClientService;
+EventServiceT<ClientEvent,CompletionPortService>
 #else
-typedef SimpleEventServiceT<DelayEventServiceT<Event,SelectService>> ClientService;
+EventServiceT<ClientEvent,SelectService>
 #endif//
+{
+public:
+
+	inline client* IsSocketEvent(const Event& evt)
+	{
+		return evt.dst;
+	}
+	inline bool IsActive(Event& evt) { return evt.IsActive(); }
+	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
+	inline void UpdateRepeat(Event& evt) { evt.Update(); }
+};
+typedef SimpleSocketEvtServiceT<ClientEventService> ClientService;
 
 #ifndef USE_UDP
 #ifdef USE_EPOLL

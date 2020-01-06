@@ -53,7 +53,7 @@ const std::string http_trunk_part_2 = "6\r\n world\r\n"
 
 class client;
 
-class Event
+class HttpEvent : public DealyEvent
 {
 public:
 	client* dst = nullptr;
@@ -61,15 +61,28 @@ public:
 	std::string buf;
 	int flags;
 
-	Event() {}
-	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+	HttpEvent() {}
+	HttpEvent(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 
 	// inline int get_id() { return evt; }
 	// inline const char* get_data() { return data.c_str(); }
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-typedef DelayEventServiceT<Event,SelectService> ClientService;
+class ClientEventService : public
+EventServiceT<HttpEvent,SelectService>
+{
+public:
+
+	inline client* IsSocketEvent(const Event& evt)
+	{
+		return evt.dst;
+	}
+	inline bool IsActive(Event& evt) { return evt.IsActive(); }
+	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
+	inline void UpdateRepeat(Event& evt) { evt.Update(); }
+};
+typedef SimpleSocketEvtServiceT<ClientEventService> ClientService;
 
 class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>>
 {
@@ -122,7 +135,6 @@ public:
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
 	}
 
-protected:
 	virtual void OnEvent(const Event& evt)
 	{
 		if(evt.id == FD_WRITE) {

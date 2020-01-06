@@ -523,60 +523,16 @@ public:
 };
 
 /*!
- *	@brief EventService 定义.
+ *	@brief Event 定义.
  *
- *	封装EventService，实现事件服务框架
+ *	封装Event，定义事件对象接口
  */
-template<class TEvent, class TBase = Service>
-class EventServiceT : public TBase
+class Event
 {
-	typedef TBase Base;
 public:
-	typedef TEvent Event;
-protected:
-	//Queue<Event> queue_;
-	std::vector<Event> queue_;
-	std::mutex mutex_;
-	//std::condition_variable cv_;
-public:
-	EventServiceT()
-	{
-		queue_.reserve(1024);
-	}
-
-	inline void Post(const Event& evt) {
-		std::lock_guard<std::mutex> lock(mutex_);
-		queue_.emplace_back(evt);
-		Base::PostNotify();
-	}
-
-protected:
-	//
-	inline bool Pop(Event& evt) {
-		std::unique_lock<std::mutex> lock(mutex_);
-		if (!queue_.empty()) {
-			evt = queue_[0];
-			queue_.erase(queue_.begin());
-			return true;
-		}
-		return false;
-	}
-
-	virtual void OnNotify()
-	{
-		for(size_t i = 0, j = queue_.size(); i < j; i++)
-		{
-			Event evt;
-			if (Pop(evt)) {
-				OnEvent(evt);
-			}
-		}
-	}
-
-	virtual void OnEvent(const Event& evt)
-	{
-		
-	}
+	inline bool IsActive(Event& evt) { return true; }
+	inline bool IsRepeat(Event& evt) { return false; }
+	inline void Update(Event& evt) { }
 };
 
 /*!
@@ -584,19 +540,12 @@ protected:
  *
  *	封装DealyEvent，定义延迟事件
  */
-template<class TEvent>
-class DealyEventT : public TEvent
+class DealyEvent
 {
-	typedef DealyEventT<TEvent> This;
-	typedef TEvent Base;
 public:
-	typedef TEvent Event;
-public:
-	DealyEventT():Base(){}
-	DealyEventT(Event _evt, size_t _delay = 0, size_t _repeat = 0):Base(_evt),time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
-	DealyEventT(const This& o):Base((Event)o),time(o.time),delay(o.delay),repeat(o.repeat){}
-	inline bool IsActive() const
-	{
+	DealyEvent(size_t _delay = 0, size_t _repeat = 0):time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
+	DealyEvent(const DealyEvent& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+	inline bool IsActive() const {
 		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
 		if(delay.count() > 0 && repeat >= 0) {
 			if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-time) > delay) {
@@ -606,8 +555,7 @@ public:
 		}
 		return true;
 	}
-	inline bool IsRepeat() const
-	{
+	inline bool IsRepeat() const {
 		return repeat > 0;
 	}
 	inline void Update() {
@@ -623,47 +571,25 @@ public:
 	std::chrono::milliseconds delay;
 	int repeat = 0;
 };
+
 /*!
- *	@brief DelayEventService 定义.
+ *	@brief EventService 定义.
  *
- *	封装DelayEventService，实现延迟事件服务
+ *	封装EventService，实现事件服务接口
  */
 template<class TEvent, class TBase = Service>
-class DelayEventServiceT : public EventServiceT<DealyEventT<TEvent>,TBase>
+class EventServiceT : public TBase
 {
-	typedef EventServiceT<DealyEventT<TEvent>,TBase> Base;
+	typedef TBase Base;
 public:
 	typedef TEvent Event;
-	typedef DealyEventT<TEvent> DelayEvent;
-public:
-	
-	inline void Post(const Event& evt) {
-		PostDelay(evt);
-	}
-
-	inline void PostDelay(const Event& evt, size_t mills = 0, size_t repeat = 0) {
-		Base::Post(DelayEvent(evt,mills,repeat));
-	}
 
 protected:
 	//
-	virtual void OnEvent(const Event& evt)
-	{
-		
-	}
-
-	virtual void OnEvent(const DelayEvent& evt)
-	{
-		if(evt.IsActive()) {
-			OnEvent((const Event&)evt);
-			if(evt.IsRepeat()) {
-				const_cast<DelayEvent&>(evt).Update();
-				Base::Post(evt);
-			}
-		} else {
-			Base::Post(evt);
-		}
-	}
+	inline SocketEx* IsSocketEvent(Event& evt) { return nullptr; }
+	inline bool IsActive(Event& evt) { return true; }
+	inline bool IsRepeat(Event& evt) { return false; }
+	inline void UpdateRepeat(Event& evt) { }
 };
 
 /*!

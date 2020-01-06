@@ -13,7 +13,7 @@ using namespace XSocket;
 
 class worker;
 
-class Event
+class HttpEvent : public DealyEvent
 {
 public:
 	worker* dst = nullptr;
@@ -21,8 +21,8 @@ public:
 	std::string buf;
 	int flags;
 
-	Event() {}
-	Event(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+	HttpEvent() {}
+	HttpEvent(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 
 	// inline int get_id() { return evt; }
 	// inline const char* get_data() { return data.c_str(); }
@@ -30,13 +30,26 @@ public:
 	// inline int get_flags() { return flags; }
 };
 
+class WorkEventService : public
 #ifdef USE_EPOLL
-typedef SimpleEventServiceT<DelayEventServiceT<Event,EPollService>> WorkService;
+EventServiceT<HttpEvent,EPollService>
 #elif defined(USE_IOCP)
-typedef SimpleEventServiceT<DelayEventServiceT<Event,CompletionPortService>> WorkService;
+EventServiceT<HttpEvent,CompletionPortService>
 #else
-typedef SimpleEventServiceT<DelayEventServiceT<Event,SelectService>> WorkService;
+EventServiceT<HttpEvent,SelectService>
 #endif//
+{
+public:
+
+	inline worker* IsSocketEvent(const Event& evt)
+	{
+		return evt.dst;
+	}
+	inline bool IsActive(Event& evt) { return evt.IsActive(); }
+	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
+	inline void UpdateRepeat(Event& evt) { evt.Update(); }
+};
+typedef SimpleSocketEvtServiceT<WorkEventService> WorkService;
 
 #ifdef USE_EPOLL
 typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;

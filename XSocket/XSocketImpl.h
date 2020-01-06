@@ -988,39 +988,6 @@ protected:
 };
 
 /*!
- *	@brief SimpleEventService 定义.
- *
- *	封装SimpleEventService，实现简单事件分发
- */
-template<class TBase = Service>
-class SimpleEventServiceT : public TBase
-{
-	typedef TBase Base;
-public:
-	typedef typename TBase::Event Event;
-
-protected:
-	//
-	inline void RemoveSocket(SocketEx* sock_ptr) {
-		std::unique_lock<std::mutex> lock(Base::mutex_);
-		for(int i = Base::queue_.size() - 1; i >= 0; i--)
-		{
-			const Event& evt = Base::queue_[i];
-			if (evt.dst == sock_ptr) {
-				Base::queue_.erase(Base::queue_.begin() + i);
-			}
-		}
-	}
-	//
-	virtual void OnEvent(const Event& evt)
-	{
-		if(evt.dst) {
-			evt.dst->OnEvent(evt);
-		}
-	}
-};
-
-/*!
  *	@brief SimpleEvtSocketT 定义.
  *
  *	封装SimpleEvtSocketT，增加事件服务接口，实现简单的流式发送/接收（写入/读取）网络架构
@@ -1046,6 +1013,104 @@ public:
 	}
 };
 
+/*!
+ *	@brief SimpleEvtService 定义.
+ *
+ *	封装SimpleEvtService，实现简单事件服务
+ */
+template<class TBase/* = EventService*/>
+class SimpleEvtServiceT : public TBase
+{
+	typedef TBase Base;
+public:
+	typedef typename TBase::Event Event;
+protected:
+	//Queue<Event> queue_;
+	std::vector<Event> queue_;
+	std::mutex mutex_;
+	//std::condition_variable cv_;
+public:
+	SimpleEvtServiceT()
+	{
+		queue_.reserve(1024);
+	}
+
+	inline void Post(const Event& evt) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		queue_.emplace_back(evt);
+		Base::PostNotify();
+	}
+
+protected:
+	//
+	inline void RemoveSocket(SocketEx* sock_ptr) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		for(int i = queue_.size() - 1; i >= 0; i--)
+		{
+			const Event& evt = queue_[i];
+			if(auto tsock_ptr = Base::IsSocketEvent(evt)) {
+				if (tsock_ptr == sock_ptr) {
+					queue_.erase(queue_.begin() + i);
+				}
+			}
+		}
+	}
+
+	inline bool Pop(Event& evt) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		if (!queue_.empty()) {
+			evt = queue_[0];
+			queue_.erase(queue_.begin());
+			return true;
+		}
+		return false;
+	}
+
+	virtual void OnNotify()
+	{
+		for(size_t i = 0, j = queue_.size(); i < j; i++)
+		{
+			Event evt;
+			if (Pop(evt)) {
+				if (Base::IsActive(evt)) {
+					OnEvent(evt);
+					if (Base::IsRepeat(evt)) {
+						Base::UpdateRepeat(evt);
+						Post(evt);
+					}
+				} else {
+					Post(evt);
+				}
+			}
+		}
+	}
+
+	virtual void OnEvent(Event& evt)
+	{
+		
+	}
+};
+
+/*!
+ *	@brief SimpleSocketEvtService 定义.
+ *
+ *	封装SimpleSocketEvtService，实现Socket事件服务
+ */
+template<class TBase/* = EventService*/>
+class SimpleSocketEvtServiceT : public SimpleEvtServiceT<TBase>
+{
+	typedef SimpleEvtServiceT<TBase> Base;
+public:
+
+protected:
+	//
+	virtual void OnEvent(Event& evt)
+	{
+		if(auto sock_ptr = Base::IsSocketEvent(evt)) {
+			sock_ptr->OnEvent(evt);
+		}
+	}
+};
 
 }
 
