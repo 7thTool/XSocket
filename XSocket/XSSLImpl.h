@@ -43,6 +43,8 @@ protected:
 public:
     static void Init()
     {
+        Base::Init();
+
         ERR_load_crypto_strings();
         SSL_load_error_strings();
         SSL_library_init();
@@ -58,14 +60,21 @@ public:
             SSL_CTX_free(tls_ctx_);
             tls_ctx_ = nullptr;
         }
+
+        Base::Term();
     }
 
 /* Attempt to configure/reconfigure TLS. This operation is atomic and will
  * leave the SSL_CTX unchanged if fails.
  */
 static int Configure() {
+    char errbuf[256];
     SSL_CTX *ctx = NULL;
     ctx = SSL_CTX_new(SSLv23_method());
+    if(!ctx) {
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
+        PRINTF("Failed to configure ssl context: %s", errbuf);
+    }
     SSL_CTX_free(tls_ctx_);
     tls_ctx_ = ctx;
     return 0;

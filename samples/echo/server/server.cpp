@@ -337,7 +337,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	Socket::Init();
+	worker::Init();
 #ifdef USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
 	//
@@ -349,7 +349,7 @@ int main()
 	s->Stop();
 	delete s;
 
-	Socket::Term();
+	worker::Term();
 
 	return 0;
 }

@@ -298,7 +298,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main(int argc, char* argv[])
 #endif//
 {
-	Socket::Init();
+	client::Init();
 #ifdef USE_OPENSSL
 	client::Configure();
 #endif
@@ -311,7 +311,7 @@ int main(int argc, char* argv[])
 	getchar();
 	m.Stop();
 
-	Socket::Term();
+	client::Term();
 	return 0;
 }
 
