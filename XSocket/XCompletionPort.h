@@ -634,6 +634,18 @@ public:
 		}
 		return -1;
 	}
+	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	{
+		int ret = AddSocket(sock_ptr);
+		if(ret >= 0 && sock_ptr) {
+			sock_ptr->Connect(port);
+		}
+		return ret;
+	}
+	inline int AddAccept(std::shared_ptr<Socket> sock_ptr)
+	{
+		return AddSocket(sock_ptr,FD_ACCEPT);
+	}
 
 protected:
 	//

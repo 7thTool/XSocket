@@ -509,6 +509,20 @@ protected:
 };
 
 /*!
+ *	@brief SocketService 定义.
+ *
+ *	封装SocketService，实现套接字和事件服务框架关联，这里需要使用者继承自enable_shared_from_this将SocketService对象添加到SocketSet里
+ */
+template<class TSocket, class TService = Service>
+class SocketServiceT : public TSocket, public TService
+{
+public:
+	typedef TSocket Socket;
+	typedef TService Service;
+public:
+};
+
+/*!
  *	@brief EventService 定义.
  *
  *	封装EventService，实现事件服务框架
@@ -986,23 +1000,6 @@ public:
 //////////////////////////////////////////////////////////////////////////
 
 /*!
- *	@brief SelectServiceT 模板定义.
- *
- *	封装SelectServiceT
- */
-template<class TService = Service>
-class SelectServiceT : public TService
-{
-	typedef TService Base;
-public:
-	typedef TService Service;
-public:
-};
-
-typedef ThreadServiceT<SelectServiceT<Service>> SelectService;
-
-
-/*!
  *	@brief SocketSetT 模板定义.
  *
  *	封装SocketSet，实现最多管理uFD_SETSize数Socket
@@ -1054,6 +1051,17 @@ public:
 			}
 		}
 		return -1;
+	}
+	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	{
+		if(sock_ptr) {
+			sock_ptr->Connect(port);
+		}
+		return AddSocket(sock_ptr);
+	}
+	inline int AddAccept(std::shared_ptr<Socket> sock_ptr)
+	{
+		return AddSocket(sock_ptr,FD_ACCEPT);
 	}
 
 	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
@@ -1271,7 +1279,7 @@ public:
 		return nullptr;
 	}
 
-	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
+	inline int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
 		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
@@ -1286,8 +1294,38 @@ public:
 		}
 		return -1;
 	}
+	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	{
+		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
+		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
+		for (; next < next_end; next++)
+		{
+			int i = next % sockset_ptrs_.size();
+			int result = sockset_ptrs_[i]->AddConnect(sock_ptr, port);
+			if (result >= 0) {
+				return i;
+				break;
+			}
+		}
+		return -1;
+	}
+	inline int AddAccept(std::shared_ptr<Socket> sock_ptr)
+	{
+		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
+		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
+		for (; next < next_end; next++)
+		{
+			int i = next % sockset_ptrs_.size();
+			int result = sockset_ptrs_[i]->AddAccept(sock_ptr);
+			if (result >= 0) {
+				return i;
+				break;
+			}
+		}
+		return -1;
+	}
 
-	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
+	inline int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
 	{
 		for (size_t i=0,j=sockset_ptrs_.size();i<j;i++)
 		{
@@ -1326,17 +1364,31 @@ protected:
 };
 
 /*!
+ *	@brief SelectServiceT 模板定义.
+ *
+ *	封装SelectServiceT
+ */
+template<class TService = Service>
+class SelectServiceT : public TService
+{
+	typedef TService Base;
+public:
+	typedef TService Service;
+public:
+};
+
+typedef ThreadServiceT<SelectServiceT<Service>> SelectService;
+
+/*!
  *	@brief SelectSvrSocket 模板定义.
  *
  *	封装SelectSvrSocket，实现对select模型管理一个客户端连接Socket
  */
 template<class TService = SelectService, class TBase = SocketEx>
-class SelectOneSocketT : public TBase, public TService
+class SelectOneSocketT : public SocketServiceT<TBase,TService>
 {
 	typedef SelectOneSocketT<TService,TBase> This;
-	typedef TBase Base;
-public:
-	typedef TService Service;
+	typedef SocketServiceT<TBase,TService> Base;
 public:
 	SelectOneSocketT() : Base()
 	{
@@ -1352,7 +1404,7 @@ protected:
 
 	virtual void OnRunOnce()
 	{
-		Service::OnRunOnce();
+		Base::OnRunOnce();
 
 		if(!Base::IsSocket()) {
 			return;

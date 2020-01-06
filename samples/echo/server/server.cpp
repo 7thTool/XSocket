@@ -200,7 +200,7 @@ public:
 		sock_ptr->SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
 		sock_ptr->Bind(port);
 		sock_ptr->Listen(1024);
-		AddSocket(sock_ptr, FD_ACCEPT);
+		AddAccept(sock_ptr);
 
 		return true;
 	}

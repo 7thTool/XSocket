@@ -238,13 +238,7 @@ public:
 			std::shared_ptr<client> sp_client = std::make_shared<client>();
 	#ifndef USE_UDP
 			sp_client->Open(DEFAULT_IP);
-	#ifdef WIN32
-			AddSocket(sp_client);
-			sp_client->Connect(DEFAULT_PORT);
-	#else
-			sp_client->Connect(DEFAULT_PORT);
-			AddSocket(sp_client);
-	#endif//
+			AddConnect(sp_client,DEFAULT_PORT);
 	#else
 			sp_client->Open(AF_INET,SOCK_DGRAM);
 			AddSocket(sp_client);
