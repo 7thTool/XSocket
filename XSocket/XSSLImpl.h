@@ -268,6 +268,8 @@ public:
     SSLSocketT() {}
     ~SSLSocketT() {}
 
+    inline SSL_CTX * GetTLSContext() { return tls_ctx_; }
+
     int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
         int ret, ssl_err;
@@ -333,6 +335,21 @@ template<class TBase>
 SSL_CTX * SSLSocketT<TBase>::tls_ctx_ = nullptr;
 
 template<class TBase>
+class SSLSocketExT : public SSLSocketT<TBase>
+{
+protected:
+    SSL_CTX * ssl_ctx_ = nullptr;
+
+public:
+    SSLSocketExT():ssl_ctx_(tls_ctx_)
+    {
+
+    }
+    
+    inline SSL_CTX * GetTLSContext() { return ssl_ctx_; }
+};
+
+template<class TBase>
 class SSLWorkSocketT : public SSLSocketT<TBase>
 {
 	typedef SSLSocketT<TBase> Base;
@@ -382,7 +399,7 @@ protected:
         {
         case SOCKET_ROLE_WORK:
         {
-            ssl_ = SSL_new(tls_ctx_);
+            ssl_ = SSL_new(GetTLSContext());
             if (!require_auth_) {
                 /* We still verify certificates if provided, but don't require them.
                  */
@@ -490,9 +507,10 @@ protected:
         {
         case SOCKET_ROLE_CONNECT:
         {
-            ssl_ = SSL_new(tls_ctx_);
+            ssl_ = SSL_new(GetTLSContext());
 
             SSL_set_fd(ssl_, (SOCKET)*this);
+            SSL_set_connect_state(ssl_);
         }
         break;
         default:

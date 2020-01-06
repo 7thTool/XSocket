@@ -54,7 +54,7 @@
 #define USE_EPOLLET
 #endif//
 #endif//
-#define USE_WEBSOCKET
+//#define USE_WEBSOCKET
 
 #define DEFAULT_BUFSIZE	1024
 

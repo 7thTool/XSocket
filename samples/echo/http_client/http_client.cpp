@@ -4,6 +4,9 @@
 #ifdef USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #endif//
+#ifdef USE_OPENSSL
+#include "../../../XSocket/XSSLImpl.h"
+#endif
 using namespace XSocket;
 
 /* 测试的HTTP报文 */
@@ -84,9 +87,14 @@ public:
 };
 typedef SimpleSocketEvtServiceT<ClientEventService> ClientService;
 
-class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>>
+#ifdef USE_OPENSSL
+typedef SSLConnectSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>> ClientSocket;
+#else 
+typedef ConnectSocketT<SelectSocketT<ClientService,SocketEx>> ClientSocket;
+#endif
+class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ClientSocket>>>>
 {
-	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ClientSocket>>>> Base;
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -216,14 +224,15 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	Socket::Init();
+	client::Init();
+	client::Configure();
 	
 	manager m(DEFAULT_CLIENT_COUNT);
 	m.Start();
 	getchar();
 	m.Stop();
 
-	Socket::Term();
+	client::Term();
 	return 0;
 }
 
