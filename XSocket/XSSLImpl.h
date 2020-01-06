@@ -1,6 +1,7 @@
 #pragma once
 
 #include "XSocketImpl.h"
+#include "XStr.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
@@ -8,16 +9,16 @@
 namespace XSocket {
 
 enum {
-    TLS_PROTO_TLSv1 = (1<<0)
-    TLS_PROTO_TLSv1_1 = (1<<1)
-    TLS_PROTO_TLSv1_2 = (1<<2)
-    TLS_PROTO_TLSv1_3 =(1<<3)
+    TLS_PROTO_TLSv1 = (1<<0),
+    TLS_PROTO_TLSv1_1 = (1<<1),
+    TLS_PROTO_TLSv1_2 = (1<<2),
+    TLS_PROTO_TLSv1_3 =(1<<3),
     
     /* Use safe defaults */
     #ifdef TLS1_3_VERSION
-    TLS_PROTO_DEFAULT = (TLS_PROTO_TLSv1_2|TLS_PROTO_TLSv1_3)
+    TLS_PROTO_DEFAULT = (TLS_PROTO_TLSv1_2|TLS_PROTO_TLSv1_3),
     #else
-    TLS_PROTO_DEFAULT = (TLS_PROTO_TLSv1_2)
+    TLS_PROTO_DEFAULT = (TLS_PROTO_TLSv1_2),
     #endif
 };
 
@@ -38,7 +39,7 @@ class SSLSocketT : public TBase
 {
 	typedef TBase Base;
 protected:
-    static SSL_CTX *tls_ctx_ = nullptr;
+    static SSL_CTX *tls_ctx_;
 public:
     static void Init()
     {
@@ -58,10 +59,17 @@ public:
             tls_ctx_ = nullptr;
         }
     }
-    
+
 /* Attempt to configure/reconfigure TLS. This operation is atomic and will
  * leave the SSL_CTX unchanged if fails.
  */
+static int Configure() {
+    SSL_CTX *ctx = NULL;
+    ctx = SSL_CTX_new(SSLv23_method());
+    SSL_CTX_free(tls_ctx_);
+    tls_ctx_ = ctx;
+    return 0;
+}
 static int Configure(TLSContextConfig *ctx_config) {
     char errbuf[256];
     SSL_CTX *ctx = NULL;
@@ -90,7 +98,31 @@ static int Configure(TLSContextConfig *ctx_config) {
     SSL_CTX_set_options(ctx, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
 #endif
 
-    int protocols = parseProtocolsConfig(ctx_config->protocols);
+    int protocols = -1;
+    const char* tokens = ctx_config->protocols;
+    while(tokens)
+    {
+        if (!stricmp(tokens, "tlsv1")) protocols |= TLS_PROTO_TLSv1;
+        else if (!stricmp(tokens, "tlsv1.1")) protocols |= TLS_PROTO_TLSv1_1;
+        else if (!stricmp(tokens, "tlsv1.2")) protocols |= TLS_PROTO_TLSv1_2;
+        else if (!stricmp(tokens, "tlsv1.3")) {
+#ifdef TLS1_3_VERSION
+            protocols |= REDIS_TLS_PROTO_TLSv1_3;
+#else
+            PRINTF("TLSv1.3 is specified in tls-protocols but not supported by OpenSSL.");
+            protocols = -1;
+            break;
+#endif
+        } else {
+            PRINTF("Invalid tls-protocols specified. "
+                    "Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.");
+            protocols = -1;
+            break;
+        }
+        tokens = strbrk(tokens, ' ');
+        if(tokens) 
+            tokens++;
+    }
     if (protocols == -1) goto error;
 
     if (!(protocols & TLS_PROTO_TLSv1))
@@ -143,7 +175,7 @@ static int Configure(TLSContextConfig *ctx_config) {
         FILE *dhfile = fopen(ctx_config->dh_params_file, "r");
         DH *dh = NULL;
         if (!dhfile) {
-            PRINTF("Failed to load %s: %s", ctx_config->dh_params_file, strerror(errno));
+            PRINTF("Failed to load %s: %s", ctx_config->dh_params_file, GetErrorMessage(GetLastError(),errbuf,256));
             goto error;
         }
 
@@ -179,11 +211,11 @@ static int Configure(TLSContextConfig *ctx_config) {
     SSL_CTX_free(tls_ctx_);
     tls_ctx_ = ctx;
 
-    return C_OK;
+    return 0;
 
 error:
     if (ctx) SSL_CTX_free(ctx);
-    return C_ERR;
+    return -1;
 }
 protected:
     SSL *ssl_;
@@ -193,9 +225,9 @@ protected:
     * Update the connection's error state if a real error has occured.
     * Returns an SSL error code, or 0 if no further handling is required.
     */
-    static int handleSSLReturnCode(int ret_value, int *want_evt) {
+    static int handleSSLReturnCode(SSL *ssl, int ret_value, int *want_evt) {
         if (ret_value <= 0) {
-            int ssl_err = SSL_get_error(ssl_, ret_value);
+            int ssl_err = SSL_get_error(ssl, ret_value);
             switch (ssl_err) {
                 case SSL_ERROR_WANT_WRITE:
                     *want_evt |= FD_WRITE;
@@ -224,8 +256,8 @@ protected:
     }
 
 public:
-    SSLSocketT();
-    ~SSLSocketT();
+    SSLSocketT() {}
+    ~SSLSocketT() {}
 
     int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
@@ -236,7 +268,7 @@ public:
         ret = SSL_write(ssl_, lpBuf, nBufLen);
         if (ret <= 0) {
             int want = 0;
-            if (!(ssl_err = handleSSLReturnCode(ret, &want))) {
+            if (!(ssl_err = handleSSLReturnCode(ssl_, ret, &want))) {
 #ifdef WIN32
                 SetLastError(WSAEWOULDBLOCK);
 #else
@@ -263,10 +295,10 @@ public:
 
         ERR_clear_error();
 
-        ret = SSL_read(conn->ssl, lpBuf, nBufLen);
+        ret = SSL_read(ssl_, lpBuf, nBufLen);
         if (ret <= 0) {
             int want = 0;
-            if (!(ssl_err = handleSSLReturnCode(conn, ret, &want))) {
+            if (!(ssl_err = handleSSLReturnCode(ssl_, ret, &want))) {
 #ifdef WIN32
                 SetLastError(WSAEWOULDBLOCK);
 #else
@@ -289,15 +321,20 @@ public:
 };
 
 template<class TBase>
+SSL_CTX * SSLSocketT<TBase>::tls_ctx_ = nullptr;
+
+template<class TBase>
 class SSLWorkSocketT : public SSLSocketT<TBase>
 {
 	typedef SSLSocketT<TBase> Base;
 protected:
-    byte require_auth_:1 = 0;
-    byte ssl_accepted_:1 = 0;
+    byte require_auth_:1;
+    byte ssl_accepted_:1;
 public:
-    SSLWorkSocketT();
-    ~SSLWorkSocketT();
+    SSLWorkSocketT():require_auth_(false),ssl_accepted_(false) {}
+    ~SSLWorkSocketT() {}
+    
+	inline bool IsAccepted() { return ssl_accepted_; }
 
 protected:
     //
@@ -308,7 +345,7 @@ protected:
         int ret = SSL_accept(ssl_);
         if (ret <= 0) {
             int want = 0;
-            if (!handleSSLReturnCode(conn, ret, &want)) {
+            if (!handleSSLReturnCode(ssl_, ret, &want)) {
                 Base::Select(want);
 
                 nErrorCode = 
@@ -329,7 +366,7 @@ protected:
         return 0;
     }
 
-    virtual void OnRole(int nRole);
+    virtual void OnRole(int nRole)
     {
         Base::OnRole(nRole);
         switch(nRole)
@@ -356,7 +393,8 @@ protected:
 	virtual void OnReceive(int nErrorCode)
     {
         if(nErrorCode) {
-            return Base::OnReveive(nErrorCode);
+            Base::OnReceive(nErrorCode);
+            return;
         }
 
         ERR_clear_error();
@@ -366,13 +404,18 @@ protected:
             if(!nErrorCode)
                 ssl_accepted_ = true;
         }
-        Base::OnReveive(nErrorCode);
+        Base::OnReceive(nErrorCode);
+    }
+    virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags) 
+	{
+		Base::OnReceive(lpBuf, nBufLen, nFlags);
     }
 
 	virtual void OnSend(int nErrorCode)
     {
         if(nErrorCode) {
-            return Base::OnSend(nErrorCode);
+            Base::OnSend(nErrorCode);
+            return;
         }
 
         if(!ssl_accepted_) {
@@ -382,6 +425,10 @@ protected:
         }
         Base::OnSend(nErrorCode);
     }
+	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
+    {
+        Base::OnSend(lpBuf, nBufLen, nFlags);
+    }
 };
 
 
@@ -390,8 +437,8 @@ class SSLConnectSocketT : public SSLSocketT<TBase>
 {
 	typedef SSLSocketT<TBase> Base;
 public:
-    SSLConnectSocketT();
-    ~SSLConnectSocketT();
+    SSLConnectSocketT() {}
+    ~SSLConnectSocketT() {}
 
 protected:
     //
@@ -402,7 +449,7 @@ protected:
         int ret = SSL_connect(ssl_);
         if (ret <= 0) {
             int want = 0;
-            if (!handleSSLReturnCode(conn, ret, &want)) {
+            if (!handleSSLReturnCode(ssl_, ret, &want)) {
                 Base::Select(want);
 
                 /* Avoid hitting UpdateSSLEvent, which knows nothing
@@ -427,7 +474,7 @@ protected:
         return 0;
     }
 
-    virtual void OnRole(int nRole);
+    virtual void OnRole(int nRole)
     {
         Base::OnRole(nRole);
         switch(nRole)
@@ -448,38 +495,49 @@ protected:
     virtual void OnReceive(int nErrorCode)
     {
         if(nErrorCode) {
-            return Base::OnReveive(nErrorCode);
+            Base::OnReceive(nErrorCode);
+            return;
         }
 
-        if(!Base::IsConnect()) {
+        if(!Base::IsConnected()) {
             handleSSLConnect(nErrorCode);
             Base::OnConnect(nErrorCode);
         } else {
-            Base::OnReveive(nErrorCode);
+            Base::OnReceive(nErrorCode);
         }
+    }
+    virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags) 
+	{
+		Base::OnReceive(lpBuf, nBufLen, nFlags);
     }
 
 	virtual void OnSend(int nErrorCode)
     {
         if(nErrorCode) {
-            return Base::OnSend(nErrorCode);
+            Base::OnSend(nErrorCode);
+            return;
         }
 
-        if(!Base::IsConnect()) {
+        if(!Base::IsConnected()) {
             handleSSLConnect(nErrorCode);
             Base::OnConnect(nErrorCode);
         } else {
             Base::OnSend(nErrorCode);
         }
     }
+	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
+    {
+        Base::OnSend(lpBuf, nBufLen, nFlags);
+    }
 
     virtual void OnConnect(int nErrorCode)
     {
         if (nErrorCode) {
-            return Base::OnConnect(nErrorCode);
+            Base::OnConnect(nErrorCode);
+            return;
         }
 
-        ASSERT(!Base::IsConnect());
+        ASSERT(!Base::IsConnected());
         handleSSLConnect(nErrorCode);
         Base::OnConnect(nErrorCode);
     }

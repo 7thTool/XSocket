@@ -5,6 +5,7 @@
 * 服务：select/完成端口/epoll服务模型
 * 套接字：Tcp/Udp的select/完成端口/epoll模型封装
 * 自定义：只需实现Parse接口，即可接入自定义协议，支持服务、套接字、协议层次的自定义
+* SSL：支持OpenSSL非阻塞SSL通信
 * 代理：SOCK4/4a/SOCK5/Http代理
 * HTTP：支持Http/WebSocket协议
 * HTTP2: 支持Http /2协议

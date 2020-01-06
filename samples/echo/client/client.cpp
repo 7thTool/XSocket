@@ -6,6 +6,9 @@
 #include "../../../XSocket/XCompletionPort.h"
 #else
 #endif//
+#ifdef USE_OPENSSL
+#include "../../../XSocket/XSSLImpl.h"
+#endif
 using namespace XSocket;
 
 class client;
@@ -64,37 +67,46 @@ typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSe
 #endif//
 #endif//USE_UDP
 
-class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketExT<SocketEx>>>>
+typedef ConnectSocketExT<SocketEx> ClientSocket;
 #else
 #ifdef USE_EPOLL
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>>
+typedef ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
 #elif defined(USE_IOCP)
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>>
+typedef ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
 #else
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>>
+typedef ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
+#endif
+#ifdef USE_OPENSSL
+typedef SSLConnectSocketT<ClientSocketBase> ClientSocket;
+#else 
+typedef ClientSocketBase ClientSocket;
 #endif
 #endif//USE_MANAGER
 #else
-	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>>>>>
+typedef ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>> ClientSocket;
+#endif//USE_UDP
+
+class client
+#ifndef USE_UDP
+#ifndef USE_MANAGER
+	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ClientSocket>>>
+#else
+	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ClientSocket>>>
+#endif//USE_MANAGER
+#else
+	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ClientSocket>>>
 #endif//USE_UDP
 {
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ConnectSocketExT<SocketEx>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ClientSocket>>> Base;
 #else
-#ifdef USE_EPOLL
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>> Base;
-#elif defined(USE_IOCP)
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>> Base;
-#else
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>>>>> Base;
-#endif
+	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ClientSocket>>> Base;
 #endif//USE_MANAGER
 #else
-	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>>>>> Base;
+	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ClientSocket>>> Base;
 #endif//USE_UDP
 protected:
 	//std::once_flag start_flag_;
@@ -287,6 +299,9 @@ int main(int argc, char* argv[])
 #endif//
 {
 	Socket::Init();
+#ifdef USE_OPENSSL
+	client::Configure();
+#endif
 	int client_count = DEFAULT_CLIENT_COUNT;
 	if(argc > 1) {
 		client_count = atoi(argv[1]);

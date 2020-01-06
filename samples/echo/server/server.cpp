@@ -8,6 +8,9 @@
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
+#ifdef USE_OPENSSL
+#include "../../../XSocket/XSSLImpl.h"
+#endif
 using namespace XSocket;
 
 #ifndef USE_UDP
@@ -86,9 +89,20 @@ SelectSocketT<WorkSocketSet,SocketEx,SockAddrType>
 
 };
 
-class worker : public SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>
+class worker : public 
+#ifdef USE_OPENSSL
+SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<SSLWorkSocketT<WorkSocketT<WorkSocket>>>>>
+#else 
+SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>
+#endif
 {
-	typedef SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>> Base;
+	typedef 
+#ifdef USE_OPENSSL
+SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<SSLWorkSocketT<WorkSocketT<WorkSocket>>>>>
+#else
+SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>> 
+#endif
+Base;
 protected:
 	
 public:
@@ -324,7 +338,11 @@ int main()
 #endif//
 {
 	Socket::Init();
-
+#ifdef USE_OPENSSL
+	TLSContextConfig tls_ctx_config = {0};
+	//
+	worker::Configure(&tls_ctx_config);
+#endif
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
 	getchar();
