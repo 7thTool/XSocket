@@ -63,7 +63,37 @@ public:
 
         Base::Term();
     }
+#ifdef _DEBUG
+/**
+ * Callback used for debugging
+ */
+static void sslLogCallback(const SSL *ssl, int where, int ret) {
+    const char *retstr = "";
+    int should_log = 1;
+    /* Ignore low-level SSL stuff */
 
+    if (where & SSL_CB_ALERT) {
+        should_log = 1;
+    }
+    if (where == SSL_CB_HANDSHAKE_START || where == SSL_CB_HANDSHAKE_DONE) {
+        should_log = 1;
+    }
+    if ((where & SSL_CB_EXIT) && ret == 0) {
+        should_log = 1;
+    }
+
+    if (!should_log) {
+        return;
+    }
+
+    retstr = SSL_alert_type_string(ret);
+    printf("ST(0x%x). %s. R(0x%x)%s\n", where, SSL_state_string_long(ssl), ret, retstr);
+
+    if (where == SSL_CB_HANDSHAKE_DONE) {
+        printf("Using SSL version %s. Cipher=%s\n", SSL_get_version(ssl), SSL_get_cipher_name(ssl));
+    }
+}
+#endif
 /* Attempt to configure/reconfigure TLS. This operation is atomic and will
  * leave the SSL_CTX unchanged if fails.
  */
@@ -75,6 +105,9 @@ static int Configure() {
         ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         PRINTF("Failed to configure ssl context: %s", errbuf);
     }
+#ifdef _DEBUG
+    SSL_CTX_set_info_callback(ctx, sslLogCallback);
+#endif
     SSL_CTX_free(tls_ctx_);
     tls_ctx_ = ctx;
     return 0;
@@ -99,6 +132,9 @@ static int Configure(TLSContextConfig *ctx_config) {
     }
 
     ctx = SSL_CTX_new(SSLv23_method());
+    #ifdef _DEBUG
+        SSL_CTX_set_info_callback(ctx, sslLogCallback);
+    #endif
 
     SSL_CTX_set_options(ctx, SSL_OP_NO_SSLv2|SSL_OP_NO_SSLv3);
     SSL_CTX_set_options(ctx, SSL_OP_SINGLE_DH_USE);
@@ -107,14 +143,15 @@ static int Configure(TLSContextConfig *ctx_config) {
     SSL_CTX_set_options(ctx, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
 #endif
 
-    int protocols = -1;
+    int protocols = 0;
     const char* tokens = ctx_config->protocols;
     while(tokens)
     {
-        if (!stricmp(tokens, "tlsv1")) protocols |= TLS_PROTO_TLSv1;
-        else if (!stricmp(tokens, "tlsv1.1")) protocols |= TLS_PROTO_TLSv1_1;
-        else if (!stricmp(tokens, "tlsv1.2")) protocols |= TLS_PROTO_TLSv1_2;
-        else if (!stricmp(tokens, "tlsv1.3")) {
+        if (0 == strnicmp(tokens, "tlsv1.1", 7)) { 
+            protocols |= TLS_PROTO_TLSv1_1;
+        } else if (0 == strnicmp(tokens, "tlsv1.2", 7)) { 
+            protocols |= TLS_PROTO_TLSv1_2;
+        } else if (0 == strnicmp(tokens, "tlsv1.3", 7)) {
 #ifdef TLS1_3_VERSION
             protocols |= REDIS_TLS_PROTO_TLSv1_3;
 #else
@@ -122,6 +159,8 @@ static int Configure(TLSContextConfig *ctx_config) {
             protocols = -1;
             break;
 #endif
+        } else if (0 == strnicmp(tokens, "tlsv1", 5)) {
+            protocols |= TLS_PROTO_TLSv1;
         } else {
             PRINTF("Invalid tls-protocols specified. "
                     "Use a combination of 'TLSv1', 'TLSv1.1', 'TLSv1.2' and 'TLSv1.3'.");
@@ -347,12 +386,57 @@ public:
     }
     
     inline SSL_CTX * GetTLSContext() { return ssl_ctx_; }
+    int SetTLSContext(const char *capath, const char *certpath = nullptr, const char *keypath = nullptr) {
+
+        SSL_CTX *ssl_ctx = NULL;
+        SSL *ssl = NULL;
+
+        ssl_ctx = SSL_CTX_new(SSLv23_client_method());
+        if (!ssl_ctx) {
+            PRINTF("Failed to create SSL_CTX");
+            goto error;
+        }
+
+    #ifdef _DEBUG
+        SSL_CTX_set_info_callback(ssl_ctx, sslLogCallback);
+    #endif
+        SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+        SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
+        if ((certpath != NULL && keypath == NULL) || (keypath != NULL && certpath == NULL)) {
+            PRINTF("certpath and keypath must be specified together");
+            goto error;
+        }
+
+        if (capath) {
+            if (!SSL_CTX_load_verify_locations(ssl_ctx, capath, NULL)) {
+                PRINTF("Invalid CA certificate");
+                goto error;
+            }
+        }
+        if (certpath) {
+            if (!SSL_CTX_use_certificate_chain_file(ssl_ctx, certpath)) {
+                PRINTF("Invalid client certificate");
+                goto error;
+            }
+            if (!SSL_CTX_use_PrivateKey_file(ssl_ctx, keypath, SSL_FILETYPE_PEM)) {
+                PRINTF("Invalid client key");
+                goto error;
+            }
+        }
+        if(ssl_ctx_ != tls_ctx_) SSL_CTX_free(ssl_ctx_);
+        ssl_ctx_ = ssl_ctx;
+        return 0;
+
+    error:
+        if (ssl_ctx) SSL_CTX_free(ssl_ctx);
+        return -1;
+    }
 };
 
 template<class TBase>
-class SSLWorkSocketT : public SSLSocketT<TBase>
+class SSLWorkSocketT : public TBase
 {
-	typedef SSLSocketT<TBase> Base;
+	typedef TBase Base;
 protected:
     byte require_auth_:1;
     byte ssl_accepted_:1;
@@ -360,7 +444,7 @@ public:
     SSLWorkSocketT():require_auth_(false),ssl_accepted_(false) {}
     ~SSLWorkSocketT() {}
     
-	inline bool IsAccepted() { return ssl_accepted_; }
+	inline bool IsSSLAccepted() { return ssl_accepted_; }
 
 protected:
     //
@@ -389,7 +473,13 @@ protected:
             }
             return SOCKET_ERROR;
         }
+        ssl_accepted_ = true;
         return 0;
+    }
+
+    virtual void OnSSLAccept()
+    {
+
     }
 
     virtual void OnRole(int nRole)
@@ -423,12 +513,12 @@ protected:
             return;
         }
 
-        ERR_clear_error();
-
-        if(!ssl_accepted_) {
+        if(!IsSSLAccepted()) {
             handleSSLAccept(nErrorCode);
-            if(!nErrorCode)
-                ssl_accepted_ = true;
+            if(IsSSLAccepted()) {
+                OnSSLAccept();
+                return;
+            }
         }
         Base::OnReceive(nErrorCode);
     }
@@ -444,10 +534,12 @@ protected:
             return;
         }
 
-        if(!ssl_accepted_) {
+        if(!IsSSLAccepted()) {
             handleSSLAccept(nErrorCode);
-            if(!nErrorCode)
-                ssl_accepted_ = true;
+            if(IsSSLAccepted()) {
+                OnSSLAccept();
+                return;
+            }
         }
         Base::OnSend(nErrorCode);
     }
@@ -459,12 +551,16 @@ protected:
 
 
 template<class TBase>
-class SSLConnectSocketT : public SSLSocketT<TBase>
+class SSLConnectSocketT : public TBase
 {
-	typedef SSLSocketT<TBase> Base;
+	typedef TBase Base;
+protected:
+    byte ssl_connected_:1;
 public:
-    SSLConnectSocketT() {}
+    SSLConnectSocketT():ssl_connected_(false) {}
     ~SSLConnectSocketT() {}
+
+    inline bool IsSSLConnected() { return ssl_connected_; }
 
 protected:
     //
@@ -497,7 +593,13 @@ protected:
             }
             return SOCKET_ERROR;
         }
+        ssl_connected_ = true;
         return 0;
+    }
+
+    virtual void OnSSLConnect()
+    {
+        
     }
 
     virtual void OnRole(int nRole)
@@ -526,9 +628,11 @@ protected:
             return;
         }
 
-        if(!Base::IsConnected()) {
+        if(!IsSSLConnected()) {
             handleSSLConnect(nErrorCode);
-            Base::OnConnect(nErrorCode);
+            if(IsSSLConnected()) {
+                OnSSLConnect();
+            }
         } else {
             Base::OnReceive(nErrorCode);
         }
@@ -545,9 +649,11 @@ protected:
             return;
         }
 
-        if(!Base::IsConnected()) {
+        if(!IsSSLConnected()) {
             handleSSLConnect(nErrorCode);
-            Base::OnConnect(nErrorCode);
+            if(IsSSLConnected()) {
+                OnSSLConnect();
+            }
         } else {
             Base::OnSend(nErrorCode);
         }
@@ -564,9 +670,12 @@ protected:
             return;
         }
 
-        ASSERT(!Base::IsConnected());
-        handleSSLConnect(nErrorCode);
         Base::OnConnect(nErrorCode);
+        ASSERT(Base::IsConnected());
+        handleSSLConnect(nErrorCode);
+        if(IsSSLConnected()) {
+            OnSSLConnect();
+        }
     }
 };
 

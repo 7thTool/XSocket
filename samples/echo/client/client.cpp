@@ -79,34 +79,34 @@ typedef ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddr
 typedef ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
 #endif
 #ifdef USE_OPENSSL
-typedef SSLConnectSocketT<ClientSocketBase> ClientSocket;
+typedef SSLConnectSocketT<SimpleSocketT<SSLSocketT<ClientSocketBase>>> ClientSocket;
 #else 
-typedef ClientSocketBase ClientSocket;
+typedef SimpleSocketT<ClientSocketBase> ClientSocket;
 #endif
 #endif//USE_MANAGER
 #else
-typedef ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>> ClientSocket;
+typedef SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>>> ClientSocket;
 #endif//USE_UDP
 
 class client
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	: public SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ClientSocket>>>
+	: public SocketExImpl<client,SelectClientT<ClientService,ClientSocket>>
 #else
-	: public SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ClientSocket>>>
+	: public SocketExImpl<client,SimpleEvtSocketT<ClientSocket>>
 #endif//USE_MANAGER
 #else
-	: public SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ClientSocket>>>
+	: public SocketExImpl<client,SelectUdpClientT<ClientService,ClientSocket>>
 #endif//USE_UDP
 {
 #ifndef USE_UDP
 #ifndef USE_MANAGER
-	typedef SocketExImpl<client,SelectClientT<ClientService,SimpleSocketT<ClientSocket>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,ClientSocket>> Base;
 #else
-	typedef SocketExImpl<client,SimpleEvtSocketT<SimpleSocketT<ClientSocket>>> Base;
+	typedef SocketExImpl<client,SimpleEvtSocketT<ClientSocket>> Base;
 #endif//USE_MANAGER
 #else
-	typedef SocketExImpl<client,SelectUdpClientT<ClientService,SimpleUdpSocketT<ClientSocket>>> Base;
+	typedef SocketExImpl<client,SelectUdpClientT<ClientService,ClientSocket>> Base;
 #endif//USE_UDP
 protected:
 	//std::once_flag start_flag_;

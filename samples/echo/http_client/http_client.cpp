@@ -88,13 +88,13 @@ public:
 typedef SimpleSocketEvtServiceT<ClientEventService> ClientService;
 
 #ifdef USE_OPENSSL
-typedef SSLConnectSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>> ClientSocket;
+typedef SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>> ClientSocket;
 #else 
-typedef ConnectSocketT<SelectSocketT<ClientService,SocketEx>> ClientSocket;
+typedef SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>> ClientSocket;
 #endif
-class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ClientSocket>>>>
+class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
 {
-	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<SimpleSocketT<ClientSocket>>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -154,7 +154,8 @@ protected:
 	//
 	virtual void OnMessage(const HttpRequest& req)
 	{
-		PRINTF("%79s", req.body_.first);
+		if(req.body_.first)
+			PRINTF("%79s", req.body_.first);
 	}
 
 #ifdef USE_WEBSOCKET
@@ -168,18 +169,30 @@ protected:
 		SendWebSocketBuf("hello.", 6, WS_FINAL_FRAME|WS_OP_TEXT);
 	}
 #endif
-
+#ifdef USE_OPENSSL
+	virtual void OnSSLConnect()
+	{
+#ifdef USE_WEBSOCKET
+		Upgrade("localhost");
+#else
+		PRINTF("%s",http_get_raw.c_str());
+		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
+#endif
+	}
+#endif
 	virtual void OnConnect(int nErrorCode)
 	{
 		Base::OnConnect(nErrorCode);
 		if(!IsConnected()) {
 			return;
 		}
+#ifndef USE_OPENSSL
 #ifdef USE_WEBSOCKET
 		Upgrade("localhost");
 #else
 		PRINTF("%s",http_get_raw.c_str());
 		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
+#endif
 #endif
 	}
 };
@@ -203,7 +216,8 @@ public:
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+			c[i].Start("www.baidu.com",443);
+			//c[i].Start(DEFAULT_IP,DEFAULT_PORT);
 		}
 		return true;
 	}

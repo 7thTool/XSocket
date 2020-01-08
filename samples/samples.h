@@ -2,6 +2,8 @@
 #define _H_SAMPLES_H_
 
 #define USE_ZLIB
+#define USE_OPENSSL
+//#define USE_WEBSOCKET
 
 //////////////////////////////////////////////////////////////////////////
 //IPV4->IPV6
@@ -47,14 +49,15 @@
 #define USE_MANAGER
 #endif//
 #ifdef WIN32
+#ifndef USE_OPENSSL
 #define USE_IOCP
+#endif
 #else
 #define USE_EPOLL
 #ifdef USE_EPOLL
 #define USE_EPOLLET
 #endif//
 #endif//
-//#define USE_WEBSOCKET
 
 #define DEFAULT_BUFSIZE	1024
 
@@ -164,13 +167,11 @@
 #endif//
 #define DEFAULT_MULTICAST_PORT	12345
 
-#define DEFAULT_CLIENT_COUNT 1000
+#define DEFAULT_CLIENT_COUNT 1
  
 #define DEFAULT_FD_SETSIZE 1024
 #define DEFAULT_MAX_FD_SETSIZE 20000
 
 #define DEFAULT_WAIT_TIMEOUT 10 //毫秒
-
-#define USE_OPENSSL 1
 
 #endif//_H_SAMPLES_H_

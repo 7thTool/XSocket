@@ -91,14 +91,14 @@ SelectSocketT<WorkSocketSet,SocketEx,SockAddrType>
 
 class worker : public 
 #ifdef USE_OPENSSL
-SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<SSLWorkSocketT<WorkSocketT<WorkSocket>>>>>
+SocketExImpl<worker,SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>
 #else 
 SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>
 #endif
 {
 	typedef 
 #ifdef USE_OPENSSL
-SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<SSLWorkSocketT<WorkSocketT<WorkSocket>>>>>
+SocketExImpl<worker,SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>
 #else
 SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>> 
 #endif
@@ -340,7 +340,15 @@ int main()
 	worker::Init();
 #ifdef USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
-	//
+	tls_ctx_config.cert_file = "./ssl/dev.crt";
+    tls_ctx_config.key_file = "./ssl/dev_nopass.key";
+    tls_ctx_config.dh_params_file;
+    tls_ctx_config.ca_cert_file = "./ssl/dev.crt";
+    tls_ctx_config.ca_cert_dir = "./ssl";
+    tls_ctx_config.protocols = "TLSv1.1 TLSv1.2";
+    tls_ctx_config.ciphers;
+    tls_ctx_config.ciphersuites;
+    tls_ctx_config.prefer_server_ciphers;
 	worker::Configure(&tls_ctx_config);
 #endif
 	server *s = new server();
