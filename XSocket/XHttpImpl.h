@@ -49,7 +49,7 @@ namespace XSocket {
 		inline strref GetFieldValue(const char* name) {
 			for(size_t i = 0; i < fields_.size(); i++)
 			{
-				if(strncmp(fields_[i].name.first,name, fields_[i].name.second) == 0) {
+				if(strnicmp(fields_[i].name.first,name, fields_[i].name.second) == 0) {
 					return fields_[i].value;
 				}
 			}

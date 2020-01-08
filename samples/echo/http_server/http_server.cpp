@@ -9,6 +9,9 @@
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
+#ifdef USE_OPENSSL
+#include "../../../XSocket/XSSLImpl.h"
+#endif
 using namespace XSocket;
 
 class worker;
@@ -53,27 +56,26 @@ typedef SimpleSocketEvtServiceT<WorkEventService> WorkService;
 
 #ifdef USE_EPOLL
 typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef EPollSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #elif defined(USE_IOCP)
 typedef CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef CompletionPortSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #else
 typedef SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #endif//
 
 class worker
-#ifdef USE_EPOLL
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>>>
-#elif defined(USE_IOCP)
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>>>
+#ifdef USE_OPENSSL
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
 #else
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>>>
+	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
 #endif
 {
-#ifdef USE_EPOLL
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<EPollSocketT<WorkSocketSet,SocketEx>>>>>> Base;
-#elif defined(USE_IOCP)
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<CompletionPortSocketT<WorkSocketSet,SocketEx>>>>>> Base;
+#ifdef USE_OPENSSL
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
 #else
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<SelectSocketT<WorkSocketSet,SocketEx>>>>>> Base;
+	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
 #endif
 public:
 	worker()
@@ -102,7 +104,15 @@ protected:
 	//
 	virtual void OnMessage(const HttpRequest& req)
 	{
-		PRINTF("%79s", req.body_.first);
+		if(req.body_.first)
+			PRINTF("%79s", req.body_.first);
+		std::ostringstream ss;
+		ss << "HTTP/1.1 200 OK\r\n"
+		"Connection: close\r\n"
+		"\r\n";
+		ss.write(req.body_.first,req.body_.second);
+		std::string buf = ss.str();
+		PostBuf(buf.c_str(),buf.size());
 	}
 
 #ifdef USE_WEBSOCKET
@@ -149,15 +159,27 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	Socket::Init();
-
+	worker::Init();
+#ifdef USE_OPENSSL
+	TLSContextConfig tls_ctx_config = {0};
+	tls_ctx_config.cert_file = "./ssl/dev.crt";
+    tls_ctx_config.key_file = "./ssl/dev_nopass.key";
+    tls_ctx_config.dh_params_file;
+    tls_ctx_config.ca_cert_file = "./ssl/dev.crt";
+    tls_ctx_config.ca_cert_dir = "./ssl";
+    tls_ctx_config.protocols = "TLSv1.1 TLSv1.2";
+    tls_ctx_config.ciphers;
+    tls_ctx_config.ciphersuites;
+    tls_ctx_config.prefer_server_ciphers;
+	worker::Configure(&tls_ctx_config);
+#endif
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
 	getchar();
 	s->Stop();
 	delete s;
 
-	Socket::Term();
+	worker::Term();
 
 	return 0;
 }

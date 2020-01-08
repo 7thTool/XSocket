@@ -216,8 +216,8 @@ public:
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-			c[i].Start("www.baidu.com",443);
-			//c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+			//c[i].Start("www.baidu.com",443);
+			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
 		}
 		return true;
 	}

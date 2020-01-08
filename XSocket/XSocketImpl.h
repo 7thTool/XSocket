@@ -169,7 +169,7 @@ protected:
 			nBufLen = (int)(m_nRecvBufLen-m_nRecvLen);
 			ASSERT(nBufLen>0);
 			nBufLen = Base::Receive(lpBuf,nBufLen);
-			if (nBufLen<=0) {
+			if (nBufLen<0) {
 				Base::OnReceive(XSocket::Socket::GetLastError());
 			} else if(nBufLen == 0) {
 				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
