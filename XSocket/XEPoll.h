@@ -314,10 +314,12 @@ public:
 		for (i=0;i<uFD_SETSize;i++)
 		{
 			if(Base::sock_ptrs_[i]==sock_ptr) {
-				int fd = *sock_ptr;
-				struct epoll_event event = {0};
-				event.data.ptr = (void *)sock_ptr.get();
-				epoll_ctl(Base::epfd_, EPOLL_CTL_DEL, fd, &event);
+				if (sock_ptr->IsSocket()) {
+					int fd = *sock_ptr;
+					struct epoll_event event = {0};
+					event.data.ptr = (void *)sock_ptr.get();
+					epoll_ctl(Base::epfd_, EPOLL_CTL_DEL, fd, &event);
+				}
 				return Base::RemoveSocketByPos(i);
 			}
 		}

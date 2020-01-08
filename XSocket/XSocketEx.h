@@ -122,7 +122,7 @@ public:
 
 	inline void Trigger(int evt, int nErrorCode) {
 		if(evt == FD_IDLE) {
-			OnIdle(nErrorCode);
+			OnIdle();
 		}
 		if(!IsSocket()) { 
 			return;
@@ -148,7 +148,7 @@ public:
 			OnClose(nErrorCode);
 			break;
 		// case FD_IDLE:
-		// 	OnIdle(nErrorCode);
+		// 	OnIdle();
 		// 	break;
 		default:
 			break;
@@ -258,9 +258,8 @@ protected:
 	 *
 	 *	OnIdle函数是后台在计算空闲的情况，给SocketEx用于做一些空闲处理动作，比如检查超时
 	 *	、清理垃圾数据等等
-	 *	@param nErrorCode 标示进入空闲时间，可以使用std::chrono::steady_clock::now()-nErrorCode计算OnIdle耗时
 	 */
-	virtual void OnIdle(int nErrorCode);
+	virtual void OnIdle();
 
 	/*!
 	 *	@brief 通知套接字有数据可以通过调用Receive读取.
@@ -465,7 +464,7 @@ protected:
 
 	}
 
-	virtual void OnIdle(int nErrorCode)
+	virtual void OnIdle()
 	{
 
 	}
@@ -489,7 +488,7 @@ protected:
 					if(IsStopFlag()) {
 						break;
 					}
-					OnIdle(std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count());
+					OnIdle(/*std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count()*/);
 					if(IsStopFlag()) {
 						break;
 					}
@@ -713,9 +712,9 @@ public:
 	}
 
 protected:
-	virtual void OnIdle(int nErrorCode)
+	virtual void OnIdle()
 	{
-		Base::OnIdle(nErrorCode);
+		Base::OnIdle();
 
 		//ASSERT(IsConnectSocket());
 		if(Base::IsSelect(FD_CONNECT) && connect_timeout_) {
@@ -1091,7 +1090,7 @@ protected:
 		RemoveAllSocket(true);
 	}
 
-	virtual void OnIdle(int nErrorCode)
+	virtual void OnIdle()
 	{
 		//int next = sock_idle_next_, next_end = sock_idle_next_ + 20;
 		//sock_idle_next_ = next_end % uFD_SETSize;
@@ -1323,7 +1322,7 @@ public:
 
 protected:
 	//
-	virtual void OnIdle(int nErrorCode)
+	virtual void OnIdle()
 	{
 		
 	}

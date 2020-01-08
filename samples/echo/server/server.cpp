@@ -134,7 +134,7 @@ public:
 	}
 protected:
 	//
-	virtual void OnIdle(int nErrorCode)
+	virtual void OnIdle()
 	{
 		/*char lpBuf[DEFAULT_BUFSIZE+1];
 		int nBufLen = 0;

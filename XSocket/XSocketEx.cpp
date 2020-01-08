@@ -228,7 +228,7 @@ inline bool IsNBErrorCode(int nErrorCode)
 	return false;
 }
 
-void SocketEx::OnIdle(int nErrorCode)
+void SocketEx::OnIdle()
 {
 	
 }
