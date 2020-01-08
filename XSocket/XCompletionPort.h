@@ -314,7 +314,7 @@ public:
 		//调用AcceptEx函数，地址长度需要在原有的上面加上16个字节
 		int nAccept = lpfnAcceptEx((SOCKET)*this, pOverlapped->Sock,
 			pOverlapped->Buffer.buf, pOverlapped->Buffer.len, 
-			sizeof(SockAddr) + 16, sizeof(SockAddr) + 16, 
+			sizeof(SOCKADDR_STORAGE), sizeof(SOCKADDR_STORAGE), 
 			&pOverlapped->NumberOfBytesReceived, &(pOverlapped->Overlapped));
 		if(nAccept == 0) {
 			if(WSAGetLastError() != ERROR_IO_PENDING) {

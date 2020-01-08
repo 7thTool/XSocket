@@ -239,7 +239,9 @@ int main()
 #endif//
 {
 	client::Init();
+#ifdef USE_OPENSSL
 	client::Configure();
+#endif
 	
 	manager m(DEFAULT_CLIENT_COUNT);
 	m.Start();

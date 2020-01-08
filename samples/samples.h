@@ -2,7 +2,7 @@
 #define _H_SAMPLES_H_
 
 #define USE_ZLIB
-#define USE_OPENSSL
+//#define USE_OPENSSL
 //#define USE_WEBSOCKET
 
 //////////////////////////////////////////////////////////////////////////
@@ -30,7 +30,7 @@
 //windows机器ipv6地址：fe80::21a:a5ff:fec1:1060%6
 //在windows机器ping命令： ping fe80::4e0f:6eff:fed8:489a%6 （即：目标地址%本地接口）
 
-#define USE_IPV6
+//#define USE_IPV6
 #ifdef USE_IPV6
 #define SockAddrType SOCKADDR_IN6
 #define AF_INETType AF_INET6
