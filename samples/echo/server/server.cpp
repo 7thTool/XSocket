@@ -79,11 +79,11 @@ SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 
 class WorkSocket : public
 #ifdef USE_EPOLL
-EPollSocketT<WorkSocketSet,SocketEx,SockAddrType>
+EPollSocketT<WorkSocketSet,SocketEx>
 #elif defined(USE_IOCP)
-CompletionPortSocketT<WorkSocketSet,SocketEx,SockAddrType>
+CompletionPortSocketT<WorkSocketSet,SocketEx>
 #else
-SelectSocketT<WorkSocketSet,SocketEx,SockAddrType>
+SelectSocketT<WorkSocketSet,SocketEx>
 #endif//
 {
 

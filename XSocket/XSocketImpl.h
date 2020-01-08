@@ -625,12 +625,12 @@ protected:
  *
  *	封装UdpSocket，定义Udp套接字实现接口
  */
-template<class TBase = SocketEx>
+template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
 class UdpSocket : public TBase
 {
 	typedef TBase Base;
 public:
-	typedef typename TBase::SockAddr SockAddr;
+	typedef TSockAddr SockAddr;
 protected:
 	int m_nSendLen;
 	const char* m_pSendBuf;

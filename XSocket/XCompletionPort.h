@@ -67,19 +67,18 @@ typedef struct _PER_IO_OPERATION_DATA
  *
  *	封装CompletionPortSocket
  */
-template<class TSocketSet, class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+template<class TSocketSet, class TBase = SocketEx>
 class CompletionPortSocketT : public TBase
 {
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
-	typedef TSockAddr SockAddr;
 protected:
 	//优化成区分WORK、CONNECT、LISTEN、UDP
 	union 
 	{
 		PER_IO_OPERATION_DATA send_overlapped_;
-		char send_reserved_[sizeof(SockAddr) + 16 + sizeof(SockAddr) + 16];
+		char send_reserved_[sizeof(SOCKADDR_STORAGE) + sizeof(SOCKADDR_STORAGE)];
 	};
 	union 
 	{

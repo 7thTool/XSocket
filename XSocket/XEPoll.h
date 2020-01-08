@@ -29,13 +29,12 @@ namespace XSocket {
  *
  *	封装EPollSocket
  */
-template<class TSocketSet, class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+template<class TSocketSet, class TBase = SocketEx>
 class EPollSocketT : public TBase
 {
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
-	typedef TSockAddr SockAddr;
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 

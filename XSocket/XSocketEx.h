@@ -754,7 +754,6 @@ class ListenSocketT : public TBase
 {
 	typedef TBase Base;
 public:
-	typedef typename Base::SockAddr SockAddr;
 
 	ListenSocketT():Base()
 	{
@@ -772,7 +771,7 @@ protected:
 		//bool bConitnue = false;
 		//do {
 		//	bConitnue = false;
-			SockAddr stAddr = {0};
+			SOCKADDR_STORAGE stAddr = {0};
 			int nAddrLen = sizeof(stAddr);
 			SOCKET Sock = Base::Accept((SOCKADDR*)&stAddr, &nAddrLen);
 	 		if(XSocket::Socket::IsSocket(Sock)) {
@@ -1443,13 +1442,12 @@ protected:
  *
  *	封装SelectSocket，实现对select模型管理一个客户端连接Socket
  */
-template<class TSocketSet, class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+template<class TSocketSet, class TBase = SocketEx>
 class SelectSocketT : public TBase
 {
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
-	typedef TSockAddr SockAddr;
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 

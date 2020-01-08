@@ -511,6 +511,11 @@ int Socket::GetAddrType(SOCKET Sock)
 		int addrlen = sizeof(addr);
 		GetSockName(Sock, &addr, &addrlen);
 		return addr.sa_family;
+		// int optval;
+		// if(SOCKET_ERROR != GetSockOpt(Sock, IPPROTO_IPV6, IPV6_V6ONLY, &optval, sizeof(optval))) {
+		// 	return AF_INET6;
+		// }
+		// return AF_INET;
 #endif
 		return optval;
 }

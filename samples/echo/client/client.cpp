@@ -72,11 +72,11 @@ typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSe
 typedef ConnectSocketExT<SocketEx> ClientSocket;
 #else
 #ifdef USE_EPOLL
-typedef ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
+typedef ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
 #elif defined(USE_IOCP)
-typedef ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
+typedef ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
 #else
-typedef ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx,SockAddrType>> ClientSocketBase;
+typedef ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
 #endif
 #ifdef USE_OPENSSL
 typedef SSLConnectSocketT<SimpleSocketT<SSLSocketT<ClientSocketBase>>> ClientSocket;
