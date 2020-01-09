@@ -35,4 +35,4 @@ add_library( # Sets the name of the library.
         # Provides a relative path to your source file(s).
         ${SRC_LIST}
         )
-SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
+        SET(LIBRARY_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin/${CMAKE_SYSTEM_NAME}/${PLATFORM})

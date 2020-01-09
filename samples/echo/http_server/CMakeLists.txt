@@ -72,3 +72,4 @@ ADD_EXECUTABLE(http_server
     ../../../XSocket/websocket-parser/websocket_parser.c
 )
 TARGET_LINK_LIBRARIES(http_server ${EXTRA_LIBS})
+SET(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin/${CMAKE_SYSTEM_NAME}/${PLATFORM})
