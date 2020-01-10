@@ -134,6 +134,8 @@ static int Configure() {
 }
 static int Configure(TLSContextConfig *ctx_config) {
     char errbuf[256];
+    int protocols = 0;
+    const char* tokens = nullptr;
     SSL_CTX *ctx = NULL;
 
     if (!ctx_config->cert_file) {
@@ -163,8 +165,7 @@ static int Configure(TLSContextConfig *ctx_config) {
     SSL_CTX_set_options(ctx, SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS);
 #endif
 
-    int protocols = 0;
-    const char* tokens = ctx_config->protocols;
+    tokens = ctx_config->protocols;
     while(tokens)
     {
         if (0 == strnicmp(tokens, "tlsv1.1", 7)) { 
@@ -243,7 +244,7 @@ static int Configure(TLSContextConfig *ctx_config) {
         FILE *dhfile = fopen(ctx_config->dh_params_file, "r");
         DH *dh = NULL;
         if (!dhfile) {
-            PRINTF("Failed to load %s: %s", ctx_config->dh_params_file, GetErrorMessage(GetLastError(),errbuf,256));
+            PRINTF("Failed to load %s: %s", ctx_config->dh_params_file, Base::GetErrorMessage(Base::GetLastError(),errbuf,256));
             goto error;
         }
 
@@ -396,11 +397,12 @@ SSL_CTX * SSLSocketT<TBase>::tls_ctx_ = nullptr;
 template<class TBase>
 class SSLSocketExT : public SSLSocketT<TBase>
 {
+    typedef SSLSocketT<TBase> Base;
 protected:
     SSL_CTX * ssl_ctx_ = nullptr;
 
 public:
-    SSLSocketExT():ssl_ctx_(tls_ctx_)
+    SSLSocketExT():ssl_ctx_(Base::tls_ctx_)
     {
 
     }
@@ -418,7 +420,7 @@ public:
         }
 
     #ifdef _DEBUG
-        SSL_CTX_set_info_callback(ssl_ctx, sslLogCallback);
+        SSL_CTX_set_info_callback(ssl_ctx, Base::sslLogCallback);
     #endif
         SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
         SSL_CTX_set_verify(ssl_ctx, SSL_VERIFY_PEER, NULL);
@@ -443,7 +445,7 @@ public:
                 goto error;
             }
         }
-        if(ssl_ctx_ != tls_ctx_) SSL_CTX_free(ssl_ctx_);
+        if(ssl_ctx_ != Base::tls_ctx_) SSL_CTX_free(ssl_ctx_);
         ssl_ctx_ = ssl_ctx;
         return 0;
 
@@ -472,10 +474,10 @@ protected:
     {
         ERR_clear_error();
 
-        int ret = SSL_accept(ssl_);
+        int ret = SSL_accept(Base::ssl_);
         if (ret <= 0) {
             int want = 0;
-            if (!handleSSLReturnCode(ssl_, ret, &want)) {
+            if (!handleSSLReturnCode(Base::ssl_, ret, &want)) {
                 Base::Select(want);
 
                 nErrorCode = 
@@ -509,15 +511,15 @@ protected:
         {
         case SOCKET_ROLE_WORK:
         {
-            ssl_ = SSL_new(GetTLSContext());
+            Base::ssl_ = SSL_new(GetTLSContext());
             if (!require_auth_) {
                 /* We still verify certificates if provided, but don't require them.
                  */
-                SSL_set_verify(ssl_, SSL_VERIFY_PEER, NULL);
+                SSL_set_verify(Base::ssl_, SSL_VERIFY_PEER, NULL);
             }
 
-            SSL_set_fd(ssl_, (SOCKET)*this);
-            SSL_set_accept_state(ssl_);
+            SSL_set_fd(Base::ssl_, (SOCKET)*this);
+            SSL_set_accept_state(Base::ssl_);
         }
         break;
         default:
@@ -588,10 +590,10 @@ protected:
     {
         ERR_clear_error();
 
-        int ret = SSL_connect(ssl_);
+        int ret = SSL_connect(Base::ssl_);
         if (ret <= 0) {
             int want = 0;
-            if (!handleSSLReturnCode(ssl_, ret, &want)) {
+            if (!handleSSLReturnCode(Base::ssl_, ret, &want)) {
                 Base::Select(want);
 
                 /* Avoid hitting UpdateSSLEvent, which knows nothing
@@ -629,10 +631,10 @@ protected:
         {
         case SOCKET_ROLE_CONNECT:
         {
-            ssl_ = SSL_new(GetTLSContext());
+            Base::ssl_ = SSL_new(GetTLSContext());
 
-            SSL_set_fd(ssl_, (SOCKET)*this);
-            SSL_set_connect_state(ssl_);
+            SSL_set_fd(Base::ssl_, (SOCKET)*this);
+            SSL_set_connect_state(Base::ssl_);
         }
         break;
         default:

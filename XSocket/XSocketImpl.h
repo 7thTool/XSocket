@@ -1104,6 +1104,7 @@ class SimpleSocketEvtServiceT : public SimpleEvtServiceT<TBase>
 {
 	typedef SimpleEvtServiceT<TBase> Base;
 public:
+	typedef typename Base::Event Event;
 
 protected:
 	//
