@@ -8,6 +8,7 @@
 * 定制：支持服务、套接字、协议层次的定制
 * SSL：支持OpenSSL非阻塞SSL通信
 * 代理：支持SOCK4/4a/SOCK5/Http代理
+* DNS：支持异步DNS
 * HTTP：支持Http/WebSocket协议
 * HTTP2: 支持Http /2协议
 * QUIC: 支持Quic协议

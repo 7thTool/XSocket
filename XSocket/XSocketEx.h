@@ -1685,7 +1685,7 @@ protected:
 		SOCKADDR_IN stAddr = {0};
 		stAddr.sin_family = AF_INET;
 		stAddr.sin_addr.s_addr = XSocket::Socket::Ip2N(XSocket::Socket::Url2Ip((char*)address_.c_str()));
-		stAddr.sin_port = XSocket::Socket::H2N((u_short)port_);
+		stAddr.sin_port = htons((u_short)port_);
 		Base::Bind((SOCKADDR*)&stAddr, sizeof(stAddr));
 		Base::Listen();
 		return true;

@@ -5,4 +5,5 @@ project(samples)
 
 #add_subdirectory(Multicast)
 add_subdirectory(echo)
+add_subdirectory(dnsquery)
 

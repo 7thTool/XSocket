@@ -98,7 +98,7 @@ void Socket::Term()
 // {
 // 	return ntohll(n);
 // }
-
+/*
 u_long Socket::H2N(u_long n)
 {
 	return htonl(n);
@@ -118,7 +118,7 @@ u_short Socket::N2H(u_short n)
 {
 	return ntohs(n);
 }
-
+*/
 u_long Socket::Ip2N(const char* ip)
 {
 	return inet_addr(ip);
@@ -186,10 +186,10 @@ u_short Socket::SockAddr2Port(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	switch (lpSockAddr->sa_family)
 	{
 	case AF_INET:
-		return N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port);
+		return ntohs(((SOCKADDR_IN*)lpSockAddr)->sin_port);
 		break;
 	case AF_INET6:
-		return N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
+		return ntohs(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
 		break;
 	default:
 		break;
@@ -219,13 +219,13 @@ const char* Socket::SockAddr2PortStr(const SOCKADDR* lpSockAddr, int nSockAddrLe
 	{
 	case AF_INET:
 	{
-		snprintf(str, len, "%d", N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port));
+		snprintf(str, len, "%d", ntohs(((SOCKADDR_IN*)lpSockAddr)->sin_port));
 		return str;
 	}
 	break;
 	case AF_INET6:
 	{
-		snprintf(str, len, "%s:%d", N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port));
+		snprintf(str, len, "%s:%d", ntohs(((SOCKADDR_IN6*)lpSockAddr)->sin6_port));
 		return str;
 	}
 	break;
@@ -244,7 +244,7 @@ const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, c
 	case AF_INET:
 	{
 		IpAddr2IpStr(&((SOCKADDR_IN*)lpSockAddr)->sin_addr, AF_INET, ip, 64);
-		port = N2H(((SOCKADDR_IN*)lpSockAddr)->sin_port);
+		port = ntohs(((SOCKADDR_IN*)lpSockAddr)->sin_port);
 		snprintf(str, len, "%s:%d", ip, port);
 		return str;
 	}
@@ -252,7 +252,7 @@ const char* Socket::SockAddr2Str(const SOCKADDR* lpSockAddr, int nSockAddrLen, c
 	case AF_INET6:
 	{
 		IpAddr2IpStr(&((SOCKADDR_IN6*)lpSockAddr)->sin6_addr, AF_INET6, ip, 64);
-		port = N2H(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
+		port = ntohs(((SOCKADDR_IN6*)lpSockAddr)->sin6_port);
 		snprintf(str, len, "%s:%d", ip, port);
 		return str;
 	}

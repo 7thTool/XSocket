@@ -85,7 +85,7 @@ typedef SimpleSocketT<ClientSocketBase> ClientSocket;
 #endif
 #endif//USE_MANAGER
 #else
-typedef SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx,SockAddrType>>> ClientSocket;
+typedef SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>,SockAddrType> ClientSocket;
 #endif//USE_UDP
 
 class client
@@ -149,7 +149,7 @@ protected:
 	#else
 		stAddr.sin_family = AF_INET;
 		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = H2N((u_short)port_);
+		stAddr.sin_port = htons((u_short)port_);
 	#endif//
 		PostBuf("hello.",6,stAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 	#endif//
@@ -299,8 +299,10 @@ int main(int argc, char* argv[])
 #endif//
 {
 	client::Init();
+#ifndef USE_UDP
 #ifdef USE_OPENSSL
 	client::Configure();
+#endif
 #endif
 	int client_count = DEFAULT_CLIENT_COUNT;
 	if(argc > 1) {

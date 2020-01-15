@@ -122,7 +122,7 @@ protected:
 		SOCKADDR_IN stAddr = {0};
 		stAddr.sin_family = AF_INET;
 		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = H2N((u_short)port_);
+		stAddr.sin_port = htons((u_short)port_);
 		Connect((SOCKADDR*)&stAddr, sizeof(stAddr));
 
 		return true;

@@ -260,9 +260,9 @@ protected:
 
 #else
 
-class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx,SockAddrType>>>>>
+class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>>>
 {
-	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx,SockAddrType>>>>> Base;
+	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>>> Base;
 protected:
 	std::string addr_;
 	u_short port_;
@@ -295,11 +295,11 @@ protected:
 	#ifdef USE_IPV6
 		stAddr.sin6_family = AF_INET6;
 		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
-		stAddr.sin6_port = H2N((u_short)port_);
+		stAddr.sin6_port = htons((u_short)port_);
 	#else
 		stAddr.sin_family = AF_INET;
 		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = H2N((u_short)port_);
+		stAddr.sin_port = htons((u_short)port_);
 	#endif//
 		Bind((const SOCKADDR*)&stAddr, sizeof(stAddr));
 		Select(FD_READ);
@@ -337,6 +337,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
+#ifndef USE_UDP
 	worker::Init();
 #ifdef USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
@@ -351,14 +352,20 @@ int main()
     tls_ctx_config.prefer_server_ciphers;
 	worker::Configure(&tls_ctx_config);
 #endif
+#else
+	Socket::Init();
+#endif
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
 	getchar();
 	s->Stop();
 	delete s;
 
+#ifndef USE_UDP
 	worker::Term();
-
+#else
+	Socket::Term();
+#endif
 	return 0;
 }
 

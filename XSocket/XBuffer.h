@@ -1,8 +1,7 @@
 #ifndef __H_XBUFFER_H__
 #define __H_XBUFFER_H__
 
-#include "XSocket.h"
-#include "XCodec.h"
+#include "XSocketDef.h"
 
 namespace XSocket {
 
@@ -61,9 +60,19 @@ class XRBuffer
 		return size_ - readerIndex_;
 	}
 
+	char *begin()
+	{
+		return const_cast<char*>(buffer_);
+	}
+
 	const char *begin() const
 	{
 		return buffer_;
+	}
+
+	char *end()
+	{
+		return const_cast<char*>(buffer_ + size_);
 	}
 
 	const char *end() const
@@ -180,16 +189,16 @@ class XRBuffer
 		{
 			cov64_t x;
 			::memcpy(&x.n64, reader(), sizeof(uint64_t));
-			x.n32_h = Socket::N2H(x.n32_h);
-			x.n32_l = Socket::N2H(x.n32_l);
+			x.n32_h = ntohl(x.n32_h);
+			x.n32_l = ntohl(x.n32_l);
 			return x.n64;
 		}
 		else if (!ne_ && ne)
 		{
 			cov64_t x;
 			::memcpy(&x.n64, reader(), sizeof(uint64_t));
-			x.n32_h = Socket::H2N(x.n32_h);
-			x.n32_l = Socket::H2N(x.n32_l);
+			x.n32_h = htonl(x.n32_h);
+			x.n32_l = htonl(x.n32_l);
 			return x.n64;
 		}
 		uint64_t x = 0;
@@ -204,11 +213,11 @@ class XRBuffer
 		::memcpy(&x, reader(), sizeof(uint32_t));
 		if (ne_ && !ne)
 		{
-			x = Socket::N2H(x);
+			x = ntohl(x);
 		}
 		else if (!ne_ && ne)
 		{
-			x = Socket::H2N(x);
+			x = htonl(x);
 		}
 		return x;
 	}
@@ -220,11 +229,11 @@ class XRBuffer
 		::memcpy(&x, reader(), sizeof(uint16_t));
 		if (ne_ && !ne)
 		{
-			x = Socket::N2H(x);
+			x = ntohs(x);
 		}
 		else if (!ne_ && ne)
 		{
-			x = Socket::H2N(x);
+			x = htons(x);
 		}
 		return x;
 	}
@@ -370,17 +379,17 @@ class XBuffer : public XRBuffer
 		{
 			cov64_t cvt;
 			cvt.n64 = x;
-			cvt.n32_h = Socket::H2N(cvt.n32_h);
-			cvt.n32_l = Socket::H2N(cvt.n32_l);
-			x = x.n64;
+			cvt.n32_h = htonl(cvt.n32_h);
+			cvt.n32_l = htonl(cvt.n32_l);
+			x = cvt.n64;
 		}
 		else if (!ne_ && ne)
 		{
 			cov64_t cvt;
 			cvt.n64 = x;
-			cvt.n32_h = Socket::N2H(cvt.n32_h);
-			cvt.n32_l = Socket::N2H(cvt.n32_l);
-			x = x.n64;
+			cvt.n32_h = ntohl(cvt.n32_h);
+			cvt.n32_l = ntohl(cvt.n32_l);
+			x = cvt.n64;
 		}
 		write(&x, sizeof(uint64_t));
 	}
@@ -389,11 +398,11 @@ class XBuffer : public XRBuffer
 	{
 		if (ne_ && !ne)
 		{
-			x = Socket::H2N(x);
+			x = htonl(x);
 		}
 		else if (!ne_ && ne)
 		{
-			x = Socket::N2H(x);
+			x = ntohl(x);
 		}
 		write(&x, sizeof(uint32_t));
 	}
@@ -402,11 +411,11 @@ class XBuffer : public XRBuffer
 	{
 		if (ne_ && !ne)
 		{
-			x = Socket::H2N(x);
+			x = htons(x);
 		}
 		else if (!ne_ && ne)
 		{
-			x = Socket::N2H(x);
+			x = ntohs(x);
 		}
 		write(&x, sizeof(uint16_t));
 	}

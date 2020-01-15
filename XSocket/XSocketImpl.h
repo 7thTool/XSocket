@@ -803,12 +803,12 @@ protected:
  *
  *	封装SimpleUdpSocketT，实现简单的Udp数据包网络架构
  */
-template<class TBase>
-class SimpleUdpSocketT : public UdpSocket<TBase>
+template<class TBase, class TSockAddr = SOCKADDR_IN>
+class SimpleUdpSocketT : public UdpSocket<TBase,TSockAddr>
 {
-	typedef UdpSocket<TBase> Base;
+	typedef UdpSocket<TBase,TSockAddr> Base;
 public:
-	typedef typename TBase::SockAddr SockAddr;
+	typedef TSockAddr SockAddr;
 protected:
 	typedef struct tagSABuf
 	{

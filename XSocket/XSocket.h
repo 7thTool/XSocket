@@ -42,10 +42,10 @@ public:
 	// float N2H(float n);
 	// uint64_t H2N(uint64_t n);
 	// uint64_t N2H(uint64_t n);
-	static u_long H2N(u_long n);
+	/*static u_long H2N(u_long n);
 	static u_long N2H(u_long n);
 	static u_short H2N(u_short n);
-	static u_short N2H(u_short n);
+	static u_short N2H(u_short n);*/
 
 	static u_long Ip2N(const char* ip);
 	static const char* N2Ip(u_long ip);
