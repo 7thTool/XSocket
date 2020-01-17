@@ -33,6 +33,17 @@
 
 namespace XSocket {
 
+std::future<struct addrinfo*> SocketEx::AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints)
+{
+	return std::async(//std::launch::async|std::launch::deferred,
+	//return ThreadPool::Inst().Post(
+		[hostname,service,hints] {
+		struct addrinfo* res = nullptr;
+		GetAddrInfo(hostname,service,hints,&res);
+		return res;
+	});
+}
+
 SocketEx::SocketEx()
 :Base()
 ,role_(SOCKET_ROLE_NONE)

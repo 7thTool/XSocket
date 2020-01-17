@@ -61,6 +61,20 @@
 
 #define DEFAULT_BUFSIZE	1024
 
+#define ChinaDNS1 "119.29.29.29"
+#define ChinaDNS1 "223.5.5.5"
+#define InternationalDNS1 "8.8.8.8"
+#define InternationalDNS2 "8.8.4.4"
+
+#define DNSPort 53
+#define DNSPort2 5353
+#define TLSDNSPort 853
+#define HTTPSDNSPort 443
+
+#define HTTPPort 80
+#define HTTPPort2 8080
+#define HTTPSPort 443
+
 #ifdef USE_IPV6
 #define DEFAULT_IP		"::1"
 #define DEFAULT_PORT	6666

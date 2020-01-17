@@ -34,6 +34,20 @@ const size_t DNS_DEF_DATA_SIZE = (512 * 10);
 const size_t DNS_MAX_CNAME_LEN = 256;
 const size_t DNS_MAX_OPT_LEN = 256;
 
+enum qr_t 
+{
+	QR_QUERY = 0,
+	QR_RESPONSE = 1,
+};
+
+const uint16_t QR_MASK = 0x8000;
+const uint16_t OPCODE_MASK = 0x7800;
+const uint16_t AA_MASK = 0x0400;
+const uint16_t TC_MASK = 0x0200;
+const uint16_t RD_MASK = 0x0100;
+const uint16_t RA_MASK = 0x0080;
+const uint16_t RCODE_MASK = 0x000F;
+
 enum opcode_t 
 {
 	OPCODE_QUERY = 0,
@@ -57,6 +71,7 @@ enum rcode_t {
 	RCODE_NOTZONE = 10,
 };
     /*
+    +high---------------low+high-----------------low+
 	0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
 	+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+--+
 	|                      ID                       |
@@ -75,10 +90,10 @@ enum rcode_t {
 struct head_t 
 {
 	uint16_t id;
-    union {
-        uint16_t flags;
-        struct
-        {
+    // union {
+    //     uint16_t flags;
+    //     struct
+    //     {
             uint16_t QR : 1;     //0:query 1:response
             uint16_t opcode : 4; //
             uint16_t AA : 1;     //1:Authoritative Answer
@@ -87,8 +102,8 @@ struct head_t
             uint16_t RA : 1;     //1:Recursion Available
             uint16_t zero : 3;   //
             uint16_t rcode : 4;  //Response Code
-        };
-    };
+    //     };
+    // };
 	uint16_t Questions; //number of questions entries
 	uint16_t AnswerRRs; //number of answers entries
 	uint16_t AuthorityRRs; //number of Authoritative namesversers entries
@@ -256,7 +271,15 @@ struct opt_t {
             int ret = 0;
             XRBuffer buff(lpBuf,nBufLen,true);
             head_.id = buff.readInt16();
-            head_.flags = buff.readInt16();
+            //head_.flags = buff.readInt16();
+            uint16_t flags = buff.readInt16();
+            head_.QR = (flags & QR_MASK) >> 15;
+            head_.opcode = (flags & OPCODE_MASK) >> 11;
+            head_.AA = (flags & AA_MASK) >> 10;
+            head_.TC = (flags & TC_MASK) >> 9;
+            head_.RD = (flags & RD_MASK) >> 8;
+            head_.RA = (flags & RA_MASK) >> 7;
+            head_.rcode = (flags & RCODE_MASK) >> 0;
             head_.Questions = buff.readInt16();
             head_.AnswerRRs = buff.readInt16();
             head_.AuthorityRRs = buff.readInt16();
@@ -304,14 +327,19 @@ struct opt_t {
             return SOCKET_PACKET_FLAG_COMPLETE; 
         }
 
-        int Encode(std::string& output) {
+        int Encode(XBuffer& buff) {
             int ret = 0;
-            XBuffer buff(DNS_DEF_DATA_SIZE);
-            if(buff.writable() < sizeof(head_t)) {
-                return SOCKET_PACKET_FLAG_PENDING;
-            }
             buff.writeInt16(head_.id);
-            buff.writeInt16(head_.flags);
+            uint16_t flags = 0;
+            flags |= (head_.QR << 15) & QR_MASK;
+            flags |= (head_.opcode << 11) & OPCODE_MASK;
+            flags |= (head_.AA << 10) & AA_MASK;
+            flags |= (head_.TC << 9) & TC_MASK;
+            flags |= (head_.RD << 8) & RD_MASK;
+            flags |= (head_.RA << 7) & RA_MASK;
+            flags |= (head_.rcode << 0) & RCODE_MASK;
+            buff.writeInt16(flags);
+            //buff.writeInt16(head_.flags);
             buff.writeInt16(head_.Questions);
             buff.writeInt16(head_.AnswerRRs);
             buff.writeInt16(head_.AuthorityRRs);
@@ -365,26 +393,26 @@ struct opt_t {
             int output_len = 0;
             int copy_len = 0;
             int len = 0;
-            uint8_t *begin = (uint8_t*)buff.begin(), *ptr = (uint8_t*)buff.reader(), *end = (uint8_t*)buff.end();
+            uint8_t *ptr = (uint8_t*)buff.reader();
             int is_compressed = 0;
             int ptr_jump = 0;
 
             /*[len]string[len]string...[0]0 */
             while (1) {
-                if (ptr > end || ptr < begin || output_len >= size - 1 || ptr_jump > 4) {
+                if (!buff.readable() || ptr_jump > 4) {
                     return -1;
                 }
 
-                len = *ptr;
+                len = buff.readInt8();
                 if (len == 0) {
                     *output = 0;
-                    ptr++;
                     break;
                 }
 
                 /* compressed domain */
                 if (len >= 0xC0) {
-                    if ((ptr + 2) > end) {
+                    buff.unread(1);
+                    if (buff.readable() < 2) {
                         return -1;
                     }
                     /*
@@ -396,10 +424,10 @@ struct opt_t {
                     /* read offset */
                     int offset = buff.readInt16() & 0x3FFF;
                     if (is_compressed == 0) {
-                        buff.retrieve(ptr-(uint8_t*)buff.reader());
+                        ptr = (uint8_t*)buff.reader();
                     }
-                    ptr = (uint8_t*)begin + offset;
-                    if (ptr > end) {
+                    buff.reset(offset);
+                    if (!buff.readable()) {
                         PRINTF("length is not enough");
                         return -1;
                     }
@@ -411,35 +439,35 @@ struct opt_t {
                 ptr_jump = 0;
 
                 /* change [len] to '.' */
-                if (output_len > 0) {
+                if (output_len > 0 && output_len < size - 1) {
                     *output = '.';
                     output++;
                     output_len += 1;
                 }
 
-                if (ptr > end) {
+                if (buff.readable() < len) {
                     PRINTF("length is not enough");
                     return -1;
                 }
 
-                ptr++;
                 if (output_len < size - 1) {
                     /* copy sub string */
                     copy_len = (len < size - output_len) ? len : size - 1 - output_len;
-                    if ((ptr + copy_len) > end) {
+                    if (copy_len > buff.readable()) {
                         PRINTF("length is not enough");
                         return -1;
                     }
-                    memcpy(output, ptr, copy_len);
+                    buff.read(output, copy_len);
+                } else {
+                    buff.retrieve(len);
                 }
 
-                ptr += len;
                 output += len;
                 output_len += len;
             }
-
-            if (is_compressed == 0) {
-                buff.retrieve(ptr-(uint8_t*)buff.reader());
+            
+            if (is_compressed == 1) {
+                buff.reset(ptr-(uint8_t*)buff.begin());
             }
 
             return output_len;
@@ -640,7 +668,7 @@ struct opt_t {
                 PRINTF("left length is not enough.");
                 return -1;
             }
-            out.type_ = buff.readInt32();
+            out.ttl_ = buff.readInt32();
 
             return 0;
         }
@@ -789,7 +817,7 @@ struct opt_t {
 }
 
 template<class TBase>
-class DNSSocketT : public TBase
+class DNSSocketBaseT : public TBase
 {
     typedef TBase Base;
 public:
@@ -797,7 +825,7 @@ public:
 protected:
 	//
 	//解析数据包
-	virtual int ParseBuf(const char* lpBuf, int & nBufLen) { 
+	int Parse(const char* lpBuf, int & nBufLen) { 
 		int nParseFlags = 0;
 		DNS::Message msg;
         nParseFlags = msg.Parse(lpBuf, nBufLen);
@@ -812,6 +840,56 @@ protected:
 
     }
 };
+
+template<class TBase>
+class DNSSocketT : public DNSSocketBaseT<TBase>
+{
+    typedef DNSSocketBaseT<TBase> Base;
+public:
+
+protected:
+	//
+	//解析数据包
+	int ParseBuf(const char* lpBuf, int & nBufLen) { 
+		return Parse(lpBuf,nBufLen);
+	}
+
+};
+
+template<class TBase>
+class DNSUdpSocketT : public DNSSocketBaseT<TBase>
+{
+    typedef DNSSocketBaseT<TBase> Base;
+public:
+	typedef typename Base::SockAddr SockAddr;
+    
+protected:
+	//
+	//解析数据包
+    int ParseBuf(const char* lpBuf, int & nBufLen, const SockAddr & stAddr)
+    {
+        return Parse(lpBuf,nBufLen);
+    }
+};
+
+template<class TBase>
+class DNSClientSocketT : public TBase
+{
+    typedef TBase Base;
+public:
+
+protected:
+	//
+    void OnDNSMessage(DNS::Message& msg)
+    {
+        /* not answer, return error */
+        if (msg.Head().QR != DNS::QR_RESPONSE) {
+            PRINTF("message type error.");
+            return;
+        }
+    }
+};
+
 }
 
 #endif//_H_XDNS_IMPL_H_

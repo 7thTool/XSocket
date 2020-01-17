@@ -27,6 +27,7 @@
 #include <condition_variable>
 #endif
 #include <thread>
+#include <future>
 #include <functional>
 #include <algorithm>
 #include <vector>
@@ -77,6 +78,8 @@ enum
 class XSOCKET_API SocketEx : public Socket
 {
 	typedef Socket Base;
+public:
+	static std::future<struct addrinfo*> AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints);
 public:
 	SocketEx();
 	virtual ~SocketEx();
@@ -634,6 +637,114 @@ protected:
 };
 
 typedef ThreadServiceT<Service> ThreadService;
+
+/*!
+ *	@brief ThreadPool 模板定义.
+ *
+ *	封装ThreadPool，线程池
+ */
+class ThreadPool
+{
+public:
+	static ThreadPool& Inst() {
+		static ThreadPool _inst(std::thread::hardware_concurrency() + 1);
+		return _inst;
+	}
+
+	ThreadPool() : stop_flag_(true)
+	{
+		
+	}
+	ThreadPool(size_t threads) : stop_flag_(true)
+	{
+		Start(threads);
+	}
+
+	~ThreadPool()
+	{
+		Stop();
+	}
+
+	inline bool IsStopFlag() {
+		return stop_flag_;
+	}
+
+	void Start(size_t threads)
+	{
+		bool expected = true;
+		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+			return;
+		}
+		for (size_t i = 0; i < threads; ++i) {
+			workers_.emplace_back(
+				[this] {
+					for (;;)
+					{
+						std::function<void()> task;
+						{
+							std::unique_lock<std::mutex> lock(mutex_);
+							cv_.wait(lock,[this] { return stop_flag_ || !tasks_.empty(); });
+							if (stop_flag_ && tasks_.empty())
+								return;
+							task = std::move(tasks_.front());
+							tasks_.pop();
+						}
+						task();
+					}
+				});
+		}
+		//return true;
+	}
+
+	void Stop()
+	{
+		bool expected = false;
+		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+			return;
+		}
+		cv_.notify_all();
+		for (auto &worker : workers_) {
+			worker.join();
+		}
+	}
+
+	void Post(std::function<void()> &task)
+	{
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+
+			tasks_.emplace(task);
+		}
+		cv_.notify_one();
+	}
+
+	template<class F, class... Args>
+	auto Post(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+
+			tasks_.emplace([task](){ (*task)(); });
+		}
+		cv_.notify_one();
+		return res;
+	}
+
+private:
+	std::atomic<bool> stop_flag_;
+	std::vector<std::thread> workers_;
+	std::queue<std::function<void()>> tasks_;
+	std::mutex mutex_;
+	std::condition_variable cv_;
+};
 
 /*!
  *	@brief WorkSocketT 模板定义.

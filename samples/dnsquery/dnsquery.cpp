@@ -80,13 +80,13 @@ typedef ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>> Client
 typedef ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
 #endif
 #ifdef USE_OPENSSL
-typedef SSLConnectSocketT<DNSSocketT<SimpleSocketT<SSLSocketT<ClientSocketBase>>>> ClientSocket;
+typedef SSLConnectSocketT<DNSClientSocketT<DNSSocketT<SimpleSocketT<SSLSocketT<ClientSocketBase>>>>> ClientSocket;
 #else 
-typedef DNSSocketT<SimpleSocketT<ClientSocketBase>> ClientSocket;
+typedef DNSClientSocketT<DNSSocketT<SimpleSocketT<ClientSocketBase>>> ClientSocket;
 #endif
 #endif//USE_MANAGER
 #else
-typedef DNSSocketT<SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>,SockAddrType>> ClientSocket;
+typedef DNSClientSocketT<DNSUdpSocketT<SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>,SockAddrType>>> ClientSocket;
 #endif//USE_UDP
 
 class client
@@ -150,11 +150,48 @@ protected:
 		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
 		stAddr.sin_port = htons((u_short)port_);
 	#endif//
+		struct addrinfo ai = {0};
+		ai.ai_family = AF_INETType;
+		ai.ai_socktype = SOCK_DGRAM;
+		ai.ai_flags = AI_PASSIVE;
+		auto result = AsyncGetAddrInfo("www.baidu.com", "", &ai);
+		std::future_status status;
+		do {
+			status = result.wait_for(std::chrono::milliseconds(10));
+			switch (status)
+			{
+			case std::future_status::ready:
+				PRINTF("AsyncGetAddrInfo Ready...");
+				break;
+			case std::future_status::timeout:
+				PRINTF("AsyncGetAddrInfo Wait...");
+				break;
+			case std::future_status::deferred:
+				PRINTF("AsyncGetAddrInfo Deferred...");
+				break;
+			default:
+				break;
+			}
+	
+		} while (status != std::future_status::ready);
+		struct addrinfo* ai_result = result.get();
 		DNS::Message msg;
-		msg.Head().id = 0;
-		std::string buf;
-		msg.Encode(buf);
-		PostBuf(buf.data(),buf.size(),stAddr,SOCKET_PACKET_FLAG_TEMPBUF);
+		msg.Head().id = 1024;
+		msg.Head().QR = DNS::QR_QUERY;
+		msg.Head().opcode = DNS::OPCODE_QUERY;
+		msg.Head().AA = 0;
+		msg.Head().RD = 1;
+		msg.Head().RA = 0;
+		msg.Head().rcode = 0;
+		msg.Head().Questions = 1;
+		DNS::qrinfo_t qr;
+		qr.name_ = "www.baidu.com";
+		qr.type_ = DNS::TYPE_A;
+		qr.class_ = DNS::CLASS_IN;
+		msg.QRs().push_back(qr);
+        XBuffer buff(DNS::DNS_DEF_DATA_SIZE,true);
+		msg.Encode(buff);
+		PostBuf(buff.data(),buff.size(),stAddr,SOCKET_PACKET_FLAG_TEMPBUF);
 	#endif//
 		return true;
 	}
@@ -202,24 +239,12 @@ public:
 protected:
 	//
 #ifndef USE_UDP
-	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
-	{
-		Base::OnRecvBuf(lpBuf, nBufLen, nFlags);
-		PostBuf("hello.",6,0);
-	}
-
 	virtual void OnConnect(int nErrorCode)
 	{
 		Base::OnConnect(nErrorCode);
 		if(!IsConnected()) {
 			return;
 		}
-	}
-#else
-	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
-	{
-		PostBuf("hello.",6,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
-		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
 	}
 #endif//
 };
@@ -274,7 +299,7 @@ public:
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+			c[i].Start(ChinaDNS1,DNSPort);
 		}
 	#endif//
 		return ret;

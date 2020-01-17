@@ -5,196 +5,154 @@
 
 namespace XSocket {
 
-typedef union {
-	uint64_t n64;
-	struct
-	{
-		uint32_t n32_h;
-		uint32_t n32_l;
-	};
-} cov64_t;
-
 /*
 * 类名：XRBuffer
 * 说明：通讯内存只读处理类
 */
 class XRBuffer
 {
-  public:
+protected:
+	typedef union {
+		uint64_t n64;
+		struct {
+			uint32_t n32_h;
+			uint32_t n32_l;
+		};
+	} cov64_t;
+public:
 	explicit XRBuffer(const char *buf, size_t len, bool ne = false)
-		: buffer_(buf), size_(len), ne_(ne), readerIndex_(0)
-	{
+		: buffer_(buf), size_(len), ne_(ne), readerIndex_(0) {
 		ASSERT(readable() == size_);
 	}
 
-	void update(const char *buf, size_t len, bool reread = false)
-	{
-		 buffer_ = buf;
-		 size_ = len;
-		 if(reread) {
-		 	readerIndex_ = 0;
-		 }
+	inline void update(const char *buf, size_t len, bool reread = false) {
+		buffer_ = buf;
+		size_ = len;
+		if (reread) {
+			readerIndex_ = 0;
+		}
 	}
 
-	void swap(XRBuffer &rhs)
-	{
+	inline void swap(XRBuffer &rhs) {
 		std::swap(buffer_, rhs.buffer_);
 		std::swap(size_, rhs.size_);
 		std::swap(readerIndex_, rhs.readerIndex_);
 	}
 
-	void clear()
-	{
+	inline void clear() {
 		buffer_ = nullptr;
 		size_ = 0;
 		readerIndex_ = 0;
 	}
 
-	void reset()
-	{
-		readerIndex_ = 0;
+	inline void reset(size_t index = 0) {
+		ASSERT(index <= size_);
+		readerIndex_ = index;
 	}
 
-	size_t size() const
-	{
+	inline size_t size() const {
 		return size_ - readerIndex_;
 	}
 
-	char *begin()
-	{
-		return const_cast<char*>(buffer_);
+	inline char *begin() {
+		return const_cast<char *>(buffer_);
 	}
 
-	const char *begin() const
-	{
+	inline const char *begin() const {
 		return buffer_;
 	}
 
-	char *end()
-	{
-		return const_cast<char*>(buffer_ + size_);
+	inline char *end() {
+		return const_cast<char *>(buffer_ + size_);
 	}
 
-	const char *end() const
-	{
+	inline const char *end() const {
 		return buffer_ + size_;
 	}
 
-	size_t readable() const
-	{
+	inline size_t readable() const {
 		return size_ - readerIndex_;
 	}
 
-	const char *data() const
-	{
+	inline const char *data() const {
 		return begin() + readerIndex_;
 	}
 
-	const char *reader() const
-	{
+	inline const char *reader() const {
 		return begin() + readerIndex_;
 	}
 
-	void retrieve(size_t len)
-	{
+	inline void unread(size_t len) {
+		ASSERT(len <= readerIndex_);
+		readerIndex_ -= len;
+	}
+
+	inline void retrieve(size_t len) {
 		ASSERT(len <= readable());
-		if (len < readable())
-		{
+		if (len <= readable()) {
 			readerIndex_ += len;
 		}
-		else
-		{
-			reset();
-		}
 	}
+	inline void retrieveInt64() { retrieve(sizeof(uint64_t)); }
+	inline void retrieveInt32() { retrieve(sizeof(uint32_t)); }
+	inline void retrieveInt16() { retrieve(sizeof(uint16_t)); }
+	inline void retrieveInt8() { retrieve(sizeof(uint8_t)); }
 
-	void retrieveInt64()
-	{
-		retrieve(sizeof(uint64_t));
-	}
-
-	void retrieveInt32()
-	{
-		retrieve(sizeof(uint32_t));
-	}
-
-	void retrieveInt16()
-	{
-		retrieve(sizeof(uint16_t));
-	}
-
-	void retrieveInt8()
-	{
-		retrieve(sizeof(uint8_t));
-	}
-
-	char *read(char *buf, size_t len)
-	{
+	inline char *read(char *buf, size_t len) {
 		peek(buf, len);
 		retrieve(len);
 		return buf;
 	}
 
 	template <class Y>
-	Y &read(Y &rhs)
-	{
+	inline Y &read(Y &rhs) {
 		read(&rhs, sizeof(Y));
 		return rhs;
 	}
 
-	uint64_t readInt64(bool ne = false)
-	{
+	inline uint64_t readInt64(bool ne = false) {
 		uint64_t result = peekInt64(ne);
 		retrieveInt64();
 		return result;
 	}
 
-	uint32_t readInt32(bool ne = false)
-	{
+	inline uint32_t readInt32(bool ne = false) {
 		uint32_t result = peekInt32(ne);
 		retrieveInt32();
 		return result;
 	}
 
-	uint16_t readInt16(bool ne = false)
-	{
+	inline uint16_t readInt16(bool ne = false) {
 		uint16_t result = peekInt16(ne);
 		retrieveInt16();
 		return result;
 	}
 
-	uint8_t readInt8(bool ne = false)
-	{
+	inline uint8_t readInt8(bool ne = false) {
 		uint8_t result = peekInt8();
 		retrieveInt8();
 		return result;
 	}
 
-	char *peek(char *buf, size_t len)
-	{
+	inline char *peek(char *buf, size_t len) {
 		ASSERT(readable() >= len);
 		::memcpy(buf, reader(), len);
 		return buf;
 	}
 	template <class Y>
-	Y &peek(Y &rhs)
-	{
+	inline Y &peek(Y &rhs) {
 		peek(&rhs, sizeof(Y));
 		return rhs;
 	}
-	uint64_t peekInt64(bool ne) const
-	{
+	inline uint64_t peekInt64(bool ne) const {
 		ASSERT(readable() >= sizeof(uint64_t));
-		if (ne_ && !ne)
-		{
+		if (ne_ && !ne) {
 			cov64_t x;
 			::memcpy(&x.n64, reader(), sizeof(uint64_t));
 			x.n32_h = ntohl(x.n32_h);
 			x.n32_l = ntohl(x.n32_l);
 			return x.n64;
-		}
-		else if (!ne_ && ne)
-		{
+		} else if (!ne_ && ne) {
 			cov64_t x;
 			::memcpy(&x.n64, reader(), sizeof(uint64_t));
 			x.n32_h = htonl(x.n32_h);
@@ -206,46 +164,37 @@ class XRBuffer
 		return x;
 	}
 
-	uint32_t peekInt32(bool ne) const
-	{
+	inline uint32_t peekInt32(bool ne) const {
 		ASSERT(readable() >= sizeof(uint32_t));
 		uint32_t x = 0;
 		::memcpy(&x, reader(), sizeof(uint32_t));
-		if (ne_ && !ne)
-		{
+		if (ne_ && !ne) {
 			x = ntohl(x);
-		}
-		else if (!ne_ && ne)
-		{
+		} else if (!ne_ && ne) {
 			x = htonl(x);
 		}
 		return x;
 	}
 
-	uint16_t peekInt16(bool ne) const
-	{
+	inline uint16_t peekInt16(bool ne) const {
 		ASSERT(readable() >= sizeof(uint16_t));
 		uint16_t x = 0;
 		::memcpy(&x, reader(), sizeof(uint16_t));
-		if (ne_ && !ne)
-		{
+		if (ne_ && !ne) {
 			x = ntohs(x);
-		}
-		else if (!ne_ && ne)
-		{
+		} else if (!ne_ && ne) {
 			x = htons(x);
 		}
 		return x;
 	}
 
-	uint8_t peekInt8() const
-	{
+	inline uint8_t peekInt8() const {
 		ASSERT(readable() >= sizeof(uint8_t));
 		uint8_t x = *reader();
 		return x;
 	}
 
-  protected:
+protected:
 	const char *buffer_;
 	size_t size_;
 	bool ne_;
@@ -265,126 +214,101 @@ class XRBuffer
 class XBuffer : public XRBuffer
 {
 	typedef XRBuffer Base;
-  public:
+public:
 	explicit XBuffer(size_t size = 1024, bool ne = false)
-		: Base(nullptr,0,ne)
-	{
+		: Base(nullptr, 0, ne) {
 		innerBuffer_.reserve(size);
 		ASSERT(readable() == 0);
 		ASSERT(writable() == 0);
 	}
 
-	void swap(XBuffer &rhs)
-	{
+	inline void swap(XBuffer &rhs) {
 		Base::swap(rhs);
 		innerBuffer_.swap(rhs.innerBuffer_);
 	}
 
-	void clear()
-	{
+	inline void clear() {
 		Base::clear();
 		innerBuffer_.clear();
 	}
 
-	size_t writable() const
-	{
+	inline size_t writable() const {
 		return innerBuffer_.size() - Base::size_;
 	}
 
-	size_t available() const
-	{
+	inline size_t available() const {
 		ASSERT(Base::size_ >= readerIndex_);
 		return innerBuffer_.size() - (Base::size_ - readerIndex_);
 	}
 
-	size_t capacity() const
-	{
+	inline size_t capacity() const {
 		return innerBuffer_.capacity();
 	}
 
-	char *writer()
-	{
+	inline char *writer() {
 		return begin() + Base::size_;
 	}
 
-	const char *writer() const
-	{
+	inline const char *writer() const {
 		return begin() + Base::size_;
 	}
 
-	void ensureWritable(size_t len)
-	{
-		if (writable() < len)
-		{
+	inline void ensureWritable(size_t len) {
+		if (writable() < len) {
 			ensureWritableBytes(len);
 		}
 		ASSERT(writable() >= len);
 	}
 
-	void write(size_t len)
-	{
+	inline void write(size_t len) {
 		ASSERT(len <= writable());
 		Base::size_ += len;
 	}
 
-	void unwrite(size_t len)
-	{
+	inline void unwrite(size_t len) {
 		ASSERT(len <= readable());
 		Base::size_ -= len;
 	}
 
-	void write(const char *buf, size_t len)
-	{
+	inline void write(const char *buf, size_t len) {
 		ensureWritable(len);
 		std::copy(buf, buf + len, writer());
 		write(len);
 	}
 
-	void write(const void *buf, size_t len)
-	{
+	inline void write(const void *buf, size_t len) {
 		write(static_cast<const char *>(buf), len);
 	}
 	template <class Y>
-	Y &write(const Y &rhs)
-	{
+	inline Y &write(const Y &rhs) {
 		write(&rhs, sizeof(Y));
 	}
 
-	void writeVarint(uint64_t x, bool ne = false)
+	inline void writeVarint(uint64_t x, bool ne = false)
 	{
-		if (x < (uint8_t)0xfd)
-		{
+		if (x < (uint8_t)0xfd) {
 			writeInt8((uint8_t)x);
-		}
-		else if (x < (uint16_t)0xffff)
-		{
+		} else if (x < (uint16_t)0xffff) {
 			writeInt8((uint8_t)0xfd);
 			writeInt16((uint16_t)x, ne);
-		}
-		else if (x < (uint32_t)0xffffffffu)
-		{
+		} else if (x < (uint32_t)0xffffffffu) {
 			writeInt8((uint8_t)0xfe);
 			writeInt32((uint32_t)x, ne);
-		}
-		else
-		{
+		} else {
 			writeInt8((uint8_t)0xff);
 			writeInt64((uint64_t)x, ne);
 		}
 	}
 
-	void writeInt64(uint64_t x, bool ne = false)
+	inline void writeInt64(uint64_t x, bool ne = false)
 	{
-		if (ne_ && !ne)
-		{
+		if (ne_ && !ne) {
 			cov64_t cvt;
 			cvt.n64 = x;
 			cvt.n32_h = htonl(cvt.n32_h);
 			cvt.n32_l = htonl(cvt.n32_l);
 			x = cvt.n64;
-		}
-		else if (!ne_ && ne)
-		{
+		} else if (!ne_ && ne) {
 			cov64_t cvt;
 			cvt.n64 = x;
 			cvt.n32_h = ntohl(cvt.n32_h);
@@ -394,34 +318,25 @@ class XBuffer : public XRBuffer
 		write(&x, sizeof(uint64_t));
 	}
 
-	void writeInt32(uint32_t x, bool ne = false)
-	{
-		if (ne_ && !ne)
-		{
+	inline void writeInt32(uint32_t x, bool ne = false) {
+		if (ne_ && !ne) {
 			x = htonl(x);
-		}
-		else if (!ne_ && ne)
-		{
+		} else if (!ne_ && ne) {
 			x = ntohl(x);
 		}
 		write(&x, sizeof(uint32_t));
 	}
 
-	void writeInt16(uint16_t x, bool ne = false)
-	{
-		if (ne_ && !ne)
-		{
+	inline void writeInt16(uint16_t x, bool ne = false) {
+		if (ne_ && !ne) {
 			x = htons(x);
-		}
-		else if (!ne_ && ne)
-		{
+		} else if (!ne_ && ne) {
 			x = ntohs(x);
 		}
 		write(&x, sizeof(uint16_t));
 	}
 
-	void writeInt8(uint8_t x)
-	{
+	inline void writeInt8(uint8_t x) {
 		write(&x, sizeof(x));
 	}
 
@@ -522,8 +437,7 @@ class XBuffer : public XRBuffer
 	// 	prepend(&x, sizeof(x));
 	// }
 
-	void shrink()
-	{
+	inline void shrink() {
 		innerBuffer_.shrink_to_fit();
 		innerBuffer_.erase(innerBuffer_.begin(), innerBuffer_.begin() + Base::readerIndex_);
 		Base::buffer_ = innerBuffer_.data();
@@ -531,18 +445,14 @@ class XBuffer : public XRBuffer
 		Base::readerIndex_ = 0;
 	}
 
-  protected:
+protected:
 	//
-	void ensureWritableBytes(size_t len)
-	{
-		if (available() < len)
-		{
+	void ensureWritableBytes(size_t len) {
+		if (available() < len) {
 			// FIXME: move readable data
 			innerBuffer_.resize(Base::size_ + len);
 			Base::buffer_ = innerBuffer_.data();
-		}
-		else
-		{
+		} else {
 			// move readable data to the front, make space inside buffer
 			ASSERT(0 < Base::readerIndex_);
 			size_t readableSize = readable();
@@ -554,7 +464,7 @@ class XBuffer : public XRBuffer
 		}
 	}
 
-  protected:
+protected:
 	std::string innerBuffer_;
 };
 
