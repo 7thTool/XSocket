@@ -125,6 +125,45 @@ struct data16_t
     uint8_t data[0];
 };
 
+// 常见资源记录说明：
+// A 记录:
+// 描述：主机地址(A) 资源记录。将 DNS 域名映射到 Internet 协议(IP) 版本 4 的 32 位地址中（RFC 1035）
+// AAAA 记录:
+// 描述：IPv6 主机地址 (AAAA) 资源记录。将 DNS 域名映射到 Internet 协议 (IP) 版本 6 的 128 位地址中（RFC 1886）
+// NS 记录：
+// 描述：将 owner 中指定的 DNS 域名映射到在 name_server_domain_name 字段中指定的运行 DNS 服务器的主机名
+// NXT 记录：
+// 描述：下一资源记录。NXT 资源记录通过在域中创建所有字面上的所有者名称链，指出某个名称在域中不存在。它们同时也指出，一个已有名称当前有什么资源记录类型。
+// MR记录：
+// 描述：邮箱重命名 (MR) 资源记录。在 new_renamed_mailbox 中指定域邮箱名，作为对 owner 字段中指定的现有邮箱的合适重命名。MR 资源记录经常用做已移至不同邮箱的用户的转发项目。
+// MR 记录不产生额外的节处理。
+// MINFO 记录：
+// 描述：邮箱邮件列表信息 (MINFO) 资源记录。为维护 owner 字段中指定的邮寄列表或邮箱的负责人指定（在 responsible_mailbox 中）域邮箱名。
+// error_mailbox 字段也可用于指定接收与该邮寄列表或邮箱相关的错误消息的域邮箱。为负责联系人和错误转发指定的邮箱必须与当前区域中已存在的有效邮箱 (MB) 记录相同。
+// KEY 记录：
+// 描述：公钥资源记录。包含与区域有关的公钥。在完整的 DNSSEC 实现中，解析程序和服务器使用 KEY 资源记录来验证从签名区域接收的 SIG 资源记录。
+// KEY 资源记录由父区域来签名，使知道父区域的公钥的服务器可以发现和验证子区域的密钥。从签名区域接收资源记录的名称服务器或解析程序获取相应的 SIG 记录，然后检索该区域的 KEY 记录。
+// HINFO 记录：
+// 描述：主机信息 (HINFO) 资源记录。针对 owner 字段中的主机 DNS 域名分别在 cpu_type 和 os_type 字段中指定 CPU 和操作系统的类型。大家都知道的最常用 CPU 和操作系统类型记录在 RFC 1700 中。 该信息可由 FTP 这样的应用协议使用，这些协议在与已知 CPU 和操作系统类型的计算机通讯时使用特殊的过程。
+// CNAME 记录：
+// 描述：规范名 (CNAME) 资源记录。将 owner 字段中的别名或备用的 DNS 域名映射到 canonical_name 字段中指定的标准或主要 DNS 域名。
+// 此数据中所使用的标准或主要 DNS 域名是必需的，并且必须解析为名称空间中有效的 DNS 域名
+// SOA 记录： 
+// 描述：起始授权机构 (SOA) 资源记录。指示区域的源名称，并包含作为区域主要信息源的服务器的名称。它还表示该区域的其他基本属性。
+// SOA 资源记录在任何标准区域中始终是首位记录。它表示最初创建它的 DNS 服务器或现在是该区域的主服务器的 DNS 服务器。
+// 它还用于存储会影响区域更新或过期的其他属性，如版本信息和计时。这些属性会影响在该区域的权威服务器之间进行区域传输的频繁程度语法：
+// owner TTL CLASS SOA name_server responsible_person(serial_number refresh_interval retry_interval expiration minimum_time_to_live)
+// PTR 记录：
+// 描述：指针 (PTR) 资源记录。正如 targeted_domain_name 中所指定的那样，从 owner 中的名称指向 DNS 名称空间中的另一位置。经常在诸如 in-addr.arpa 域树的特殊域中使用，
+// 以提供地址-名称映射的反向查找。在大多数情况下，每个记录提供指向另一 DNS 域名位置的信息，如正向查找区域中的相应主机 (A) 地址资源记录（RFC 1035）
+// MX 记录：
+// 描述：邮件交换器 (MX) 资源记录如 mail_exchanger_host 中指定的那样，为邮件交换器主机提供邮件路由，以便将邮件发送给 owner 字段中指定的域名。
+// preference 表示在指定了多个交换器主机情况下的首选顺序。每个交换机主机都必须在有效区域中有一个相应的主机 (A) 地址资源记录（RFC 1035）
+// TXT 记录：
+// 描述：文本 (TXT) 资源记录。将 owner 字段中指定的 DNS 域名映射到充作说明文本的 text_string 中的字符串。
+// OPT 记录：
+// 描述：选项资源记录。可将一个 OPT 资源记录添加到 DNS 请求或响应的附加数据部分。OPT 资源记录属于特定传输层消息（例如，UDP），不属于实际 DNS 数据。
+// 每条消息只允许具有一个 OPT 资源记录，但不是必需选项。
 enum type_t {
 	TYPE_A = 1,
 	TYPE_NS = 2,
@@ -518,14 +557,8 @@ struct opt_t {
         
         inline int readOpt(XRBuffer &buff, rrinfo_t& out, int rr_len)
         {
-            uint16_t opt_code;
-            uint16_t opt_len;
-            uint16_t ercode = (out.ttl_ >> 16) & 0xFFFF;
-            uint8_t *start = (uint8_t*)buff.reader();
-            int ret = 0;
-
             /*
-                Field Name   Field Type     Description
+            Field Name   Field Type     Description
             ------------------------------------------------------
             NAME         domain name    empty (root domain)
             TYPE         u_int16_t      OPT
@@ -534,6 +567,15 @@ struct opt_t {
             RDLEN        u_int16_t      describes RDATA
             RDATA        octet stream   {attribute,value} pairs
 
+            TTL
+                        +0 (MSB)                            +1 (LSB)
+            +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+        0: |         EXTENDED-RCODE        |            VERSION            |
+            +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+        2: |                               Z                               |
+            +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+
+            OPT(RDLEN+RDDATA)
                             +0 (MSB)                            +1 (LSB)
             +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
         0: |                          OPTION-CODE                          |
@@ -544,15 +586,13 @@ struct opt_t {
             /                          OPTION-DATA                          /
             /                                                               /
             +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-
-            TTL
-                        +0 (MSB)                            +1 (LSB)
-            +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-        0: |         EXTENDED-RCODE        |            VERSION            |
-            +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-        2: |                               Z                               |
-            +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
             */
+
+            int ret = 0;
+            uint16_t opt_code;
+            uint16_t opt_len;
+            uint16_t ercode = (out.ttl_ >> 16) & 0xFFFF;
+            uint8_t *start = (uint8_t*)buff.reader();
 
             if (ercode != 0) {
                 PRINTF("extend rcode invalid.");
@@ -788,7 +828,7 @@ struct opt_t {
             case TYPE_CNAME:
             case TYPE_PTR: {
                 ret = writeDomain(buff, in.name_);
-                if (ret < 0) {
+                if (ret < 0) {  
                     return -1;
                 }
             } break;
