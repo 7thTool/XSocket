@@ -528,6 +528,62 @@ public:
 };
 
 /*!
+ *	@brief TaskService 模板定义.
+ *
+ *	封装TaskService，线程池
+ */
+template<class TBase = Service>
+class TaskServiceT : public TBase
+{
+	typedef TBase Base;
+public:
+	
+	void Post(std::function<void()> &task)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		tasks_.emplace(task);
+	}
+
+	template<class F, class... Args>
+	auto Post(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+
+			tasks_.emplace([task](){ (*task)(); });
+		}
+		return res;
+	}
+
+protected:
+	//
+	virtual void OnNotify()
+	{
+		std::function<void()> task;
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+			if (tasks_.empty())
+				return;
+			task = std::move(tasks_.front());
+			tasks_.pop();
+		}
+		task();
+	}
+
+protected:
+	std::queue<std::function<void()>> tasks_;
+	std::mutex mutex_;
+};
+
+/*!
  *	@brief Event 定义.
  *
  *	封装Event，定义事件对象接口
