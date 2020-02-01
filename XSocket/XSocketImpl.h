@@ -1017,6 +1017,109 @@ public:
 };
 
 /*!
+ *	@brief SimpleTaskService 定义.
+ *
+ *	封装SimpleTaskService，实现简单事件服务
+ */
+template<class TBase/* = Service*/>
+class SimpleTaskServiceT : public TBase
+{
+	typedef TBase Base;
+protected:
+	struct Event : public DealyEvent
+	{
+		Event(std::function<void()> &_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
+		:DealyEvent(_delay, _repeat), ptr(_ptr), task(_task){}
+		Event(const Event& o):DealyEvent(o), ptr(o._ptr), task(o._task){}
+		//Event(const Event&& o):DealyEvent(o), ptr(o._ptr), task(o._task){}
+
+		void* ptr = nullptr;
+		std::function<void()> task;
+	};
+	std::queue<Event> tasks_;
+	std::mutex mutex_;
+	//
+	template<class... _Valty>	
+	inline void InnerPost(_Valty&&... _Val) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		queue_.emplace(std::forward<_Valty>(_Val)...);
+		Base::PostNotify();
+	}
+	inline bool IsActive(Event& evt) { return evt.IsActive(); }
+	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
+	inline void UpdateRepeat(Event& evt) { evt.Update(); }
+public:
+	SimpleTaskServiceT()
+	{
+		queue_.reserve(1024);
+	}
+
+	inline void Post(std::function<void()> &task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
+	{
+		InnerPost(task, ptr, delay, repeat);
+	}
+
+	template<class F, class... Args>
+	auto Post(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+
+		InnerPost([task](){ (*task)(); });
+
+		return res;
+	}
+
+protected:
+	//
+	inline void RemoveSocket(SocketEx* sock_ptr) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		for(int i = queue_.size() - 1; i >= 0; i--)
+		{
+			const Event& evt = queue_[i];
+			if (evt.ptr == sock_ptr) {
+				queue_.erase(queue_.begin() + i);
+			}
+		}
+	}
+
+	inline bool Pop(Event& evt) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		if (!queue_.empty()) {
+			evt = queue_[0];
+			queue_.erase(queue_.begin());
+			return true;
+		}
+		return false;
+	}
+
+	virtual void OnNotify()
+	{
+		for(size_t i = 0, j = queue_.size(); i < j; i++)
+		{
+			Event evt;
+			if (Pop(evt)) {
+				if (IsActive(evt)) {
+					evt.task();
+					if (IsRepeat(evt)) {
+						UpdateRepeat(evt);
+						Post(evt);
+					}
+				} else {
+					Post(evt);
+				}
+			}
+		}
+	}
+};
+
+/*!
  *	@brief SimpleEvtService 定义.
  *
  *	封装SimpleEvtService，实现简单事件服务

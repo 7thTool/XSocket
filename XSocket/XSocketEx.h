@@ -567,15 +567,18 @@ protected:
 	//
 	virtual void OnNotify()
 	{
-		std::function<void()> task;
+		for(size_t i = 0, j = tasks_.size(); i < j; i++) 
 		{
-			std::unique_lock<std::mutex> lock(mutex_);
-			if (tasks_.empty())
-				return;
-			task = std::move(tasks_.front());
-			tasks_.pop();
+			std::function<void()> task;
+			{
+				std::unique_lock<std::mutex> lock(mutex_);
+				if (tasks_.empty())
+					return;
+				task = std::move(tasks_.front());
+				tasks_.pop();
+			}
+			task();
 		}
-		task();
 	}
 
 protected:
