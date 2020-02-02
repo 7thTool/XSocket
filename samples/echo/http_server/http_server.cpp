@@ -16,43 +16,17 @@ using namespace XSocket;
 
 class worker;
 
-class HttpEvent : public DealyEvent
-{
-public:
-	worker* dst = nullptr;
-	int id;
-	std::string buf;
-	int flags;
-
-	HttpEvent() {}
-	HttpEvent(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
-
-	// inline int get_id() { return evt; }
-	// inline const char* get_data() { return data.c_str(); }
-	// inline int get_datalen() { return data.size(); }
-	// inline int get_flags() { return flags; }
-};
-
-class WorkEventService : public
+class WorkService : public
 #ifdef USE_EPOLL
-EventServiceT<HttpEvent,EPollService>
+SimpleTaskServiceT<EPollService>
 #elif defined(USE_IOCP)
-EventServiceT<HttpEvent,CompletionPortService>
+SimpleTaskServiceT<CompletionPortService>
 #else
-EventServiceT<HttpEvent,SelectService>
+SimpleTaskServiceT<SelectService>
 #endif//
 {
 public:
-
-	inline worker* IsSocketEvent(const Event& evt)
-	{
-		return evt.dst;
-	}
-	inline bool IsActive(Event& evt) { return evt.IsActive(); }
-	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
-	inline void UpdateRepeat(Event& evt) { evt.Update(); }
 };
-typedef SimpleSocketEvtServiceT<WorkEventService> WorkService;
 
 #ifdef USE_EPOLL
 typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
@@ -67,15 +41,15 @@ typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 
 class worker
 #ifdef USE_OPENSSL
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
+	: public SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
 #else
-	: public SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
+	: public SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
 #endif
 {
 #ifdef USE_OPENSSL
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
+	typedef SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
 #else
-	typedef SocketExImpl<worker,HttpSocketT<SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
+	typedef SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
 #endif
 public:
 	worker()
@@ -89,17 +63,27 @@ public:
 	}
 
 public:
+	//
+	inline void PostBuf(const std::string& Buf, int nFlags = 0)
+	{
+		//this_service()->Post(std::function<void()>([this,Buf,nFlags](){ SendBuf(Buf, nFlags); }));
+		this_service()->Post(std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags), this, 3000, 10);
+	}
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
-		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
+		auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
+		this_service()->Post(std::function<void()>([this,buf,nFlags](){ SendBuf(buf->c_str(), buf->size(), nFlags); }));
+		/*以下是bind，package、future使用方法
+		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags);
+		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags));
+		// auto task = std::make_shared< std::packaged_task<int()> >(
+		// 		std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags)
+		// 	);
+		std::future<int> fu;
+		this_service()->Post(this_service()->Package(fu, (int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags));
+		*/
 	}
 
-	virtual void OnEvent(const Event& evt)
-	{
-		if(evt.id == FD_WRITE) {
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
-		}
-	}
 protected:
 	//
 	virtual void OnMessage(const HttpRequest& req)
@@ -112,7 +96,7 @@ protected:
 		"\r\n";
 		ss.write(req.body_.first,req.body_.second);
 		std::string buf = ss.str();
-		PostBuf(buf.c_str(),buf.size());
+		PostBuf(buf);
 	}
 
 #ifdef USE_WEBSOCKET

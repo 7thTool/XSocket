@@ -537,12 +537,6 @@ class TaskServiceT : public TBase
 {
 	typedef TBase Base;
 public:
-	
-	void Post(std::function<void()> &task)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		tasks_.emplace(task);
-	}
 
 	template<class F, class... Args>
 	auto Post(F&& f, Args&&... args) 
@@ -555,11 +549,9 @@ public:
 			);
 			
 		std::future<return_type> res = task->get_future();
-		{
-			std::unique_lock<std::mutex> lock(mutex_);
 
-			tasks_.emplace([task](){ (*task)(); });
-		}
+		Post([task](){ (*task)(); });
+
 		return res;
 	}
 
@@ -609,6 +601,7 @@ class DealyEvent
 public:
 	DealyEvent(size_t _delay = 0, size_t _repeat = 0):time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
 	DealyEvent(const DealyEvent& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+	//DealyEvent(const DealyEvent&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
 	inline bool IsActive() const {
 		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
 		if(delay.count() > 0 && repeat >= 0) {
@@ -765,16 +758,6 @@ public:
 		for (auto &worker : workers_) {
 			worker.join();
 		}
-	}
-
-	void Post(std::function<void()> &task)
-	{
-		{
-			std::unique_lock<std::mutex> lock(mutex_);
-
-			tasks_.emplace(task);
-		}
-		cv_.notify_one();
 	}
 
 	template<class F, class... Args>

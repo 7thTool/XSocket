@@ -291,6 +291,15 @@ public:
 		return ret;
 	}
 
+	inline int SendBuf(const std::string& Buf, int nFlags = 0)
+	{
+		//std::lock_guard<std::mutex> lock(m_SendSection);
+		
+		m_SendBuffer += Buf;
+
+		return SendBufDirect(0, nFlags);
+	}
+
 	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
@@ -1017,6 +1026,62 @@ public:
 };
 
 /*!
+ *	@brief SimpleTaskSocketT 定义.
+ *
+ *	封装SimpleTaskSocketT，增加任务调用支持，支持异步DNS
+ */
+template<class TBase>
+class SimpleTaskSocketT : public SimpleSvrSocketT<TBase>
+{
+	typedef SimpleTaskSocketT<TBase> Base;
+public:
+	typedef typename Base::SocketSet TaskSocketSet;
+public:
+	
+	inline /*std::future<struct addrinfo*>*/void Resolve(const char *hostname, const char *service, const struct addrinfo *hints)
+	{
+		auto result = std::async(//std::launch::async|std::launch::deferred,
+		//return ThreadPool::Inst().Post(
+			[this,hostname,service,hints] {
+			struct addrinfo* res = nullptr;
+			GetAddrInfo(hostname,service,hints,&res);
+			this_service()->Post(std::bind(this, &OnResolve, res));
+			return res;
+		});
+	#if 0
+		std::future_status status;
+		do {
+			status = result.wait_for(std::chrono::milliseconds(10));
+			switch (status)
+			{
+			case std::future_status::ready:
+				PRINTF("AsyncGetAddrInfo Ready...");
+				break;
+			case std::future_status::timeout:
+				PRINTF("AsyncGetAddrInfo Wait...");
+				break;
+			case std::future_status::deferred:
+				PRINTF("AsyncGetAddrInfo Deferred...");
+				break;
+			default:
+				break;
+			}
+
+		} while (status != std::future_status::ready);
+		struct addrinfo *ai_result = result.get();
+	#endif//
+		//return result;
+	}
+
+protected:
+	//
+	virtual void OnResolve(struct addrinfo *res)
+	{
+
+	}
+};
+
+/*!
  *	@brief SimpleTaskService 定义.
  *
  *	封装SimpleTaskService，实现简单事件服务
@@ -1028,21 +1093,40 @@ class SimpleTaskServiceT : public TBase
 protected:
 	struct Event : public DealyEvent
 	{
-		Event(std::function<void()> &_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
+		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
 		:DealyEvent(_delay, _repeat), ptr(_ptr), task(_task){}
-		Event(const Event& o):DealyEvent(o), ptr(o._ptr), task(o._task){}
-		//Event(const Event&& o):DealyEvent(o), ptr(o._ptr), task(o._task){}
+		Event(const Event& o):DealyEvent(o), ptr(o.ptr), task(o.task){}
+		Event(Event&& o):DealyEvent(o), ptr(o.ptr), task(std::move(o.task)){}
 
+		Event& operator = (const Event& rhs) {
+			if(this == &rhs) return *this;
+			DealyEvent::operator=(rhs);
+			ptr = rhs.ptr;
+			task = rhs.task;
+        	return *this;
+    	}
+		Event& operator = (const Event&& rhs) {
+			if(this == &rhs) return *this;
+			DealyEvent::operator=(std::move(rhs));
+			ptr = rhs.ptr;
+			task = std::move(rhs.task);
+        	return *this;
+    	}
 		void* ptr = nullptr;
 		std::function<void()> task;
 	};
-	std::queue<Event> tasks_;
+	std::vector<Event> queue_;
 	std::mutex mutex_;
 	//
-	template<class... _Valty>	
+	/*template<class... _Valty>	
 	inline void InnerPost(_Valty&&... _Val) {
 		std::lock_guard<std::mutex> lock(mutex_);
-		queue_.emplace(std::forward<_Valty>(_Val)...);
+		queue_.emplace_back(std::forward<_Valty>(_Val)...);
+		Base::PostNotify();
+	}*/
+	inline void InnerPost(Event&& evt) {
+		std::lock_guard<std::mutex> lock(mutex_);
+		queue_.emplace_back(std::forward<Event>(evt));
 		Base::PostNotify();
 	}
 	inline bool IsActive(Event& evt) { return evt.IsActive(); }
@@ -1054,26 +1138,30 @@ public:
 		queue_.reserve(1024);
 	}
 
-	inline void Post(std::function<void()> &task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
+	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
 	{
-		InnerPost(task, ptr, delay, repeat);
+		InnerPost(Event(std::move(task), ptr, delay, repeat));
 	}
 
 	template<class F, class... Args>
-	auto Post(F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
+	static inline std::function<void()>&& MakeF(F&& f, Args&&... args) 
+	{
+		auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
+		return std::move([task](){ task(); });
+	}
+
+	template<class F, class... Args>
+	static inline std::function<void()>&& MakeF(std::future<typename std::result_of<F(Args...)>::type>& fu, F&& f, Args&&... args)
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
 
 		auto task = std::make_shared< std::packaged_task<return_type()> >(
 				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
 			);
-			
-		std::future<return_type> res = task->get_future();
 
-		InnerPost([task](){ (*task)(); });
+		fu = task->get_future();
 
-		return res;
+		return std::move([task](){ (*task)(); });
 	}
 
 protected:
@@ -1089,31 +1177,25 @@ protected:
 		}
 	}
 
-	inline bool Pop(Event& evt) {
-		std::unique_lock<std::mutex> lock(mutex_);
-		if (!queue_.empty()) {
-			evt = queue_[0];
-			queue_.erase(queue_.begin());
-			return true;
-		}
-		return false;
-	}
-
 	virtual void OnNotify()
 	{
 		for(size_t i = 0, j = queue_.size(); i < j; i++)
 		{
-			Event evt;
-			if (Pop(evt)) {
-				if (IsActive(evt)) {
-					evt.task();
-					if (IsRepeat(evt)) {
-						UpdateRepeat(evt);
-						Post(evt);
-					}
-				} else {
-					Post(evt);
+			std::unique_lock<std::mutex> lock(mutex_);
+			if (queue_.empty()) {
+				break;
+			}
+			Event evt(std::move(queue_[0]));
+			queue_.erase(queue_.begin());
+			lock.unlock();
+			if (IsActive(evt)) {
+				evt.task();
+				if (IsRepeat(evt)) {
+					UpdateRepeat(evt);
+					InnerPost(std::move(evt));
 				}
+			} else {
+				InnerPost(std::move(evt));
 			}
 		}
 	}
