@@ -1094,9 +1094,18 @@ protected:
 	struct Event : public DealyEvent
 	{
 		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
-		:DealyEvent(_delay, _repeat), ptr(_ptr), task(_task){}
-		Event(const Event& o):DealyEvent(o), ptr(o.ptr), task(o.task){}
-		Event(Event&& o):DealyEvent(o), ptr(o.ptr), task(std::move(o.task)){}
+		:DealyEvent(_delay, _repeat), ptr(_ptr), task(_task) {
+			//PRINTF("Event");
+		}
+		Event(const Event& o):DealyEvent(o), ptr(o.ptr), task(o.task) {
+			//PRINTF("levent");
+		}
+		Event(Event&& o):DealyEvent(o), ptr(o.ptr), task(std::move(o.task)) {
+			//PRINTF("revent");
+		}
+		~Event() {
+			//PRINTF("~Event");
+		}
 
 		Event& operator = (const Event& rhs) {
 			if(this == &rhs) return *this;
@@ -1112,6 +1121,7 @@ protected:
 			task = std::move(rhs.task);
         	return *this;
     	}
+
 		void* ptr = nullptr;
 		std::function<void()> task;
 	};
@@ -1124,14 +1134,6 @@ protected:
 		queue_.emplace_back(std::forward<_Valty>(_Val)...);
 		Base::PostNotify();
 	}*/
-	inline void InnerPost(Event&& evt) {
-		std::lock_guard<std::mutex> lock(mutex_);
-		queue_.emplace_back(std::forward<Event>(evt));
-		Base::PostNotify();
-	}
-	inline bool IsActive(Event& evt) { return evt.IsActive(); }
-	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
-	inline void UpdateRepeat(Event& evt) { evt.Update(); }
 public:
 	SimpleTaskServiceT()
 	{
@@ -1140,18 +1142,21 @@ public:
 
 	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
 	{
-		InnerPost(Event(std::move(task), ptr, delay, repeat));
+		std::lock_guard<std::mutex> lock(mutex_);
+		//实时任务排在延迟任务前面，延迟任务按延迟时间和重复次数排队，延迟短和重复次数少排在前面,消费任务从头开始消费
+		auto it = queue_.rbegin();
+		for(; it != queue_.rend(); ++it)
+		{
+			if (it->IsLess(delay,repeat)) {
+				break;
+			}
+		}
+		queue_.emplace(it.base(),std::forward<std::function<void()>>(task), ptr, delay, repeat);
+		Base::PostNotify();
 	}
 
 	template<class F, class... Args>
-	static inline std::function<void()>&& MakeF(F&& f, Args&&... args) 
-	{
-		auto task = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
-		return std::move([task](){ task(); });
-	}
-
-	template<class F, class... Args>
-	static inline std::function<void()>&& MakeF(std::future<typename std::result_of<F(Args...)>::type>& fu, F&& f, Args&&... args)
+	static inline std::function<void()> Package(std::future<typename std::result_of<F(Args...)>::type>& fu, F&& f, Args&&... args)
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
 
@@ -1161,7 +1166,7 @@ public:
 
 		fu = task->get_future();
 
-		return std::move([task](){ (*task)(); });
+		return [task](){ (*task)(); };
 	}
 
 protected:
@@ -1177,27 +1182,39 @@ protected:
 		}
 	}
 
-	virtual void OnNotify()
+	void DoTask()
 	{
-		for(size_t i = 0, j = queue_.size(); i < j; i++)
+		//从头开始消费
+		for(size_t i = 0, j = queue_.size(), k = 0; i < j; i++)
 		{
 			std::unique_lock<std::mutex> lock(mutex_);
 			if (queue_.empty()) {
 				break;
 			}
-			Event evt(std::move(queue_[0]));
-			queue_.erase(queue_.begin());
+			Event& evt = queue_[k];
 			lock.unlock();
-			if (IsActive(evt)) {
+			if (evt.IsActive()) {
 				evt.task();
-				if (IsRepeat(evt)) {
-					UpdateRepeat(evt);
-					InnerPost(std::move(evt));
+				if (evt.IsRepeat()) {
+					evt.Update();
+					k++;
+				} else {
+					queue_.erase(queue_.begin()+k);
 				}
 			} else {
-				InnerPost(std::move(evt));
+				break;
 			}
 		}
+	}
+	
+	virtual void OnIdle()
+	{
+		DoTask();
+	}
+	
+	virtual void OnNotify()
+	{
+		DoTask();
 	}
 };
 

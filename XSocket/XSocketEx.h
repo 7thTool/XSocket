@@ -525,6 +525,14 @@ public:
 	typedef TSocket Socket;
 	typedef TService Service;
 public:
+
+protected:
+	//
+	virtual void OnIdle()
+	{
+		Socket::OnIdle();
+		Service::OnIdle();
+	}
 };
 
 /*!
@@ -601,7 +609,32 @@ class DealyEvent
 public:
 	DealyEvent(size_t _delay = 0, size_t _repeat = 0):time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
 	DealyEvent(const DealyEvent& o):time(o.time),delay(o.delay),repeat(o.repeat){}
-	//DealyEvent(const DealyEvent&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+	//DealyEvent(DealyEvent&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+
+	bool operator<(const DealyEvent& o) const
+    {
+        if(delay < o.delay) {
+			return true;
+		} else if(delay == o.delay) {
+			if(repeat < o.repeat) {
+				return true;
+			}
+		}
+		return false;
+    }
+	
+	inline bool IsLess(size_t _delay, size_t _repeat) { 
+		size_t dealyms = delay.count();
+		if(dealyms < _delay) {
+			return true;
+		} else if(dealyms == _delay) {
+			if(repeat < _repeat) {
+				return true;
+			}
+		}
+		return false;
+	} 
+
 	inline bool IsActive() const {
 		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
 		if(delay.count() > 0 && repeat >= 0) {
@@ -619,7 +652,7 @@ public:
 		if(delay.count() > 0 && repeat > 0) {
 			time = std::chrono::steady_clock::now();
 			//dealy;
-			if(repeat == (size_t)-1) {
+			if(repeat != (size_t)-1) {
 				--repeat;
 			}
 		}
@@ -1247,6 +1280,8 @@ protected:
 
 	virtual void OnIdle()
 	{
+		Base::OnIdle();
+		
 		//int next = sock_idle_next_, next_end = sock_idle_next_ + 20;
 		//sock_idle_next_ = next_end % uFD_SETSize;
 		//for (; next < next_end; next++)
@@ -1477,11 +1512,6 @@ public:
 
 protected:
 	//
-	virtual void OnIdle()
-	{
-		
-	}
-
 	virtual void OnRunOnce()
 	{
 		Base::OnRunOnce();
