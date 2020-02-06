@@ -277,7 +277,7 @@ void SocketEx::OnReceive(int nErrorCode)
 void SocketEx::OnReceive(const char* lpBuf, int nBufLen, int nFlags)
 {
 	if(IsDebug()) {
-		PRINTF("(%p %p %u)::OnReceive:%.*s", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+		PRINTF("(%p %p %u)::OnReceive:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, min(nBufLen,19), lpBuf);
 	}
 }
 
@@ -285,7 +285,7 @@ void SocketEx::OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpS
 {
 	if(IsDebug()) {
 		char str[64] = {0};
-		PRINTF("(%p %p %u)::OnReceiveFrom(%s): %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+		PRINTF("(%p %p %u)::OnReceiveFrom(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, min(nBufLen,19), lpBuf);
 	}
 }
 
@@ -302,7 +302,7 @@ void SocketEx::OnSend(int nErrorCode)
 void SocketEx::OnSend(const char* lpBuf, int nBufLen, int nFlags)
 {
 	if(IsDebug()) {
-		PRINTF("(%p %p %u)::OnSend:%.*s", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+		PRINTF("(%p %p %u)::OnSend:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, min(nBufLen,19), lpBuf);
 	}
 }
 
@@ -310,7 +310,7 @@ void SocketEx::OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAd
 {
 	if(IsDebug()) {
 		char str[64] = {0};
-		PRINTF("(%p %p %u)::OnSendTo(%s):%.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, lpBuf);
+		PRINTF("(%p %p %u)::OnSendTo(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, min(nBufLen,19), lpBuf);
 	}
 }
 
@@ -327,7 +327,7 @@ void SocketEx::OnOOB(int nErrorCode)
 void SocketEx::OnOOB(const char* lpBuf, int nBufLen, int nFlags)
 {
 	if(IsDebug()) {
-		PRINTF("(%p %p %u)::OnOOB:%.*s", Service::service(), this, (SOCKET)*this, nBufLen, lpBuf);
+		PRINTF("(%p %p %u)::OnOOB:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, min(nBufLen,19), lpBuf);
 	}
 }
 

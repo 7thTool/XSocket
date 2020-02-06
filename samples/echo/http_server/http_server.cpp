@@ -13,6 +13,47 @@
 #include "../../../XSocket/XSSLImpl.h"
 #endif
 using namespace XSocket;
+#include <random>
+
+
+#ifdef _WIN32
+#ifndef stat
+#define stat _stat
+#endif
+#ifndef fstat
+#define fstat _fstat
+#endif
+#ifndef open
+#define open _open
+#endif
+#ifndef close
+#define close _close
+#endif
+#ifndef O_RDONLY
+#define O_RDONLY _O_RDONLY
+#endif
+#endif /* _WIN32 */
+
+char uri_root[512];
+
+static const struct table_entry {
+	const char *extension;
+	const char *content_type;
+} content_type_table[] = {
+	{ "txt", "text/plain" },
+	{ "c", "text/plain" },
+	{ "h", "text/plain" },
+	{ "html", "text/html" },
+	{ "htm", "text/htm" },
+	{ "css", "text/css" },
+	{ "gif", "image/gif" },
+	{ "jpg", "image/jpeg" },
+	{ "jpeg", "image/jpeg" },
+	{ "png", "image/png" },
+	{ "pdf", "application/pdf" },
+	{ "ps", "application/postscript" },
+	{ NULL, NULL },
+};
 
 class worker;
 
@@ -88,26 +129,35 @@ public:
 
 protected:
 	//
-	virtual void OnMessage(const HttpRequest& req)
+	virtual void OnMessage(const HttpBufferMessage& msg)
 	{
-		if(req.body_.first)
-			PRINTF("%79s", req.body_.first);
-		std::ostringstream ss;
-		ss << "HTTP/1.1 200 OK\r\n"
-		"Connection: close\r\n"
-		"\r\n";
-		ss.write(req.body_.first,req.body_.second);
-		std::string buf = ss.str();
-		PostBuf(buf);
+		if(msg.size())
+			PRINTF("%.19s", msg.data());
+		HttpResponse rsp;
+		rsp.set_code(200);
+		//msg.field("Content-type")
+		rsp.set_field("Content-type", "text/html");
+		rsp.set_field("Content-Length", tostr(msg.size()));
+		rsp.set_data(std::string(msg.data(),msg.size()));
+		this_service()->Post(std::bind((void (worker::*)(HttpBufferMessage& req, HttpResponse&))&worker::SendHttpRspBuf, this, msg, rsp), this);
 	}
 
 #ifdef USE_WEBSOCKET
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
-			auto body = request_.GetBody();
-			SendWebSocketBuf(body.first, body.second, WS_OP_TEXT);
-			SendWebSocketBuf(body.first, body.second, 0);
-			SendWebSocketBuf(body.first, body.second, WS_FINAL_FRAME);
+		static std::default_random_engine random;
+		std::string buf(lpBuf,nBufLen);
+		for(size_t i = 0; i < 10; i++)
+		{
+			buf += buf;
+		}
+		SendWSBuf(buf.c_str(), buf.size(), SOCKET_PACKET_OP_TEXT
+		//, random()
+		);
+		SendWSBuf(buf.c_str(), buf.size(), 0
+		//, random()
+		);
+		SendWSBuf(buf.c_str(), buf.size(), SOCKET_PACKET_FLAG_FINAL);
 	}
 #endif
 };
@@ -119,7 +169,7 @@ class server
 public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{
-
+		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);
 	}
 	
 	bool OnChar(char c)
@@ -139,12 +189,44 @@ public:
 	}
 };
 
+void test(int & i)
+{
+	PRINTF("test(int & i)");
+}
+
+void test(int && i)
+{
+	PRINTF("test(int && i)");
+}
+
+void test_right(int&& i)
+{
+	test(i); //left
+	test(std::move(i)); //right
+	test(std::forward<int>(i)); //right
+	//File: ..\samples\echo\http_server\http_server.cpp, Line: 184: test(int & i)
+	//File: ..\samples\echo\http_server\http_server.cpp, Line: 189: test(int && i)
+	//File: ..\samples\echo\http_server\http_server.cpp, Line: 189: test(int && i)
+}
+
+void test()
+{
+	std::string str("abc");
+	std::ostringstream oss(str, std::ios_base::app);
+	oss << "123";
+	PRINTF("oss=%s str=%s", oss.str().c_str(), str.c_str());
+	int i = 0;
+	test_right(std::move(i));
+}
+
 #ifdef WIN32
 int _tmain(int argc, _TCHAR* argv[])
 #else
 int main()
 #endif//
 {
+	test();
+
 	worker::Init();
 #ifdef USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
@@ -153,7 +235,7 @@ int main()
     tls_ctx_config.dh_params_file;
     tls_ctx_config.ca_cert_file = "./ssl/dev.crt";
     tls_ctx_config.ca_cert_dir = "./ssl";
-    tls_ctx_config.protocols = "TLSv1.1 TLSv1.2";
+    tls_ctx_config.protocols = "TLSv1 TLSv1.1 TLSv1.2";
     tls_ctx_config.ciphers;
     tls_ctx_config.ciphersuites;
     tls_ctx_config.prefer_server_ciphers;

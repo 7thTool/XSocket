@@ -2,7 +2,7 @@
 #define _H_SAMPLES_H_
 
 #define USE_ZLIB
-#define USE_OPENSSL
+//#define USE_OPENSSL
 //#define USE_WEBSOCKET
 
 //////////////////////////////////////////////////////////////////////////

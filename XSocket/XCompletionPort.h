@@ -772,14 +772,15 @@ protected:
 							if (sock_ptr->IsSelect(FD_READ)) {
 								sock_ptr->Trigger(FD_READ, lpOverlapped->Buffer.buf, lpOverlapped->NumberOfBytesReceived, 0);
 							}
-						if (sock_ptr->IsSocket()) {
-							if (sock_ptr->IsSelect(FD_READ)) {
-								sock_ptr->Trigger(FD_READ, 0);
+							if (sock_ptr->IsSocket()) {
+								if (sock_ptr->IsSelect(FD_READ)) {
+									sock_ptr->Trigger(FD_READ, 0);
+								}
 							}
-						}
 						} else {
-							PRINTF("GetQueuedCompletionStatus Recv Error:%d WSAError:%d", ::GetLastError(), sock_ptr->GetLastError());
-							sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
+							DWORD dwError = WSAGetLastError();
+							PRINTF("GetQueuedCompletionStatus Recv WSAError:%d", dwError);
+							sock_ptr->Trigger(FD_CLOSE, dwError);
 						}
 					}
 					break;
@@ -796,8 +797,9 @@ protected:
 								}
 							}
 						} else {
-							PRINTF("GetQueuedCompletionStatus Send Error:%d WSAError:%d", ::GetLastError(), sock_ptr->GetLastError());
-							sock_ptr->Trigger(FD_CLOSE, sock_ptr->GetLastError());
+							DWORD dwError = WSAGetLastError();
+							PRINTF("GetQueuedCompletionStatus Send WSAError:%d", dwError);
+							sock_ptr->Trigger(FD_CLOSE, dwError);
 						}
 					}
 					break;

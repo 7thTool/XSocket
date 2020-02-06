@@ -8,6 +8,7 @@
 #include "../../../XSocket/XSSLImpl.h"
 #endif
 using namespace XSocket;
+#include <random>
 
 /* 测试的HTTP报文 */
 const std::string http_get_raw = "GET /favicon.ico HTTP/1.1\r\n"
@@ -102,7 +103,9 @@ protected:
 public:
 	client()
 	{
-		
+#ifdef USE_WEBSOCKET
+		EnableWSCache(true);
+#endif
 	}
 
 	bool Start(const std::string& addr, u_short port)
@@ -152,28 +155,31 @@ public:
 
 protected:
 	//
-	virtual void OnMessage(const HttpRequest& req)
+	virtual void OnMessage(const HttpBufferMessage& msg)
 	{
-		if(req.body_.first)
-			PRINTF("%79s", req.body_.first);
+		if(msg.size())
+			PRINTF("%.19s", msg.data());
 	}
 
-#ifdef USE_WEBSOCKET
-	virtual void OnUpgrade()
+	virtual void OnUpgrade(const HttpBufferMessage& msg)
 	{
-		SendWebSocketBuf("hello.", 6, WS_OP_TEXT|WS_FINAL_FRAME);
+		static std::default_random_engine random;
+#ifdef USE_WEBSOCKET
+		SendWSBuf("hello.", 6, SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL, random());
+#endif
 	}
+#ifdef USE_WEBSOCKET
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
-		PRINTF("%-79s", lpBuf);
-		SendWebSocketBuf("hello.", 6, WS_FINAL_FRAME|WS_OP_TEXT);
+		PRINTF("%d %.19s", nBufLen, lpBuf);
+		SendWSBuf("hello.", 6, SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL);
 	}
 #endif
 #ifdef USE_OPENSSL
 	virtual void OnSSLConnect()
 	{
 #ifdef USE_WEBSOCKET
-		Upgrade("localhost");
+		SendWSUpgrade("localhost");
 #else
 		PRINTF("%s",http_get_raw.c_str());
 		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
@@ -188,7 +194,7 @@ protected:
 		}
 #ifndef USE_OPENSSL
 #ifdef USE_WEBSOCKET
-		Upgrade("localhost");
+		SendWSUpgrade("localhost");
 #else
 		PRINTF("%s",http_get_raw.c_str());
 		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);

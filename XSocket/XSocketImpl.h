@@ -39,21 +39,30 @@ namespace XSocket {
  */
 enum  
 {
+	SOCKET_PACKET_FLAG_NONE			= 0,			//未知
 	//MSG_DONTROUTE,
 	//MSG_PARTIAL,
 	//...
-	//
-	SOCKET_PACKET_FLAG_NONE			= 0,			//未知
+	SOCKET_PACKET_MSG_MASK			= 0X0000FFFF,
+	//bitflag
 	SOCKET_PACKET_FLAG_PENDING		= 0X00010000,	//未完成
 	SOCKET_PACKET_FLAG_COMPLETE		= 0X00020000,	//是完整的包
 	SOCKET_PACKET_FLAG_SEND			= 0X00040000,	//是发送包
 	SOCKET_PACKET_FLAG_RECEIVE		= 0X00080000,	//是接收包
 	SOCKET_PACKET_FLAG_PUSH			= 0X00100000,	//是推送包
 	SOCKET_PACKET_FLAG_RESPONSE		= 0X00200000,	//是发送包的回应包
-	SOCKET_PACKET_FLAG_CONTINUE		= 0X00400000,	//是还要继续收包
-	SOCKET_PACKET_FLAG_HEARTBEAT	= 0X00800000,	//是心跳包
-	SOCKET_PACKET_FLAG_TEXT			= 0X40000000,	//文本
-	SOCKET_PACKET_FLAG_TEMPBUF		= 0X80000000,	//临时内存，不能引用buf指针
+	SOCKET_PACKET_FLAG_FINAL		= 0X00400000,	//是还要继续收发包
+	SOCKET_PACKET_FLAG_TEMPBUF		= 0X08000000,	//临时内存，不能引用buf指针
+	SOCKET_PACKET_FLAG_MASK			= 0X0FFF0000,
+	//opcodes
+	SOCKET_PACKET_OP_CONTINUE 		= 0X00000000,	//是继续收发包
+	SOCKET_PACKET_OP_HEARTBEAT		= 0X10000000,	//是心跳包
+	SOCKET_PACKET_OP_PING			= SOCKET_PACKET_OP_HEARTBEAT,	//是PING
+	SOCKET_PACKET_OP_PONG			= 0X20000000,	//是PONG
+	SOCKET_PACKET_OP_CLOSE			= 0X30000000,	//关闭
+	SOCKET_PACKET_OP_TEXT			= 0X40000000,	//文本
+    SOCKET_PACKET_OP_BINARY 		= 0x50000000,	//二进制
+	SOCKET_PACKET_OP_MASK			= 0XF0000000,
 };
 
 /*!
@@ -121,17 +130,7 @@ protected:
 	//接收完整一个包
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags) 
 	{
-		if(m_pRecvBuf) {
-			if(nBufLen < m_nRecvLen) {
-				//需要移动数据
-				m_nRecvLen = m_nRecvLen-nBufLen;
-				memmove(m_pRecvBuf, m_pRecvBuf + nBufLen, m_nRecvLen);
-			} else {
-				m_nRecvLen = 0;
-				//m_pRecvBuf;
-				//m_nRecvBufLen;
-			}
-		}
+		
 	}
 
 	//准备发送数据包
@@ -187,15 +186,43 @@ protected:
 	{
 		Base::OnReceive(lpBuf, nBufLen, nFlags);
 		m_nRecvLen += nBufLen;
-		int nParseBufLen = m_nRecvLen;
-		int nParseFlags = ParseBuf(m_pRecvBuf, nParseBufLen);
+		const char* lpParseBuf = m_pRecvBuf;
+		int nParseBufLen = m_nRecvLen; //还剩多少数据长度需要解析
+		int nParseFlags = 0;
+		do {
+			int nPacketBufLen = nParseBufLen;
+			nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen);
+			if(!nParseFlags) {
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
+				break;
+			} else if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
+				break;
+			} else {
+				OnRecvBuf(lpParseBuf, nPacketBufLen, nParseFlags);
+			}
+			lpParseBuf += nPacketBufLen;
+			nParseBufLen -= nPacketBufLen;
+		} while (nParseBufLen > 0);
 		if(!nParseFlags) {
-			Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
-		}
-		if (SOCKET_PACKET_FLAG_COMPLETE & nParseFlags) {
-			OnRecvBuf(m_pRecvBuf, nParseBufLen, nParseFlags);
+			//异常不处理了，后续会关闭连接
 		} else {
-			PrepareExpandRecvBuf(m_pRecvBuf, m_nRecvBufLen);
+			if(nParseBufLen <= 0) {
+				m_nRecvLen = 0;
+				//m_pRecvBuf;
+				//m_nRecvBufLen;
+			} else if(nParseBufLen < m_nRecvBufLen) {
+				//还剩nParseBufLen长度数据没有解析
+				if(nParseBufLen == m_nRecvLen) {
+					//没有解析任何数据，不需要移动数据
+				} else {
+					//需要移动数据
+					m_nRecvLen = nParseBufLen;
+					memmove(m_pRecvBuf, lpParseBuf, nParseBufLen);
+				}
+			} else {
+				//需要扩展接收缓存
+				PrepareExpandRecvBuf(m_pRecvBuf, m_nRecvBufLen);
+			}
 		}
 	}
 
@@ -291,39 +318,37 @@ public:
 		return ret;
 	}
 
+	inline size_t NotSendBufSize() 
+	{
+		return m_SendBuffer.size() + m_PrepareSendBuffer.size();
+	}
+
+	inline std::string& SendBuf() 
+	{
+		return m_SendBuffer;
+	}
+
 	inline int SendBuf(const std::string& Buf, int nFlags = 0)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 		
 		m_SendBuffer += Buf;
 
-		return SendBufDirect(0, nFlags);
+		return SendBufDirect(nFlags);
 	}
 
 	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 
-		m_SendBuffer.insert(m_SendBuffer.end(),lpBuf,lpBuf+nBufLen);
+		m_SendBuffer.append(lpBuf,lpBuf+nBufLen);
 
-		return SendBufDirect(0, nFlags);
+		return SendBufDirect(nFlags);
 	}
 
-	inline char* SendBuf(int nExpandLen)
-	{
-		//std::lock_guard<std::mutex> lock(m_SendSection);
-
-		int nOldBufLen = m_SendBuffer.size();
-		m_SendBuffer.resize(nOldBufLen+nExpandLen);
-		return (char*)(m_SendBuffer.c_str() + nOldBufLen);
-	}
-
-	inline int SendBufDirect(int nShrinkLen, int nFlags = 0)
+	inline int SendBufDirect(int nFlags = 0)
 	{
 		ASSERT(Base::IsSocket());
-		if(nShrinkLen > 0) {
-			m_SendBuffer.resize(m_SendBuffer.size()-nShrinkLen);
-		}
 		int nBufLen = m_SendBuffer.size();
 		if(!Base::IsSelect(FD_WRITE)) {
 			Base::Select(FD_WRITE);
@@ -737,11 +762,12 @@ protected:
 		ASSERT(nAddrLen==sizeof(SockAddr));
 		Base::OnReceiveFrom(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags); 
 		const char* lpParseBuf = lpBuf;
-		int nParseBufLen = nBufLen;
+		int nParseBufLen = nBufLen; //还剩多少数据长度需要解析
 		do {
 			int nPacketBufLen = nParseBufLen;
 			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, *(SockAddr*)lpAddr);
 			if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
+				//UDP不允许存在解包不完整，不完整就丢弃
 				//Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 				break;
 			}

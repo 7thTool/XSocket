@@ -174,7 +174,7 @@ static int Configure(TLSContextConfig *ctx_config) {
             protocols |= TLS_PROTO_TLSv1_2;
         } else if (0 == strnicmp(tokens, "tlsv1.3", 7)) {
 #ifdef TLS1_3_VERSION
-            protocols |= REDIS_TLS_PROTO_TLSv1_3;
+            protocols |= TLS_PROTO_TLSv1_3;
 #else
             PRINTF("TLSv1.3 is specified in tls-protocols but not supported by OpenSSL.");
             protocols = -1;

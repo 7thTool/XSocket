@@ -1652,6 +1652,102 @@ inline const wchar_t* wcsnrbrk(const wchar_t* string, int rlen, const wchar_t* s
 // #define _tcsnrbrk strnrbrk
 // #endif//
 
+	template<typename Target>
+	inline Target strto(const std::string& arg, const Target& def = Target())
+	{
+		if (!arg.empty()) {
+			try
+			{
+				Target o;
+				std::stringstream ss;
+				ss << arg;
+				ss >> o;
+				return o;
+			}
+			catch(std::exception& e)
+			{
+
+			}
+			catch (...)
+			{
+
+			}
+		}
+		return def;
+	}
+
+	template<typename Target>
+	inline Target wcsto(const std::wstring& arg, const Target& def = Target())
+	{
+		if (!arg.empty()) {
+			try 
+			{
+				Target o;
+				std::wstringstream ss;
+				ss << arg;
+				ss >> o;
+				return o;
+			}
+			catch(std::exception& e)
+			{
+
+			}
+			catch (...)
+			{
+
+			}
+		}
+		return def;
+	}
+
+	template<typename Source>
+	inline std::string tostr(const Source& arg)
+	{
+		std::ostringstream ss;
+		ss << arg;
+		return ss.str();
+	}
+
+	template<typename Source>
+	inline std::wstring towcs(const Source& arg)
+	{
+		std::wostringstream ss;
+		ss << arg;
+		return ss.str();
+	}
+
+	template<typename Source>
+	inline std::string tostrex(const Source& arg, int p = -1, int w = -1, char c = '0')
+	{
+		std::ostringstream ss;
+		if (p>=0) {
+			ss.setf(std::ios::fixed);
+			ss.precision(p);
+		}
+		if (w>=0) {
+			ss.width(w);
+			ss.fill(c);
+		}
+		ss << arg;
+		return ss.str();
+	}
+
+	template<typename Source>
+	inline std::wstring towcsex(const Source& arg, int p = -1, int w = -1, wchar_t c = '0')
+	{
+		std::wostringstream ss;
+		if (p>=0) {
+			ss.setf(std::ios::fixed);
+			ss.precision(p);
+		}
+		if (w>=0) {
+			ss.width(w);
+			ss.fill(c);
+		}
+		ss << arg;
+		return ss.str();
+	}
+
 }
 
 #endif//_H_XSTR_H_

@@ -34,12 +34,26 @@
 #include <queue>
 #include <set>
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 #include "XSocket.h"
 
 namespace XSocket {
 
 	class SocketEx;
 	class Service;
+
+	static inline std::string gmt_time_now() {
+		/**
+		 * Generate a UTC ISO8601-formatted timestamp
+		 * and return as std::string
+		 */
+		auto now = std::chrono::system_clock::now();
+		auto tt = std::chrono::system_clock::to_time_t(now);
+		std::ostringstream ss;
+		ss << std::put_time(gmtime(&tt), "%FT%TZ");
+		return ss.str();
+	}
 
 /*!
  *	@brief Socket 角色定义.
@@ -425,8 +439,8 @@ class Service
 protected:
     //停止标记，默认停止状态，启动后停止状态为false
     std::atomic<bool> stop_flag_;
-	uint32_t idle_flag_:1; //空闲处理标志
-	uint32_t notify_flag_:1; //通知处理标志
+	uint32_t idle_flag_:1; //空闲处理标志,0表示不执行空闲任务，1表示执行空闲任务
+	uint32_t notify_flag_:1; //通知处理标志,0表示没有通知任务，1表示有通知任务
 	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
 public:
 
@@ -503,7 +517,8 @@ protected:
 						std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
 						if(tp_span < max_span) {
 							//std::this_thread::yield();
-							std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+							//std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+							std::this_thread::sleep_for(max_span-tp_span);
 						}
 					}
 				}
@@ -1712,6 +1727,8 @@ protected:
 		}
 		if(nfds > 0)
 			nfds = select(maxfds, &readfds, &writefds, &exceptfds, &tv);
+		else if(tv.tv_usec)
+			std::this_thread::sleep_for(std::chrono::microseconds(tv.tv_usec));
 		if (nfds > 0) {
 			for (size_t i = 0; i < uFD_SETSize; ++i)
 			{
@@ -1836,6 +1853,9 @@ public:
 	{
 		
 	}
+
+	inline void SetWaitTimeOut(size_t millis) { SockManager::SetWaitTimeOut(millis); Base::SetWaitTimeOut(millis); }
+	inline size_t GetWaitTimeOut() { return Base::GetWaitTimeOut(); }
 
 	bool Start(const char* address, u_short port)
 	{
