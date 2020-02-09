@@ -82,15 +82,15 @@ typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 
 class worker
 #ifdef USE_OPENSSL
-	: public SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
+	: public HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
 #else
-	: public SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
+	: public HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
 #endif
 {
 #ifdef USE_OPENSSL
-	typedef SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
+	typedef HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
 #else
-	typedef SocketExImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
+	typedef HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
 #endif
 public:
 	worker()
@@ -129,7 +129,7 @@ public:
 
 protected:
 	//
-	virtual void OnMessage(const HttpBufferMessage& msg)
+	/*virtual void OnMessage(const HttpBufferMessage& msg)
 	{
 		if(msg.size())
 			PRINTF("%.19s", msg.data());
@@ -139,8 +139,8 @@ protected:
 		rsp.set_field("Content-type", "text/html");
 		rsp.set_field("Content-Length", tostr(msg.size()));
 		rsp.set_data(std::string(msg.data(),msg.size()));
-		this_service()->Post(std::bind((void (worker::*)(HttpBufferMessage& req, HttpResponse&))&worker::SendHttpRspBuf, this, msg, rsp), this);
-	}
+		this_service()->Post(std::bind((void (worker::*)(HttpBufferMessage& req, HttpResponse&))&worker::SendHttpResponse, this, msg, rsp), this);
+	}*/
 
 #ifdef USE_WEBSOCKET
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
@@ -160,6 +160,35 @@ protected:
 		SendWSBuf(buf.c_str(), buf.size(), SOCKET_PACKET_FLAG_FINAL);
 	}
 #endif
+};
+
+class HttpHandler : public SimpleTaskServiceT<ThreadCVService>
+{
+	typedef SimpleTaskServiceT<ThreadCVService> Base;
+public:
+	HttpHandler():Base()
+	{
+		worker::Router().ANY("",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+	}
+
+protected:
+	//
+	void OnMessage(std::shared_ptr<worker> http, std::shared_ptr<HttpRequest> req)
+	{
+		//std::async(//std::launch::async|std::launch::deferred,
+		ThreadPool::Inst().Post(
+			[http,req] {
+			if(req->size())
+				PRINTF("%.19s", req->data());
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+			rsp->set_code(200);
+			//msg.field("Content-type")
+			rsp->set_field("Content-type", "text/html");
+			rsp->set_field("Content-Length", tostr(req->size()));
+			rsp->set_data(std::string(req->data(),req->size()));
+			http->PostHttpResponse(req, rsp);
+		});
+	}
 };
 
 class server 
@@ -241,11 +270,17 @@ int main()
     tls_ctx_config.prefer_server_ciphers;
 	worker::Configure(&tls_ctx_config);
 #endif
+
+	HttpHandler h;
+	h.Start();
+
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
 	getchar();
 	s->Stop();
 	delete s;
+
+	h.Stop();
 
 	worker::Term();
 

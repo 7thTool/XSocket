@@ -57,7 +57,7 @@ const std::string http_trunk_part_2 = "6\r\n world\r\n"
 
 class client;
 
-class HttpEvent : public DealyEvent
+class Event : public DealyEventBase
 {
 public:
 	client* dst = nullptr;
@@ -65,8 +65,8 @@ public:
 	std::string buf;
 	int flags;
 
-	HttpEvent() {}
-	HttpEvent(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+	Event() {}
+	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 
 	// inline int get_id() { return evt; }
 	// inline const char* get_data() { return data.c_str(); }
@@ -74,7 +74,7 @@ public:
 	// inline int get_flags() { return flags; }
 };
 class ClientEventService : public
-EventServiceT<HttpEvent,SelectService>
+EventServiceT<Event,SelectService>
 {
 public:
 
@@ -93,9 +93,9 @@ typedef SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<
 #else 
 typedef SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>> ClientSocket;
 #endif
-class client: public SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
+class client: public SocketExImpl<client,SelectClientT<ClientService,HttpReqSocketT<ClientSocket>>>
 {
-	typedef SocketExImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
+	typedef SocketExImpl<client,SelectClientT<ClientService,HttpReqSocketT<ClientSocket>>> Base;
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -159,6 +159,7 @@ protected:
 	{
 		if(msg.size())
 			PRINTF("%.19s", msg.data());
+		Base::OnMessage(msg);
 	}
 
 	virtual void OnUpgrade(const HttpBufferMessage& msg)
@@ -197,7 +198,18 @@ protected:
 		SendWSUpgrade("localhost");
 #else
 		PRINTF("%s",http_get_raw.c_str());
-		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
+		HttpParser parser;
+		int nParseLen = http_get_raw.size();
+		parser.ParseBuf(http_get_raw.c_str(),nParseLen);
+		const auto& msgs = parser.messages();
+		if(msgs.size()) {
+			std::shared_ptr<HttpRequest> req = std::make_shared<HttpRequest>();
+			msgs.back().to_request(*req);
+			std::promise<std::shared_ptr<HttpResponse>> rsp;
+			std::future<std::shared_ptr<HttpResponse>> ret = rsp.get_future();
+			SendHttpRequest(req,std::move(rsp));
+		}
+		//SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
 #endif
 #endif
 	}
@@ -222,8 +234,13 @@ public:
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-			//c[i].Start("www.baidu.com",443);
-			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+			c[i].Start("www.baidu.com",
+#ifdef USE_OPENSSL
+			443);
+#else
+			80);
+#endif
+			//c[i].Start(DEFAULT_IP,DEFAULT_PORT);
 		}
 		return true;
 	}

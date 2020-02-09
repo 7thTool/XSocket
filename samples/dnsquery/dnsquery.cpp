@@ -14,7 +14,7 @@ using namespace XSocket;
 
 class client;
 
-class ClientEvent : public DealyEvent
+class Event : public DealyEventBase
 {
 public:
 	client* dst = nullptr;
@@ -25,11 +25,11 @@ public:
 #endif
 	int flags;
 
-	ClientEvent() {}
+	Event() {}
 #ifndef USE_UDP
-	ClientEvent(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
+	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 #else
-	ClientEvent(client* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+	Event(client* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
 #endif
 
 	// inline int get_id() { return evt; }
@@ -37,13 +37,13 @@ public:
 	// inline int get_datalen() { return data.size(); }
 	// inline int get_flags() { return flags; }
 };
-class ClientEventService : public
+class EventService : public
 #ifdef USE_EPOLL
-EventServiceT<ClientEvent,EPollService>
+EventServiceT<Event,EPollService>
 #elif defined(USE_IOCP)
-EventServiceT<ClientEvent,CompletionPortService>
+EventServiceT<Event,CompletionPortService>
 #else
-EventServiceT<ClientEvent,SelectService>
+EventServiceT<Event,SelectService>
 #endif//
 {
 public:
@@ -56,7 +56,7 @@ public:
 	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
 	inline void UpdateRepeat(Event& evt) { evt.Update(); }
 };
-typedef SimpleSocketEvtServiceT<ClientEventService> ClientService;
+typedef SimpleSocketEvtServiceT<EventService> ClientService;
 
 #ifndef USE_UDP
 #ifdef USE_EPOLL

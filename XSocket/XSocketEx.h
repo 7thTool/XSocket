@@ -529,6 +529,40 @@ protected:
 };
 
 /*!
+ *	@brief CVServiceT 模板定义.
+ *
+ *	封装CVServiceT，线程池
+ */
+template<class TBase = Service>
+class CVServiceT : public TBase
+{
+	typedef TBase Base;
+public:
+
+	inline void PostNotify() { 
+		//std::lock_guard<std::mutex> lock(mutex_);
+		Base::PostNotify();
+		cv_.notify_one(); 
+	}
+	
+protected:
+	//
+	virtual void OnRunOnce()
+	{
+		Base::OnRunOnce();
+		size_t timeout = Base::GetWaitingTimeOut();
+		if (timeout) {
+			std::unique_lock<std::mutex> lock(mutex_);
+			cv_.wait_for(lock, std::chrono::milliseconds(timeout));
+		}
+	}
+
+protected:
+	std::mutex mutex_;
+	std::condition_variable cv_;
+};
+
+/*!
  *	@brief SocketService 定义.
  *
  *	封装SocketService，实现套接字和事件服务框架关联，这里需要使用者继承自enable_shared_from_this将SocketService对象添加到SocketSet里
@@ -551,9 +585,9 @@ protected:
 };
 
 /*!
- *	@brief TaskService 模板定义.
+ *	@brief TaskServiceT 模板定义.
  *
- *	封装TaskService，线程池
+ *	封装TaskServiceT，线程池
  */
 template<class TBase = Service>
 class TaskServiceT : public TBase
@@ -604,29 +638,29 @@ protected:
 /*!
  *	@brief Event 定义.
  *
- *	封装Event，定义事件对象接口
+ *	封装EventBase，定义事件对象接口
  */
-class Event
+class EventBase
 {
 public:
-	inline bool IsActive(Event& evt) { return true; }
-	inline bool IsRepeat(Event& evt) { return false; }
-	inline void Update(Event& evt) { }
+	inline bool IsActive(EventBase& evt) { return true; }
+	inline bool IsRepeat(EventBase& evt) { return false; }
+	inline void Update(EventBase& evt) { }
 };
 
 /*!
- *	@brief DealyEvent 定义.
+ *	@brief DealyEventBase 定义.
  *
- *	封装DealyEvent，定义延迟事件
+ *	封装DealyEventBase，定义延迟事件
  */
-class DealyEvent
+class DealyEventBase
 {
 public:
-	DealyEvent(size_t _delay = 0, size_t _repeat = 0):time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
-	DealyEvent(const DealyEvent& o):time(o.time),delay(o.delay),repeat(o.repeat){}
-	//DealyEvent(DealyEvent&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+	DealyEventBase(size_t _delay = 0, size_t _repeat = 0):time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
+	DealyEventBase(const DealyEventBase& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+	//DealyEventBase(DealyEventBase&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
 
-	bool operator<(const DealyEvent& o) const
+	bool operator<(const DealyEventBase& o) const
     {
         if(delay < o.delay) {
 			return true;
@@ -737,6 +771,7 @@ protected:
 };
 
 typedef ThreadServiceT<Service> ThreadService;
+typedef ThreadServiceT<CVServiceT<Service>> ThreadCVService;
 
 /*!
  *	@brief ThreadPool 模板定义.

@@ -17,7 +17,7 @@ using namespace XSocket;
 
 class worker;
 
-class WorkEvent : public DealyEvent
+class WorkEvent : public DealyEventBase
 {
 public:
 	worker* dst = nullptr;

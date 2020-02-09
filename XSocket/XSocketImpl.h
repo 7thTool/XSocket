@@ -1117,16 +1117,17 @@ class SimpleTaskServiceT : public TBase
 {
 	typedef TBase Base;
 protected:
-	struct Event : public DealyEvent
+	struct Event : public DealyEventBase
 	{
+		typedef DealyEventBase Base;
 		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
-		:DealyEvent(_delay, _repeat), ptr(_ptr), task(_task) {
+		:Base(_delay, _repeat), ptr(_ptr), task(_task) {
 			//PRINTF("Event");
 		}
-		Event(const Event& o):DealyEvent(o), ptr(o.ptr), task(o.task) {
+		Event(const Event& o):Base(o), ptr(o.ptr), task(o.task) {
 			//PRINTF("levent");
 		}
-		Event(Event&& o):DealyEvent(o), ptr(o.ptr), task(std::move(o.task)) {
+		Event(Event&& o):Base(o), ptr(o.ptr), task(std::move(o.task)) {
 			//PRINTF("revent");
 		}
 		~Event() {
@@ -1135,14 +1136,14 @@ protected:
 
 		Event& operator = (const Event& rhs) {
 			if(this == &rhs) return *this;
-			DealyEvent::operator=(rhs);
+			DealyEventBase::operator=(rhs);
 			ptr = rhs.ptr;
 			task = rhs.task;
         	return *this;
     	}
 		Event& operator = (const Event&& rhs) {
 			if(this == &rhs) return *this;
-			DealyEvent::operator=(std::move(rhs));
+			DealyEventBase::operator=(std::move(rhs));
 			ptr = rhs.ptr;
 			task = std::move(rhs.task);
         	return *this;
@@ -1168,6 +1169,7 @@ public:
 
 	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
 	{
+		{
 		std::lock_guard<std::mutex> lock(mutex_);
 		//实时任务排在延迟任务前面，延迟任务按延迟时间和重复次数排队，延迟短和重复次数少排在前面,消费任务从头开始消费
 		auto it = queue_.rbegin();
@@ -1178,6 +1180,7 @@ public:
 			}
 		}
 		queue_.emplace(it.base(),std::forward<std::function<void()>>(task), ptr, delay, repeat);
+		}
 		Base::PostNotify();
 	}
 

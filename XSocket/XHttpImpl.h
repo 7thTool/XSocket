@@ -33,6 +33,95 @@
 
 namespace XSocket {
 
+	class HttpUrl
+	{
+	protected:
+		const char* url_;
+		size_t len_;
+		std::string hold_;
+		struct http_parser_url parser_;
+	public:
+		HttpUrl(const char* url, size_t len, bool hold = false)
+		{
+			if(hold) {
+				hold_.assign(url, len);
+				url_ = hold_.c_str();
+				len_ = hold_.size();
+			} else {
+				url_ = url;
+				len_ = len;
+			}
+			//char *url = "http://www.baidu.com:8000/users?username=zhangsan#bar";
+			http_parser_url_init(&parser_);
+			int err = http_parser_parse_url(url_, len_, 0, &parser_);
+			if(err == 0) {
+			}
+		}
+
+		inline const char* data() { return url_; }
+		inline size_t size() { return len_; }
+
+		inline std::string Schema()
+		{
+			if(parser_.field_set & (1 << UF_SCHEMA)) {
+				return std::string(url_ + parser_.field_data[UF_SCHEMA].off, parser_.field_data[UF_SCHEMA].len);
+			}
+			return std::string();
+		}
+
+		inline std::string Host()
+		{
+			if(parser_.field_set & (1 << UF_HOST)) {
+				return std::string(url_ + parser_.field_data[UF_HOST].off, parser_.field_data[UF_HOST].len);
+			}
+			return std::string();
+		}
+		
+		inline u_short Port()
+		{
+			u_short port = 80;
+			if(parser_.port) {
+				port = parser_.port;
+			} else if(parser_.field_set & (1 << UF_SCHEMA)) {
+				if(strnicmp(url_ + parser_.field_data[UF_SCHEMA].off, "https", parser_.field_data[UF_SCHEMA].len) == 0) {
+					port = 443;
+				}
+			}
+			return port;
+		}
+		
+		inline std::string Path()
+		{
+			if(parser_.field_set & (1 << UF_PATH)) {
+				return std::string(url_ + parser_.field_data[UF_PATH].off, parser_.field_data[UF_PATH].len);
+			}
+			return std::string();
+		}
+		
+		inline std::string Query()
+		{
+			if(parser_.field_set & (1 << UF_QUERY)) {
+				return std::string(url_ + parser_.field_data[UF_QUERY].off, parser_.field_data[UF_QUERY].len);
+			}
+			return std::string();
+		}
+		
+		inline std::string Fragment()
+		{
+			if(parser_.field_set & (1 << UF_FRAGMENT)) {
+				return std::string(url_ + parser_.field_data[UF_FRAGMENT].off, parser_.field_data[UF_FRAGMENT].len);
+			}
+			return std::string();
+		}
+		
+		inline std::string UserInfo()
+		{
+			if(parser_.field_set & (1 << UF_USERINFO)) {
+				return std::string(url_ + parser_.field_data[UF_USERINFO].off, parser_.field_data[UF_USERINFO].len);
+			}
+			return std::string();
+		}
+	};
 	class HttpMessage
 	{
 	public:
@@ -63,7 +152,7 @@ namespace XSocket {
 			}
 			return nullptr;
 		}
-		inline void set_field(std::string& name, std::string& value)
+		inline void set_field(const std::string& name, const std::string& value)
 		{
 			for(size_t i = 0; i < fields_.size(); i++)
 			{
@@ -97,9 +186,9 @@ namespace XSocket {
 			}
 		}
 
-		inline const char* data() const { body_.data(); }
+		inline const char* data() const { return body_.data(); }
 		inline size_t size() const { return body_.size(); }
-		inline void set_data(std::string& body) { body_ = body; }
+		inline void set_data(const std::string& body) { body_ = body; }
 		inline void set_data(std::string&& body) { body_ = std::move(body); }
 	};
 	class HttpRequest : public HttpMessage
@@ -117,12 +206,12 @@ namespace XSocket {
 			}
 			return url_.c_str();
 		}
-		inline void set_url(std::string& url) { url_ = url; }
+		inline void set_url(const std::string& url) { url_ = url; }
 
-		void to_string(std::string& buf)
+		void to_string(std::string& buf) const
 		{
 			std::ostringstream oss;
-			oss << http_method_str((enum http_method)method_) << " " << url_ << "HTTP/" << http_major << "." << http_minor << "\r\n";
+			oss << http_method_str((enum http_method)method_) << " " << url_ << " HTTP/" << http_major << "." << http_minor << "\r\n";
 			for(const auto& field : fields_)
 			{
 				oss << field.name << ": " << field.value << "\r\n";
@@ -147,9 +236,9 @@ namespace XSocket {
 			}
 			return status_.c_str();
 		}
-		inline void set_reason(std::string& reason) { status_ = reason; }
+		inline void set_reason(const std::string& reason) { status_ = reason; }
 
-		void to_string(std::string& buf)
+		void to_string(std::string& buf) const
 		{
 			std::ostringstream oss;
 			oss << "HTTP/" << http_major << "." << http_minor << " " << status_code << " " << status_ << "\r\n";
@@ -163,15 +252,9 @@ namespace XSocket {
 		}
 	};
 
-	/*!
-	 *	@brief HttpBuffer 定义.
-	 *
-	 *	封装HttpBuffer，实现Http数据包构建和解析
-	 */
-	template<class THolder>
-	class HttpBufferT
+	class HttpParser
 	{
-		typedef HttpBufferT<THolder> This;
+		typedef HttpParser This;
 	public:
 		typedef std::pair<const char*,size_t> strref;
 		struct Message
@@ -242,7 +325,7 @@ namespace XSocket {
 			inline const char* data() const { return body_.first; }
 			inline size_t size() const { return body_.second; }
 
-			void to_request(HttpRequest& req)
+			void to_request(HttpRequest& req) const
 			{
 				req.set_major(major());
 				req.set_minor(minor());
@@ -254,10 +337,10 @@ namespace XSocket {
 				}
 				req.set_data(std::string(data(),size()));
 			}
-			void to_response(HttpResponse& rsp)
+			void to_response(HttpResponse& rsp) const
 			{
-				req.set_major(major());
-				req.set_minor(minor());
+				rsp.set_major(major());
+				rsp.set_minor(minor());
 				rsp.set_code(code());
 				rsp.set_reason(reason());
 				for(const auto& field : fields_)
@@ -268,19 +351,9 @@ namespace XSocket {
 			}
 		};
 	protected:
-		THolder* holder_;
 		http_parser_settings settings_ = {0};
 		http_parser parser_ = {0};
 		std::vector<Message> msgs_;
-
-		inline void clear()
-		{
-			http_parser parser = parser_;
-			http_parser_init(&parser_, (http_parser_type)parser_.type);
-			parser_.upgrade = parser.upgrade;
-			parser_.data = parser.data;
-			msgs_.clear();
-		}
 
 		static int on_message_begin (http_parser* parser)
 		{
@@ -433,7 +506,7 @@ namespace XSocket {
 		}
 
 	public:
-		HttpBufferT(THolder* holder, http_parser_type type = HTTP_BOTH):holder_(holder)
+		HttpParser(http_parser_type type = HTTP_BOTH)
 		{
 			msgs_.reserve(3);
 
@@ -446,6 +519,61 @@ namespace XSocket {
 			settings_.on_message_complete = &This::on_message_complete;
 			http_parser_init(&parser_, type);
 			parser_.data = this;
+		}
+
+		//解析数据包
+		int ParseBuf(const char* lpBuf, int & nBufLen) { 
+			int nParsed = 0;
+			ASSERT(!parser_.upgrade);
+			nParsed = http_parser_execute(&parser_, &settings_, lpBuf, nBufLen);
+			if(nParsed < 0) {
+				return SOCKET_PACKET_FLAG_NONE;
+			}
+			if(msgs_.empty() || !msgs_.back().is_done()) {
+				clear(); //下次重新解析
+				return SOCKET_PACKET_FLAG_PENDING;
+			}
+			nBufLen = nParsed;
+			return SOCKET_PACKET_FLAG_COMPLETE;
+		}
+
+		const std::vector<Message>& messages() { return msgs_; }
+		
+		inline void clear()
+		{
+			http_parser parser = parser_;
+			http_parser_init(&parser_, (http_parser_type)parser_.type);
+			parser_.upgrade = parser.upgrade;
+			parser_.data = parser.data;
+			msgs_.clear();
+		}
+
+		inline bool upgrade() const { return parser_.upgrade; }
+	};
+	/*!
+	 *	@brief HttpBuffer 定义.
+	 *
+	 *	封装HttpBuffer，实现Http数据包构建和解析
+	 */
+	template<class THolder>
+	class HttpBufferT : public HttpParser
+	{
+		typedef HttpBufferT<THolder> This;
+	protected:
+		THolder* holder_;
+		
+	public:
+		HttpBufferT(THolder* holder, http_parser_type type = HTTP_BOTH):HttpParser(type),holder_(holder)
+		{
+		}
+
+		template<class T>
+		static bool is_response_needs_body(T&& req, const HttpResponse& rsp)
+		{
+			int method = req.method();
+			int code = rsp.code();
+			return (code!= HTTP_STATUS_NO_CONTENT && code != HTTP_STATUS_NOT_MODIFIED && (code < 100 || code >= 200)
+			 && method != HTTP_CONNECT && method != HTTP_HEAD);
 		}
 
 		/*
@@ -510,7 +638,7 @@ namespace XSocket {
 				if (req.minor() == 0 && is_keepalive)
 					rsp.set_field("Connection", "keep-alive");
 
-				if ((req.minor() >= 1 || is_keepalive) && is_response_needs_body(req)) {
+				if ((req.minor() >= 1 || is_keepalive) && is_response_needs_body(req, rsp)) {
 					/*
 					* we need to add the content length if the
 					* user did not give it, this is required for
@@ -523,7 +651,7 @@ namespace XSocket {
 			}
 				
 			/* Potentially add headers for unidentified content. */
-			if (is_response_needs_body(req)) {
+			if (is_response_needs_body(req, rsp)) {
 				if (!rsp.field("Content-Type")) {
 					rsp.set_field("Content-Type", "text/html");
 				}
@@ -557,18 +685,8 @@ namespace XSocket {
 
 		//解析数据包
 		int ParseBuf(const char* lpBuf, int & nBufLen) { 
-			int nParsed = 0;
-			ASSERT(!parser_.upgrade);
-			nParsed = http_parser_execute(&parser_, &settings_, lpBuf, nBufLen);
-			if(nParsed < 0) {
-				return SOCKET_PACKET_FLAG_NONE;
-			}
-			if(msgs_.empty() || !msgs_.back().is_done()) {
-				clear(); //下次重新解析
-				return SOCKET_PACKET_FLAG_PENDING;
-			}
-			nBufLen = nParsed;
-			for(const auto& msg : msgs_) {
+			int nFlags = HttpParser::ParseBuf(lpBuf, nBufLen);
+			for(const auto& msg : HttpParser::msgs_) {
 				if(upgrade()) {
 					//收到升级到WEBSOCKET消息
 					holder_->OnUpgrade(msg);
@@ -577,10 +695,8 @@ namespace XSocket {
 				}
 			}
 			clear();
-			return SOCKET_PACKET_FLAG_COMPLETE;
+			return nFlags;
 		}
-
-		inline bool upgrade() const { return parser_.upgrade; }
 	};
 
 	/*!
@@ -607,45 +723,15 @@ namespace XSocket {
 		typedef typename HttpBuffer::Message HttpBufferMessage;
 		friend class  HttpBuffer;
 		HttpBuffer http_buffer_;
-		size_t close_if_send_size_ = 0;	//等待发送完指定size数据后，关闭连接
 		std::chrono::steady_clock::time_point close_if_time_point_; //等到时间点到达也关闭连接
 	public:
 		HttpSocketT(http_parser_type type = HTTP_BOTH):Base(),http_buffer_(this,type)
-		,close_if_time_point_(std::chrono::steady_clock::now() + std::chrono::milliseconds(15000))
 		{
-			Select(FD_IDLE);
 		}
 
 		~HttpSocketT() 
 		{
 			
-		}
-
-		void SendHttpReqBuf(HttpRequest& msg)
-		{
-			http_buffer_.BuildReqBuf(Base::SendBuf(), msg);
-			Base::SendBufDirect();
-			if(!http_buffer_.is_should_keep_alive(msg)) {
-				close_if_send_size_ = Base::NotSendBufSize();
-				close_if_time_point_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
-				if(!Base::IsSelect(FD_IDLE)) {
-					Base::Select(FD_IDLE);
-				}
-			}
-		}
-
-		template<class T>
-		void SendHttpRspBuf(T&& req, HttpResponse& msg)
-		{
-			http_buffer_.BuildRspBuf(Base::SendBuf(), std::forward<T>(req), msg);
-			Base::SendBufDirect();
-			if(!http_buffer_.is_should_keep_alive(msg)) {
-				close_if_send_size_ = Base::NotSendBufSize();
-				close_if_time_point_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
-				if(!Base::IsSelect(FD_IDLE)) {
-					Base::Select(FD_IDLE);
-				}
-			}
 		}
 
 #ifdef USE_WEBSOCKET
@@ -711,6 +797,17 @@ namespace XSocket {
 
 	protected:
 		//
+		inline void SetCloseIfTimeOut(size_t millis)
+		{
+			close_if_time_point_ = (std::chrono::steady_clock::now() + std::chrono::milliseconds(millis));
+			Select(FD_IDLE);
+		}
+
+		inline void DoClose()
+		{
+			Base::Trigger(FD_CLOSE, 0); //关闭连接
+		}
+
 		//解析数据包
 		virtual int ParseBuf(const char* lpBuf, int & nBufLen) {
 			if(!http_buffer_.upgrade()) {
@@ -746,11 +843,12 @@ namespace XSocket {
 
 		virtual void OnIdle()
 		{
-			//if(close_if_send_size_) {
+			static const std::chrono::steady_clock::time_point tp_zero;
+			if(close_if_time_point_ > tp_zero) {
 				if(close_if_time_point_ < std::chrono::steady_clock::now()) {
-					Base::Trigger(FD_CLOSE, 0); //关闭连接
+					DoClose();
 				}
-			//}
+			}
 		}
 
 // 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
@@ -805,6 +903,325 @@ namespace XSocket {
 // 		}
 // 		Base::OnRecvBuf(lpBuf,nBufLen,nFlags);
 // 	}
+	};
+
+	template<class TBase>
+	class HttpReqSocketT : public HttpSocketT<TBase>
+	//, public std::enable_shared_from_this<HttpReqSocketT<TBase>>
+	{
+		typedef HttpReqSocketT<TBase> This;
+		typedef HttpSocketT<TBase> Base;
+	protected:
+		struct RequestInfo {
+			std::shared_ptr<HttpRequest> req_;
+			bool is_rsp_ = false;
+			//fstd::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)> rsp_;
+			std::promise<std::shared_ptr<HttpResponse>> rsp_;
+
+			RequestInfo(std::shared_ptr<HttpRequest> req
+			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&& rsp
+			, std::promise<std::shared_ptr<HttpResponse>>&& rsp):req_(req),rsp_(std::move(rsp))
+			{
+
+			}
+		};
+		std::list<RequestInfo> req_list_;
+	public:
+		HttpReqSocketT()
+		{
+
+		}
+		~HttpReqSocketT() 
+		{ 
+		}
+
+		void PostHttpRequest(std::shared_ptr<HttpRequest> req
+			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&& rsp
+			, std::promise<std::shared_ptr<HttpResponse>>&& rsp
+		)
+		{
+			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<HttpRequest>
+			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&&
+			, std::promise<std::shared_ptr<HttpResponse>>&&
+			))&This::SendHttpReqBuf, this, req, std::move(rsp)), this);
+		}
+
+		void SendHttpRequest(std::shared_ptr<HttpRequest> req
+			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&& rsp 
+			, std::promise<std::shared_ptr<HttpResponse>>&& rsp
+		)
+		{
+			req_list_.emplace_back(req, std::move(rsp));
+			if(Base::IsSelect(FD_CONNECT)) {
+				if(Base::IsSelect(FD_WRITE)) {
+					SendHttpRequest();
+				}
+			}
+		}
+
+	protected:
+		//
+		inline void SendHttpRequest()
+		{
+			if(req_list_.empty()) {
+				return;
+			}
+			auto& req_info = req_list_.front();
+			Base::http_buffer_.BuildReqBuf(Base::SendBuf(), *req_info.req_);
+			Base::SendBufDirect();
+		}
+
+		virtual void OnMessage(const HttpBufferMessage& msg)
+		{
+			auto& req_info = req_list_.front();
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+			msg.to_response(*rsp);
+			try {
+			//req_info.rsp_(req_, rsp);
+			req_info.rsp_.set_value(rsp);
+			} catch(std::future_error err) {
+				PRINTF("OnMessage%d %s", err.code(), err.what());
+			} catch(...) {
+				//
+			}
+			req_list_.pop_front();
+			if(!http_buffer_.is_should_keep_alive(*rsp)) {
+				DoClose();
+			} else {
+				//
+			}
+		}
+		
+		virtual void OnConnect(int nErrorCode)
+		{
+			if(nErrorCode) {
+				return Base::OnConnect(nErrorCode);
+			}
+			SendHttpRequest();
+		}
+
+		virtual void OnClose(int nErrorCode)
+		{
+			for(auto& req_info : req_list_)
+			{
+				if(!req_info.is_rsp_) {	
+				try {
+					//req_info.rsp_(req_, nullptr);
+					req_info.rsp_.set_value(nullptr);
+				} catch(std::future_error err) {
+					PRINTF("OnClose %d %s", err.code(), err.what());
+				} catch(...) {
+					//
+				}
+				} 
+			}
+			req_list_.clear();
+		}
+	};
+
+	template<class T, class TBase>
+	class HttpRspSocketImpl : public SocketExImpl<T,TBase>, public std::enable_shared_from_this<T>
+	{
+		typedef HttpRspSocketImpl<T,TBase> This;
+		typedef SocketExImpl<T,TBase> Base;
+	public:
+		typedef typename Base::HttpBufferMessage HttpBufferMessage;
+		class HttpPath
+		{
+			typedef HttpPath Path;
+		public:
+			std::string path_;
+			std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)> cb_;
+			std::set<HttpPath> sub_paths_;
+
+			HttpPath() {}
+			HttpPath(const std::string& path):path_(path)
+			{
+
+			}
+
+			bool operator<(const HttpPath& o) const
+			{
+				return stricmp(path_.c_str(), o.path_.c_str()) < 0;
+			}
+
+			void operator()(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> request) const
+			{
+				if(cb_) {
+					cb_(http, request);
+				}
+			}
+
+			HttpPath& Set(const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
+			{
+				cb_ = cb;
+				return *this;
+			}
+
+			HttpPath& Sub(const std::string& uri) {
+				std::string sub_uri;
+				HttpPath* parent;
+				HttpPath* path = Find(uri, &sub_uri, &parent);
+				if(path) {
+					return *path;
+				} else {
+					size_t pos = 0, offset = 0;
+					do {
+						pos = sub_uri.find_first_of("/\\",offset);
+						std::string substr;
+						if (pos !=string::npos) {
+							substr = uri.substr(offset,pos-offset);
+						} else {
+							substr = uri.substr(offset);
+						}
+						parent = (HttpPath*)&(*parent->sub_paths_.emplace(substr).first);
+					} while(offset !=string::npos);
+					return *parent;
+				}
+			}
+
+			void Call(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> req)
+			{
+				HttpPath* parent = nullptr;
+				std::string sub_uri;
+				HttpPath* path = Find(req->url(), &sub_uri, &parent);
+				if(path) {
+					(*path)(http,req);
+				} else if(parent) {
+					//(*parent)(http,req);
+				}
+			}
+
+			HttpPath* Find(const std::string& uri, std::string* sub_uri = nullptr, HttpPath** parent = nullptr)
+			{
+				size_t pos = 0, offset = 0;
+				HttpPath* path = this;
+				do {
+					pos = uri.find_first_of("/\\",offset);
+					std::string substr;
+					if (pos !=string::npos) {
+						substr = uri.substr(offset,pos-offset);
+					} else {
+						substr = uri.substr(offset);
+					}
+					auto it = path->sub_paths_.begin();
+					for (; it != path->sub_paths_.end(); ++it)
+					{
+						if (it->path_ == substr) {
+							break;
+						}
+					}
+					if (it == path->sub_paths_.end()) {
+						if(sub_uri) {
+							*sub_uri = std::move(substr);
+						}
+						if (parent) {
+							*parent = path;
+						}
+						return nullptr;
+					} else {
+						if (pos == string::npos) {
+							if (parent) {
+								*parent = path;
+							}
+							return (HttpPath*)&(*it);
+						} else {
+							path = (HttpPath*)&(*it);
+						}
+					}
+				} while(offset !=string::npos);
+				return nullptr;
+			}
+		};
+		class HttpRouter
+		{
+		protected:
+			std::vector<HttpPath> roots_;
+		public:
+			HttpRouter():roots_(HTTP_SOURCE+1) {}
+
+			inline HttpPath& ROOT(int method) { return roots_[method]; } 
+
+			inline void CALL(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> req)
+			{
+				auto method = req->method();
+				if(method < 0 || method > roots_.size()) {
+					return;
+				}
+				roots_[method].Call(http, req);
+			}
+
+			inline HttpPath& SET(int method, const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
+			{
+				roots_[method].Sub(uri).Set(cb);
+			}
+
+			inline HttpPath& GET(const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
+			{
+				roots_[HTTP_GET].Sub(uri).Set(cb);
+			}
+
+			inline HttpPath& POST(const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
+			{
+				roots_[HTTP_POST].Sub(uri).Set(cb);
+			}
+
+			inline void MATCH(std::initializer_list<size_t> list, std::string uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
+			{
+				for (auto it = list.begin(); it != list.end(); ++it) {
+					roots_[*it].Sub(uri).Set(cb);
+				}
+			}
+
+			inline void ANY(const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
+			{
+				for(size_t i = 0; i < roots_.size(); i++)
+				{
+					roots_[i].Sub(uri).Set(cb);
+				}
+			}
+		};
+	protected:
+		size_t close_if_send_size_ = 0;	//等待发送完指定size数据后，关闭连接
+	public:
+		static HttpRouter& Router() { static HttpRouter _router; return _router; }
+
+		HttpRspSocketImpl()
+		{
+		}
+		~HttpRspSocketImpl() 
+		{ 
+		}
+
+		inline void PostHttpResponse(std::shared_ptr<HttpRequest> req, std::shared_ptr<HttpResponse> rsp)
+		{
+			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>))&This::SendHttpResponse, this, req, rsp), this);
+		}
+
+		inline void SendHttpResponse(std::shared_ptr<HttpRequest> req, std::shared_ptr<HttpResponse> rsp)
+		{
+			SendHttpResponse(*req, *rsp);
+		}
+
+		template<class T>
+		void SendHttpResponse(T&& req, HttpResponse& rsp)
+		{
+			Base::http_buffer_.BuildRspBuf(Base::SendBuf(), std::forward<T>(req), rsp);
+			Base::SendBufDirect();
+			if(!Base::http_buffer_.is_should_keep_alive(rsp)) {
+				close_if_send_size_ = Base::NotSendBufSize();
+				Base::SetCloseIfTimeOut(1000);
+			}
+		}
+
+	protected:
+		//
+		virtual void OnMessage(const HttpBufferMessage& msg)
+		{
+			std::shared_ptr<HttpRequest> req = std::make_shared<HttpRequest>();
+			msg.to_request(*req);
+			Router().CALL(shared_from_this(), req);
+		}
 
 		virtual void OnSendBuf(const char* lpBuf, int nBufLen)
 		{
@@ -818,12 +1235,11 @@ namespace XSocket {
 					close_if_send_size_ = 0;
 				}
 				if(close_flag) {
-					Base::Trigger(FD_CLOSE, 0); //关闭连接
+					Base::DoClose();
 				}
 			}
 		}
 	};
-
 }
 
 #endif//_H_XHTTP_IMPL_H_
