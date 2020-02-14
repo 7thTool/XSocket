@@ -19,7 +19,7 @@ const std::string http_get_raw = "GET /favicon.ico HTTP/1.1\r\n"
          "Accept-Encoding: gzip,deflate\r\n"
          "Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7\r\n"
          "Keep-Alive: 300\r\n"
-         "Connection: keep-alive\r\n"
+         "Connection: close\r\n"
          "\r\n";
 const std::string http_post_raw =  "POST /post_identity_body_world?q=search#hey HTTP/1.1\r\n"
          "Accept: */*\r\n"
@@ -57,45 +57,16 @@ const std::string http_trunk_part_2 = "6\r\n world\r\n"
 
 class client;
 
-class Event : public DealyEventBase
-{
-public:
-	client* dst = nullptr;
-	int id;
-	std::string buf;
-	int flags;
-
-	Event() {}
-	Event(client* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
-
-	// inline int get_id() { return evt; }
-	// inline const char* get_data() { return data.c_str(); }
-	// inline int get_datalen() { return data.size(); }
-	// inline int get_flags() { return flags; }
-};
-class ClientEventService : public
-EventServiceT<Event,SelectService>
-{
-public:
-
-	inline client* IsSocketEvent(const Event& evt)
-	{
-		return evt.dst;
-	}
-	inline bool IsActive(Event& evt) { return evt.IsActive(); }
-	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
-	inline void UpdateRepeat(Event& evt) { evt.Update(); }
-};
-typedef SimpleSocketEvtServiceT<ClientEventService> ClientService;
+typedef SimpleTaskServiceT<SelectService> ClientService;
 
 #ifdef USE_OPENSSL
-typedef SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>> ClientSocket;
+typedef SimpleTaskSocketT<SimpleTaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
 #else 
-typedef SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>> ClientSocket;
+typedef SimpleTaskSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
 #endif
-class client: public SocketExImpl<client,SelectClientT<ClientService,HttpReqSocketT<ClientSocket>>>
+class client: public HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
 {
-	typedef SocketExImpl<client,SelectClientT<ClientService,HttpReqSocketT<ClientSocket>>> Base;
+	typedef HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -138,19 +109,6 @@ protected:
 			Close();
 		}
 		Base::OnTerm();
-	}
-
-public:
-	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
-	{
-		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
-	}
-
-	virtual void OnEvent(const Event& evt)
-	{
-		if(evt.id == FD_WRITE) {
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
-		}
 	}
 
 protected:
@@ -197,7 +155,7 @@ protected:
 #ifdef USE_WEBSOCKET
 		SendWSUpgrade("localhost");
 #else
-		PRINTF("%s",http_get_raw.c_str());
+		/*PRINTF("%s",http_get_raw.c_str());
 		HttpParser parser;
 		int nParseLen = http_get_raw.size();
 		parser.ParseBuf(http_get_raw.c_str(),nParseLen);
@@ -208,7 +166,7 @@ protected:
 			std::promise<std::shared_ptr<HttpResponse>> rsp;
 			std::future<std::shared_ptr<HttpResponse>> ret = rsp.get_future();
 			SendHttpRequest(req,std::move(rsp));
-		}
+		}*/
 		//SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
 #endif
 #endif
@@ -231,16 +189,36 @@ public:
 
 	virtual bool OnInit()
 	{
+		std::time_t tt = std::time(nullptr);
+		tt = std::mktime(std::localtime(&tt));
+		tt = HttpMessage::gm2localtime(HttpMessage::local2gmtime(tt));
+		std::string strgmt = HttpMessage::gmtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT"); //0时区
+		PRINTF("%s",strgmt.c_str());
+		PRINTF("%s",HttpMessage::localtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT").c_str()); //8时区
+		PRINTF("%s",HttpMessage::httptime2str(HttpMessage::str2httptime(strgmt.c_str())).c_str());
 		c = new client[DEFAULT_CLIENT_COUNT];
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-			c[i].Start("www.baidu.com",
-#ifdef USE_OPENSSL
-			443);
-#else
-			80);
-#endif
-			//c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+// 			c[i].Start("www.baidu.com",
+// #ifdef USE_OPENSSL
+// 			443);
+// #else
+// 			80);
+// #endif
+			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+			PRINTF("%s",http_get_raw.c_str());
+			HttpParser parser;
+			int nParseLen = http_get_raw.size();
+			parser.ParseBuf(http_get_raw.c_str(),nParseLen);
+			const auto& msgs = parser.messages();
+			if(msgs.size()) {
+				std::shared_ptr<client::RequestInfo> req_info = std::make_shared<client::RequestInfo>();
+				msgs.back().to_request(req_info->req_);
+				c->PostHttpRequest(req_info);
+				std::future<std::shared_ptr<HttpResponse>> ret = req_info->rsp_.get_future();
+				std::shared_ptr<HttpResponse> result = ret.get();
+				PRINTF("%s",result->to_string(std::string()).c_str());
+			}
 		}
 		return true;
 	}

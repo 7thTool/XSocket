@@ -168,7 +168,12 @@ class HttpHandler : public SimpleTaskServiceT<ThreadCVService>
 public:
 	HttpHandler():Base()
 	{
-		worker::Router().ANY("",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		worker::Router().ANY("/",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		worker::Router().GET("/test/echo",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		worker::Router().GET("test/echo",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		worker::Router().GET("test/multicast/hello",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		worker::Router().GET("test/echo/hello",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		worker::Router().ROOT(HTTP_POST).Path("test").Path("echo").Path("hello").Set(std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
 	}
 
 protected:

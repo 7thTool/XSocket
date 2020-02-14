@@ -125,6 +125,71 @@ namespace XSocket {
 	class HttpMessage
 	{
 	public:
+		// %a 星期几的缩写
+		// %A 星期几的全名 
+		// %b 月份名称的缩写
+		// %B 月份名称的全名
+		// %c 本地端日期时间较佳表示字符串
+		// %d 用数字表示本月的第几天 (范围为 00 至 31)日期 
+		// %H 用 24 小时制数字表示小时数 (范围为 00 至 23)
+		// %I 用 12 小时制数字表示小时数 (范围为 01 至 12) 
+		// %j 以数字表示当年度的第几天 (范围为 001 至 366) 
+		// %m 月份的数字 (范围由 1 至 12)
+		// %M 分钟
+		// %p 以 ''AM'' 或 ''PM'' 表示本地端时间
+		// %S 秒数
+		// %U 数字表示为本年度的第几周，第一个星期由第一个周日开始
+		// %W 数字表示为本年度的第几周，第一个星期由第一个周一开始 
+		// %w 用数字表示本周的第几天 ( 0 为周日)
+		// %x 不含时间的日期表示法
+		// %X 不含日期的时间表示法
+		// %y 二位数字表示年份 (范围由 00 至 99)
+		// %Y 完整的年份数字表示，即四位数
+		// %Z(%z) 时区或名称缩写
+		//Tue, 11 Feb 2020 04:23:47 GMT = %a, %d %b %Y %H:%M:%S GMT
+		//time是本地时间
+		//gmtime是格林尼治时间，会做时区转换，转换成0时区时间
+		//localtime是本地时间，不会做时区转换，所以和gmtime互相转需要知道时区才能转换
+		static inline std::time_t gm2localtime(const std::time_t& time, int tz = 8) {
+			return time + tz * 60 *60;
+			//return std::mktime(std::localtime(&time));
+		}
+		static inline std::time_t local2gmtime(const std::time_t& time, int tz = 8) {
+			return gm2localtime(time, -tz);
+			//return std::mktime(std::gmtime(&time));
+		}
+		static inline std::string tm2str(const std::tm* t, const char* format) {
+			std::ostringstream ss;
+			ss << std::put_time(t, format);
+			return ss.str();
+		}
+		static inline std::tm str2tm(const char* time, const char* format) {
+			std::tm t;
+			std::istringstream ss(time);
+			ss >> std::get_time(&t, format);
+			return t;
+		}
+		static inline std::string gmtime2str(const std::time_t& time, const char* format) {
+			return tm2str(std::gmtime(&time), format);
+		}
+		static inline std::time_t strgm2localtime(const char* time, const char* format) {
+			std::tm t = str2tm(time,format);
+			return gm2localtime(std::mktime(&t));
+		}
+		static inline std::string localtime2str(const std::time_t& time, const char* format) {
+			return tm2str(std::localtime(&time), format);
+		}
+		static inline std::time_t strlocal2gmtime(const char* time, const char* format) {
+			std::tm t = str2tm(time,format);
+			return local2gmtime(std::mktime(&t));
+		}
+		static inline std::string httptime2str(const std::time_t& time = std::time(nullptr)) {
+			return gmtime2str(time, "%a, %d %b %Y %H:%M:%S GMT");
+		}
+		static inline std::time_t str2httptime(const char* time) {
+			return strgm2localtime(time, "%a, %d %h %Y %H:%M:%S GMT");
+		}
+
 		unsigned short http_major = 0;
 		unsigned short http_minor = 0;
 		struct field {
@@ -208,7 +273,7 @@ namespace XSocket {
 		}
 		inline void set_url(const std::string& url) { url_ = url; }
 
-		void to_string(std::string& buf) const
+		std::string& to_string(std::string& buf) const
 		{
 			std::ostringstream oss;
 			oss << http_method_str((enum http_method)method_) << " " << url_ << " HTTP/" << http_major << "." << http_minor << "\r\n";
@@ -219,15 +284,16 @@ namespace XSocket {
 			oss << "\r\n";
 			oss << body_;
 			buf = oss.str();
+			return buf;
 		}
 	};
 	class HttpResponse : public HttpMessage
 	{
 	public:
-		unsigned short status_code = 0;
+		int status_code = 0;
 		std::string status_;
 		
-		inline unsigned int code() const { return status_code; }
+		inline int code() const { return status_code; }
 		inline void set_code(unsigned int code) { status_code = code; }
 
 		inline const char* reason(size_t* len = nullptr) const { 
@@ -238,7 +304,7 @@ namespace XSocket {
 		}
 		inline void set_reason(const std::string& reason) { status_ = reason; }
 
-		void to_string(std::string& buf) const
+		std::string& to_string(std::string& buf) const
 		{
 			std::ostringstream oss;
 			oss << "HTTP/" << http_major << "." << http_minor << " " << status_code << " " << status_ << "\r\n";
@@ -249,6 +315,7 @@ namespace XSocket {
 			oss << "\r\n";
 			oss << body_;
 			buf = oss.str();
+			return buf;
 		}
 	};
 
@@ -289,6 +356,17 @@ namespace XSocket {
 				done_ = false;
 			}
 
+			inline void zeroend()
+			{
+				if(url_.first) ((char*)url_.first)[url_.second] = 0;
+				if(status_.first) ((char*)status_.first)[status_.second] = 0;
+				for(auto field : fields_) {
+					if(field.name.first) ((char*)field.name.first)[field.name.second] = 0;
+					if(field.value.first) ((char*)field.value.first)[field.value.second] = 0;
+				}
+				if(body_.first) ((char*)body_.first)[body_.second] = 0;
+			}
+
 			inline unsigned short major() const { return http_major; }
 			inline unsigned short minor() const { return http_minor; }
 			inline unsigned int method() const { return method_; }
@@ -300,7 +378,7 @@ namespace XSocket {
 				return url_.first;
 			}
 			
-			inline unsigned int code() const { return status_code; }
+			inline int code() const { return status_code; }
 
 			inline const char* reason(size_t* len = nullptr) const { 
 				if(len) {
@@ -444,19 +522,16 @@ namespace XSocket {
 		
 		inline int on_url(const char *at, size_t length)
 		{
-			(char)at[length] = 0;
 			msgs_.back().url_ = strref(at,length);
 			return 0;
 		}
 		inline int on_status(const char *at, size_t length)
 		{
-			(char)at[length] = 0;
 			msgs_.back().status_ = strref(at,length);
 			return 0;
 		}
 		inline int on_header_field(const char *at, size_t length)
 		{
-			(char)at[length] = 0;
 			auto& msg = msgs_.back();
 			msg.fields_.resize(msg.fields_.size()+1);
 			msg.fields_.back().name = strref(at,length);
@@ -464,7 +539,6 @@ namespace XSocket {
 		}
 		inline int on_header_value(const char *at, size_t length)
 		{
-			(char)at[length] = 0;
 			msgs_.back().fields_.back().value = strref(at,length);
 			return 0;
 		}
@@ -496,16 +570,43 @@ namespace XSocket {
 			return 0;
 		}
 
+	public:	
 		template<class T>
-		static bool is_response_needs_body(T&& req)
+		static bool is_response_needs_body(T&& req, const HttpResponse& rsp)
 		{
-			int code = req.code();
 			int method = req.method();
+			int code = rsp.code();
 			return (code!= HTTP_STATUS_NO_CONTENT && code != HTTP_STATUS_NOT_MODIFIED && (code < 100 || code >= 200)
 			 && method != HTTP_CONNECT && method != HTTP_HEAD);
 		}
 
-	public:
+		/*
+		 * the last message on the connection.
+		 * If you are the server, respond with the "Connection: close" header.
+		 * If you are the client, close the connection.
+		 */
+		template<class T>
+		static bool is_should_keep_alive(T&& msg, int* timeout = nullptr)
+		{
+			const char* connection = msg.field("Connection");
+			if(connection) {
+				if (msg.major() > 0 && msg.minor() > 0) {
+					/* HTTP/1.1 */
+					if (stricmp(connection, "close") == 0) {
+						return false;
+					} else if (stricmp(connection, "timeout") == 0 && timeout) {
+						*timeout = std::atoi(connection+8);
+					}
+				} else {
+					/* HTTP/1.0 or earlier */
+					if (stricmp(connection, "keep-alive") != 0) {
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+
 		HttpParser(http_parser_type type = HTTP_BOTH)
 		{
 			msgs_.reserve(3);
@@ -532,6 +633,9 @@ namespace XSocket {
 			if(msgs_.empty() || !msgs_.back().is_done()) {
 				clear(); //下次重新解析
 				return SOCKET_PACKET_FLAG_PENDING;
+			}
+			for(auto& msg : msgs_) {
+				msg.zeroend();
 			}
 			nBufLen = nParsed;
 			return SOCKET_PACKET_FLAG_COMPLETE;
@@ -567,45 +671,11 @@ namespace XSocket {
 		{
 		}
 
-		template<class T>
-		static bool is_response_needs_body(T&& req, const HttpResponse& rsp)
-		{
-			int method = req.method();
-			int code = rsp.code();
-			return (code!= HTTP_STATUS_NO_CONTENT && code != HTTP_STATUS_NOT_MODIFIED && (code < 100 || code >= 200)
-			 && method != HTTP_CONNECT && method != HTTP_HEAD);
-		}
-
-		/*
-		 * the last message on the connection.
-		 * If you are the server, respond with the "Connection: close" header.
-		 * If you are the client, close the connection.
-		 */
-		template<class T>
-		static bool is_should_keep_alive(T&& msg)
-		{
-			const char* connection = msg.field("Connection");
-			if(connection) {
-				if (msg.major() > 0 && msg.minor() > 0) {
-					/* HTTP/1.1 */
-					if (stricmp(connection, "close") == 0) {
-						return false;
-					}
-				} else {
-					/* HTTP/1.0 or earlier */
-					if (stricmp(connection, "keep-alive") != 0) {
-						return false;
-					}
-				}
-			}
-			return true;
-		}
-
-		static void BuildReqBuf(std::string& buf, HttpRequest& req)
+		void BuildReqBuf(std::string& buf, HttpRequest& req)
 		{
 			if(req.major()) {
-				req.set_major(1);
-				req.set_minor(0);
+				req.set_major(holder_->GetHttpMajor());
+				req.set_minor(holder_->GetHttpMinor());
 			}
 			req.remove_field("Proxy-Connection");
 
@@ -619,16 +689,21 @@ namespace XSocket {
 
 			req.to_string(buf);
 		}
+
 		template<class T>
-		static void BuildRspBuf(std::string& buf, T&& req, HttpResponse& rsp)
+		void BuildRspBuf(std::string& buf, T&& req, HttpResponse& rsp)
 		{
 			if(!rsp.major()) {
-				rsp.set_major(req.major());
-				rsp.set_minor(req.minor());
+				rsp.set_major(holder_->GetHttpMajor());
+				rsp.set_minor(holder_->GetHttpMinor());
+			}
+			size_t reason_len = 0;rsp.reason(&reason_len);
+			if(!reason_len) {
+				rsp.set_reason(http_status_str((enum http_status)rsp.code()));
 			}
 			if (req.major() == 1) {
 				if (req.minor() >= 1)
-					rsp.set_field("Date", gmt_time_now());
+					rsp.set_field("Date", rsp.httptime2str());
 
 				bool is_keepalive = stricmp(req.field("Connection"),"keep-alive") == 0;
 				/*
@@ -637,23 +712,22 @@ namespace XSocket {
 				*/
 				if (req.minor() == 0 && is_keepalive)
 					rsp.set_field("Connection", "keep-alive");
-
-				if ((req.minor() >= 1 || is_keepalive) && is_response_needs_body(req, rsp)) {
-					/*
-					* we need to add the content length if the
-					* user did not give it, this is required for
-					* persistent connections to work.
-					*/
-					if (!rsp.field("Transfer-Encoding") && !rsp.field("Content-Length")) {
-						rsp.set_field("Content-Length", tostr(rsp.size()));
-					}
-				}
 			}
-				
+			/*
+			 * we need to add the content length if the
+			 * user did not give it, this is required for
+			 * persistent connections to work.
+			 */
 			/* Potentially add headers for unidentified content. */
 			if (is_response_needs_body(req, rsp)) {
+				//if (!rsp.field("Transfer-Encoding")) {
+				//	
+				//}
 				if (!rsp.field("Content-Type")) {
-					rsp.set_field("Content-Type", "text/html");
+					rsp.set_field("Content-Type", holder_->GetDefaultContentType());
+				}
+				if (!rsp.field("Content-Length")) {
+					rsp.set_field("Content-Length", tostr(rsp.size()));
 				}
 			}
 
@@ -734,6 +808,11 @@ namespace XSocket {
 			
 		}
 
+		inline int GetHttpMajor() { return 1; }
+		inline int GetHttpMinor() { return 0; }
+		inline int GetConnectionTimeout() { return 15; }
+		inline const char* GetDefaultContentType() { return "text/html"; }
+
 #ifdef USE_WEBSOCKET
 		//升级websocket
 		void SendWSUpgrade(const char* host, const char* path = "/")
@@ -797,6 +876,11 @@ namespace XSocket {
 
 	protected:
 		//
+		inline void StopCloseIfTimeOut() 
+		{
+			close_if_time_point_ = std::chrono::steady_clock::time_point();
+		}
+
 		inline void SetCloseIfTimeOut(size_t millis)
 		{
 			close_if_time_point_ = (std::chrono::steady_clock::now() + std::chrono::milliseconds(millis));
@@ -839,16 +923,6 @@ namespace XSocket {
 		virtual void OnMessage(const HttpBufferMessage& msg)
 		{
 			
-		}
-
-		virtual void OnIdle()
-		{
-			static const std::chrono::steady_clock::time_point tp_zero;
-			if(close_if_time_point_ > tp_zero) {
-				if(close_if_time_point_ < std::chrono::steady_clock::now()) {
-					DoClose();
-				}
-			}
 		}
 
 // 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
@@ -903,92 +977,102 @@ namespace XSocket {
 // 		}
 // 		Base::OnRecvBuf(lpBuf,nBufLen,nFlags);
 // 	}
+
+		virtual void OnIdle()
+		{
+			static const std::chrono::steady_clock::time_point tp_zero;
+			if(close_if_time_point_ > tp_zero) {
+				if(close_if_time_point_ < std::chrono::steady_clock::now()) {
+					DoClose();
+				} else {
+					Select(FD_IDLE);
+				}
+			}
+		}
+
+		virtual void OnClose(int nErrorCode)
+		{
+			StopCloseIfTimeOut();
+
+			Base::OnClose(nErrorCode);
+		}
 	};
 
-	template<class TBase>
-	class HttpReqSocketT : public HttpSocketT<TBase>
-	//, public std::enable_shared_from_this<HttpReqSocketT<TBase>>
+	template<class T, class TBase>
+	class HttpReqSocketImpl : public SocketExImpl<T,TBase>
 	{
-		typedef HttpReqSocketT<TBase> This;
-		typedef HttpSocketT<TBase> Base;
+		typedef HttpReqSocketImpl<T, TBase> This;
+		typedef SocketExImpl<T,TBase> Base;
 	protected:
+		typedef typename Base::HttpBufferMessage HttpBufferMessage;
+	public:
 		struct RequestInfo {
-			std::shared_ptr<HttpRequest> req_;
-			bool is_rsp_ = false;
+			HttpRequest req_;
 			//fstd::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)> rsp_;
 			std::promise<std::shared_ptr<HttpResponse>> rsp_;
-
-			RequestInfo(std::shared_ptr<HttpRequest> req
-			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&& rsp
-			, std::promise<std::shared_ptr<HttpResponse>>&& rsp):req_(req),rsp_(std::move(rsp))
-			{
-
-			}
 		};
-		std::list<RequestInfo> req_list_;
+	protected:
+		std::queue<std::shared_ptr<RequestInfo>> req_list_;
 	public:
-		HttpReqSocketT()
+		HttpReqSocketImpl()
 		{
 
 		}
-		~HttpReqSocketT() 
+		~HttpReqSocketImpl() 
 		{ 
 		}
 
-		void PostHttpRequest(std::shared_ptr<HttpRequest> req
-			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&& rsp
-			, std::promise<std::shared_ptr<HttpResponse>>&& rsp
-		)
+		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<HttpRequest>
-			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&&
-			, std::promise<std::shared_ptr<HttpResponse>>&&
-			))&This::SendHttpReqBuf, this, req, std::move(rsp)), this);
+			this_service()->Post(std::bind(&This::SendHttpRequest, this, req), this);
 		}
 
-		void SendHttpRequest(std::shared_ptr<HttpRequest> req
-			//, std::function<void(std::shared_ptr<HttpRequest>, std::shared_ptr<HttpResponse>)>&& rsp 
-			, std::promise<std::shared_ptr<HttpResponse>>&& rsp
-		)
+		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			req_list_.emplace_back(req, std::move(rsp));
-			if(Base::IsSelect(FD_CONNECT)) {
-				if(Base::IsSelect(FD_WRITE)) {
-					SendHttpRequest();
+			req_list_.push(req);
+			if(Base::IsConnected()) {
+				if(!Base::IsSelect(FD_WRITE)) {
+					InnerSendHttpRequest();
 				}
 			}
 		}
 
 	protected:
 		//
-		inline void SendHttpRequest()
+		inline void InnerSendHttpRequest()
 		{
+			T* pT = static_cast<T*>(this);
 			if(req_list_.empty()) {
 				return;
 			}
 			auto& req_info = req_list_.front();
-			Base::http_buffer_.BuildReqBuf(Base::SendBuf(), *req_info.req_);
+			Base::http_buffer_.BuildReqBuf(Base::SendBuf(), req_info->req_);
 			Base::SendBufDirect();
+			Base::SetCloseIfTimeOut(pT->GetConnectionTimeout()*1000);
 		}
 
 		virtual void OnMessage(const HttpBufferMessage& msg)
 		{
-			auto& req_info = req_list_.front();
+			T* pT = static_cast<T*>(this);
+			auto req_info = req_list_.front();
+			req_list_.pop();
 			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
 			msg.to_response(*rsp);
 			try {
 			//req_info.rsp_(req_, rsp);
-			req_info.rsp_.set_value(rsp);
+			req_info->rsp_.set_value(rsp);
 			} catch(std::future_error err) {
 				PRINTF("OnMessage%d %s", err.code(), err.what());
 			} catch(...) {
 				//
 			}
-			req_list_.pop_front();
-			if(!http_buffer_.is_should_keep_alive(*rsp)) {
+			int timeout = pT->GetConnectionTimeout();
+			if(!http_buffer_.is_should_keep_alive(*rsp, &timeout)) {
 				DoClose();
 			} else {
-				//
+				if(timeout) {
+					SetCloseIfTimeOut(timeout*1000);
+				}
 			}
 		}
 		
@@ -996,26 +1080,46 @@ namespace XSocket {
 		{
 			if(nErrorCode) {
 				return Base::OnConnect(nErrorCode);
+			} else {
+				Base::OnConnect(nErrorCode);
+				InnerSendHttpRequest();
 			}
-			SendHttpRequest();
 		}
 
 		virtual void OnClose(int nErrorCode)
 		{
-			for(auto& req_info : req_list_)
-			{
-				if(!req_info.is_rsp_) {	
-				try {
-					//req_info.rsp_(req_, nullptr);
-					req_info.rsp_.set_value(nullptr);
-				} catch(std::future_error err) {
-					PRINTF("OnClose %d %s", err.code(), err.what());
-				} catch(...) {
-					//
+			Base::OnClose(nErrorCode);
+
+			T* pT = static_cast<T*>(this);
+			if(!req_list_.empty()) {
+				std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+				rsp->set_major(pT->GetHttpMajor());
+				rsp->set_minor(pT->GetHttpMinor());
+				if(!nErrorCode) {
+					nErrorCode = 
+#ifdef WIN32
+					WSAETIMEDOUT;
+#else
+					ETIMEDOUT;
+#endif
 				}
-				} 
+				rsp->set_code(nErrorCode);
+				char szErrorMessage[1024] = {0};
+				GetErrorMessage(nErrorCode, szErrorMessage, 1024);
+				rsp->set_reason(szErrorMessage);
+				do {
+					auto req_info = req_list_.front();
+					req_list_.pop();
+					try {
+						//req_info.rsp_(req_, rsp);
+						req_info->rsp_.set_value(rsp);
+					} catch(std::future_error err) {
+						PRINTF("OnClose %d %s", err.code(), err.what());
+					} catch(...) {
+						//
+					}
+				} while(!req_list_.empty());
 			}
-			req_list_.clear();
 		}
 	};
 
@@ -1024,11 +1128,11 @@ namespace XSocket {
 	{
 		typedef HttpRspSocketImpl<T,TBase> This;
 		typedef SocketExImpl<T,TBase> Base;
-	public:
+	protected:
 		typedef typename Base::HttpBufferMessage HttpBufferMessage;
+	public:
 		class HttpPath
 		{
-			typedef HttpPath Path;
 		public:
 			std::string path_;
 			std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)> cb_;
@@ -1058,6 +1162,14 @@ namespace XSocket {
 				return *this;
 			}
 
+			HttpPath& Path(const std::string& uri)
+			{
+				if(uri.empty() || uri == "/" || uri == "\\") {
+					return *this;
+				}
+				return Sub(uri);
+			}
+
 			HttpPath& Sub(const std::string& uri) {
 				std::string sub_uri;
 				HttpPath* parent;
@@ -1070,32 +1182,27 @@ namespace XSocket {
 						pos = sub_uri.find_first_of("/\\",offset);
 						std::string substr;
 						if (pos !=string::npos) {
-							substr = uri.substr(offset,pos-offset);
+							substr = sub_uri.substr(offset,pos-offset);
 						} else {
-							substr = uri.substr(offset);
+							substr = sub_uri.substr(offset);
 						}
-						parent = (HttpPath*)&(*parent->sub_paths_.emplace(substr).first);
-					} while(offset !=string::npos);
+						if(!substr.empty()) {
+							parent = (HttpPath*)&(*parent->sub_paths_.emplace(substr).first);
+						}
+						if(pos !=string::npos) {
+							offset = pos + 1;
+						} else {
+							break;
+						}
+					} while(true);
 					return *parent;
-				}
-			}
-
-			void Call(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> req)
-			{
-				HttpPath* parent = nullptr;
-				std::string sub_uri;
-				HttpPath* path = Find(req->url(), &sub_uri, &parent);
-				if(path) {
-					(*path)(http,req);
-				} else if(parent) {
-					//(*parent)(http,req);
 				}
 			}
 
 			HttpPath* Find(const std::string& uri, std::string* sub_uri = nullptr, HttpPath** parent = nullptr)
 			{
-				size_t pos = 0, offset = 0;
 				HttpPath* path = this;
+				size_t pos = 0, offset = 0;
 				do {
 					pos = uri.find_first_of("/\\",offset);
 					std::string substr;
@@ -1104,32 +1211,39 @@ namespace XSocket {
 					} else {
 						substr = uri.substr(offset);
 					}
-					auto it = path->sub_paths_.begin();
-					for (; it != path->sub_paths_.end(); ++it)
-					{
-						if (it->path_ == substr) {
-							break;
+					if(!substr.empty()) {
+						auto it = path->sub_paths_.begin();
+						for (; it != path->sub_paths_.end(); ++it)
+						{
+							if (it->path_ == substr) {
+								break;
+							}
 						}
-					}
-					if (it == path->sub_paths_.end()) {
-						if(sub_uri) {
-							*sub_uri = std::move(substr);
-						}
-						if (parent) {
-							*parent = path;
-						}
-						return nullptr;
-					} else {
-						if (pos == string::npos) {
+						if (it == path->sub_paths_.end()) {
+							if(sub_uri) {
+								*sub_uri = uri.substr(offset);
+							}
 							if (parent) {
 								*parent = path;
 							}
-							return (HttpPath*)&(*it);
+							return nullptr;
 						} else {
-							path = (HttpPath*)&(*it);
+							if (pos == string::npos) {
+								if (parent) {
+									*parent = path;
+								}
+								return (HttpPath*)&(*it);
+							} else {
+								path = (HttpPath*)&(*it);
+							}
 						}
 					}
-				} while(offset !=string::npos);
+					if(pos !=string::npos) {
+						offset = pos + 1;
+					} else {
+						break;
+					}
+				} while(true);
 				return nullptr;
 			}
 		};
@@ -1142,34 +1256,35 @@ namespace XSocket {
 
 			inline HttpPath& ROOT(int method) { return roots_[method]; } 
 
-			inline void CALL(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> req)
+			template<class TRequest>
+			inline HttpPath* Find(TRequest&& req)
 			{
-				auto method = req->method();
+				auto method = req.method();
 				if(method < 0 || method > roots_.size()) {
-					return;
+					return nullptr;
 				}
-				roots_[method].Call(http, req);
+				return roots_[method].Find(req.url());
 			}
 
 			inline HttpPath& SET(int method, const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
 			{
-				roots_[method].Sub(uri).Set(cb);
+				return roots_[method].Path(uri).Set(cb);
 			}
 
 			inline HttpPath& GET(const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
 			{
-				roots_[HTTP_GET].Sub(uri).Set(cb);
+				return roots_[HTTP_GET].Path(uri).Set(cb);
 			}
 
 			inline HttpPath& POST(const std::string& uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
 			{
-				roots_[HTTP_POST].Sub(uri).Set(cb);
+				return roots_[HTTP_POST].Path(uri).Set(cb);
 			}
 
 			inline void MATCH(std::initializer_list<size_t> list, std::string uri, const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
 			{
 				for (auto it = list.begin(); it != list.end(); ++it) {
-					roots_[*it].Sub(uri).Set(cb);
+					roots_[*it].Path(uri).Set(cb);
 				}
 			}
 
@@ -1177,7 +1292,7 @@ namespace XSocket {
 			{
 				for(size_t i = 0; i < roots_.size(); i++)
 				{
-					roots_[i].Sub(uri).Set(cb);
+					roots_[i].Path(uri).Set(cb);
 				}
 			}
 		};
@@ -1203,14 +1318,19 @@ namespace XSocket {
 			SendHttpResponse(*req, *rsp);
 		}
 
-		template<class T>
-		void SendHttpResponse(T&& req, HttpResponse& rsp)
+		template<class TRequest>
+		void SendHttpResponse(TRequest&& req, HttpResponse& rsp)
 		{
-			Base::http_buffer_.BuildRspBuf(Base::SendBuf(), std::forward<T>(req), rsp);
+			T* pT = static_cast<T*>(this);
+			Base::http_buffer_.BuildRspBuf(Base::SendBuf(), std::forward<TRequest>(req), rsp);
 			Base::SendBufDirect();
-			if(!Base::http_buffer_.is_should_keep_alive(rsp)) {
+			int timeout = pT->GetConnectionTimeout();
+			if(!Base::http_buffer_.is_should_keep_alive(rsp, &timeout)) {
 				close_if_send_size_ = Base::NotSendBufSize();
-				Base::SetCloseIfTimeOut(1000);
+			} else {
+				if(timeout) {
+					Base::SetCloseIfTimeOut(timeout*1000);
+				}
 			}
 		}
 
@@ -1218,9 +1338,16 @@ namespace XSocket {
 		//
 		virtual void OnMessage(const HttpBufferMessage& msg)
 		{
-			std::shared_ptr<HttpRequest> req = std::make_shared<HttpRequest>();
-			msg.to_request(*req);
-			Router().CALL(shared_from_this(), req);
+			auto handler = Router().Find(msg);
+			if(handler) {
+				std::shared_ptr<HttpRequest> req = std::make_shared<HttpRequest>();
+				msg.to_request(*req);
+				(*handler)(shared_from_this(), req);
+			} else {
+				HttpResponse rsp;
+				rsp.set_code(HTTP_STATUS_NOT_FOUND);
+				SendHttpResponse(msg, rsp);
+			}
 		}
 
 		virtual void OnSendBuf(const char* lpBuf, int nBufLen)

@@ -43,18 +43,6 @@ namespace XSocket {
 	class SocketEx;
 	class Service;
 
-	static inline std::string gmt_time_now() {
-		/**
-		 * Generate a UTC ISO8601-formatted timestamp
-		 * and return as std::string
-		 */
-		auto now = std::chrono::system_clock::now();
-		auto tt = std::chrono::system_clock::to_time_t(now);
-		std::ostringstream ss;
-		ss << std::put_time(gmtime(&tt), "%FT%TZ");
-		return ss.str();
-	}
-
 /*!
  *	@brief Socket 角色定义.
  *
@@ -575,11 +563,27 @@ public:
 	typedef TService Service;
 public:
 
+	bool Start()
+	{
+		bool ret = Service::Start();
+		Socket::AttachService(this);
+		return ret;
+	}
+
+	void Stop()
+	{
+		Socket::DetachService(this);
+		Service::Stop();
+	}
+
 protected:
 	//
 	virtual void OnIdle()
 	{
-		Socket::OnIdle();
+		if(Socket::IsSelect(FD_IDLE)) {
+			Socket::RemoveSelect(FD_IDLE);
+			Socket::OnIdle();
+		}
 		Service::OnIdle();
 	}
 };
@@ -1566,7 +1570,10 @@ protected:
 	{
 		Base::OnRunOnce();
 
+		struct timeval tv = {0, Service::GetWaitingTimeOut()*1000};
 		if(!Base::IsSocket()) {
+			if(tv.tv_usec)
+				std::this_thread::sleep_for(std::chrono::microseconds(tv.tv_usec));
 			return;
 		}
 
@@ -1577,7 +1584,6 @@ protected:
 		FD_ZERO(&exceptfds);
 		maxfds = fd + 1;
 		FD_SET(fd, &exceptfds);
-		struct timeval tv = {0, Service::GetWaitingTimeOut()*1000};
 		if (Base::IsListenSocket()) {
 			fd_set readfds;
 			FD_ZERO(&readfds);
