@@ -206,6 +206,7 @@ public:
 // 			80);
 // #endif
 			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+#ifndef USE_WEBSOCKET
 			PRINTF("%s",http_get_raw.c_str());
 			HttpParser parser;
 			int nParseLen = http_get_raw.size();
@@ -217,8 +218,10 @@ public:
 				c->PostHttpRequest(req_info);
 				std::future<std::shared_ptr<HttpResponse>> ret = req_info->rsp_.get_future();
 				std::shared_ptr<HttpResponse> result = ret.get();
-				PRINTF("%s",result->to_string(std::string()).c_str());
+				std::string buf;
+				PRINTF("%s",result->to_string(buf).c_str());
 			}
+#endif
 		}
 		return true;
 	}

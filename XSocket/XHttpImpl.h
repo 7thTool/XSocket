@@ -159,14 +159,24 @@ namespace XSocket {
 			//return std::mktime(std::gmtime(&time));
 		}
 		static inline std::string tm2str(const std::tm* t, const char* format) {
+			#if 0
 			std::ostringstream ss;
 			ss << std::put_time(t, format);
 			return ss.str();
+			#else
+			char buf[256] = {0};
+			std::strftime(buf, 256, format, t);
+			return buf;
+			#endif//
 		}
 		static inline std::tm str2tm(const char* time, const char* format) {
 			std::tm t;
+			#if 0
 			std::istringstream ss(time);
 			ss >> std::get_time(&t, format);
+			#else
+			strptime(time, format, &t);
+			#endif
 			return t;
 		}
 		static inline std::string gmtime2str(const std::time_t& time, const char* format) {
@@ -793,9 +803,9 @@ namespace XSocket {
 		typedef TBase Base;
 #endif
 	protected:
+		friend HttpBufferT<This>;
 		typedef HttpBufferT<This> HttpBuffer;
 		typedef typename HttpBuffer::Message HttpBufferMessage;
-		friend class  HttpBuffer;
 		HttpBuffer http_buffer_;
 		std::chrono::steady_clock::time_point close_if_time_point_; //等到时间点到达也关闭连接
 	public:
@@ -1067,8 +1077,8 @@ namespace XSocket {
 				//
 			}
 			int timeout = pT->GetConnectionTimeout();
-			if(!http_buffer_.is_should_keep_alive(*rsp, &timeout)) {
-				DoClose();
+			if(!Base::http_buffer_.is_should_keep_alive(*rsp, &timeout)) {
+				Base::DoClose();
 			} else {
 				if(timeout) {
 					SetCloseIfTimeOut(timeout*1000);

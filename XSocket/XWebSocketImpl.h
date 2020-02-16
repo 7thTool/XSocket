@@ -353,8 +353,8 @@ enum {
 		typedef WebSocketT<TBase> This;
 		typedef TBase Base;
 	protected:
+		friend WSBufferT<This>;
 		typedef WSBufferT<This> WSBuffer;
-		friend class WSBuffer;
 		WSBuffer ws_buffer_;
 	public:
 		WebSocketT():ws_buffer_(this)
