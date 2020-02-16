@@ -159,24 +159,24 @@ namespace XSocket {
 			//return std::mktime(std::gmtime(&time));
 		}
 		static inline std::string tm2str(const std::tm* t, const char* format) {
-			#if 0
+#ifdef WIN32
 			std::ostringstream ss;
 			ss << std::put_time(t, format);
 			return ss.str();
-			#else
+#else
 			char buf[256] = {0};
 			std::strftime(buf, 256, format, t);
 			return buf;
-			#endif//
+#endif//
 		}
 		static inline std::tm str2tm(const char* time, const char* format) {
 			std::tm t;
-			#if 0
+#ifdef WIN32
 			std::istringstream ss(time);
 			ss >> std::get_time(&t, format);
-			#else
+#else
 			strptime(time, format, &t);
-			#endif
+#endif
 			return t;
 		}
 		static inline std::string gmtime2str(const std::time_t& time, const char* format) {
