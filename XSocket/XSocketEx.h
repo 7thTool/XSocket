@@ -427,10 +427,10 @@ class Service
 protected:
     //停止标记，默认停止状态，启动后停止状态为false
     std::atomic<bool> stop_flag_;
+	uint32_t wait_timeout_; //服务等待时间（毫秒）
 	uint32_t idle_flag_:1; //空闲处理标志,0表示不执行空闲任务，1表示执行空闲任务
 	uint32_t notify_flag_:1; //通知处理标志,0表示没有通知任务，1表示有通知任务
-	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
-public:
+	uint32_t timer_timeout_:30; //最短定时任务时间,0表示没有定时任务，非0表示最短定时任务
 
 public:
 	static Service* service();
@@ -445,6 +445,13 @@ public:
 	inline size_t GetWaitTimeOut() { return wait_timeout_; }
 	
 	inline void PostNotify() { notify_flag_ = true; idle_flag_ = false; }
+	inline void PostTimer(size_t millis) { 
+		if(!timer_timeout_) {
+			timer_timeout_ = millis;
+		} else if(millis < timer_timeout_) { 
+			timer_timeout_ = millis; 
+		} 
+	}
 	
 	//inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
 
@@ -457,7 +464,12 @@ protected:
 		if(notify_flag_) {
 			return 0;
 		}
-		return GetWaitTimeOut();
+		if(timer_timeout_) {
+			if(timer_timeout_ < wait_timeout_) {
+				return timer_timeout_;
+			}
+		}
+		return wait_timeout_;
 	}
 
 	virtual bool OnInit();
@@ -468,6 +480,11 @@ protected:
 	}
 
 	virtual void OnNotify()
+	{
+
+	}
+
+	virtual void OnTimer()
 	{
 
 	}
@@ -483,6 +500,10 @@ protected:
 			notify_flag_ = false;
 			idle_flag_ = true;
 			OnNotify();
+		}
+		if(timer_timeout_ != 0) {
+			timer_timeout_ = 0;
+			OnTimer();
 		}
 	}
 	
@@ -664,55 +685,71 @@ public:
 	DealyEventBase(const DealyEventBase& o):time(o.time),delay(o.delay),repeat(o.repeat){}
 	//DealyEventBase(DealyEventBase&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
 
-	bool operator<(const DealyEventBase& o) const
+	inline bool operator<(const DealyEventBase& o) const
     {
-        if(delay < o.delay) {
-			return true;
-		} else if(delay == o.delay) {
-			if(repeat < o.repeat) {
+		return IsLess(o);
+    }
+	
+	inline bool IsLess(const DealyEventBase& o) const { 
+		if(!delay) {
+			if(!o.delay) {
+				if(repeat < o.repeat) {
+					return true;
+				} else {
+					return false;
+				}
+			} else {
+				return true;
+			}
+		} else {
+			if(!o.delay) {
 				return true;
 			}
 		}
-		return false;
-    }
-	
-	inline bool IsLess(size_t _delay, size_t _repeat) { 
-		size_t dealyms = delay.count();
-		if(dealyms < _delay) {
+		std::chrono::steady_clock::time_point tp = time + std::chrono::milliseconds(delay);
+		std::chrono::steady_clock::time_point _tp = o.time + std::chrono::milliseconds(o.delay);
+        if(tp < _tp) {
 			return true;
-		} else if(dealyms == _delay) {
-			if(repeat < _repeat) {
+		} else if(tp == _tp) {
+			if(repeat < o.repeat) {
 				return true;
 			}
 		}
 		return false;
 	} 
 
-	inline bool IsActive() const {
+	inline bool IsActive(uint32_t* millis = nullptr) const {
 		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
-		if(delay.count() > 0 && repeat >= 0) {
-			if(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-time) > delay) {
+		if(delay > 0 && repeat >= 0) {
+			uint32_t elapse = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-time).count();
+			if(elapse > delay) {
 				return true;
+			}
+			if(millis) {
+				*millis = delay - elapse;
 			}
 			return false;
 		}
 		return true;
 	}
+	inline bool IsDelay() const {
+		return delay > 0;
+	}
 	inline bool IsRepeat() const {
 		return repeat > 0;
 	}
 	inline void Update() {
-		if(delay.count() > 0 && repeat > 0) {
+		if(delay > 0 && repeat > 0) {
 			time = std::chrono::steady_clock::now();
 			//dealy;
-			if(repeat != (size_t)-1) {
+			if(repeat != (uint32_t)-1) {
 				--repeat;
 			}
 		}
 	}
 	std::chrono::steady_clock::time_point time;
-	std::chrono::milliseconds delay;
-	int repeat = 0;
+	uint32_t delay = 0;
+	uint32_t repeat = 0;
 };
 
 /*!

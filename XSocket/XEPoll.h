@@ -24,6 +24,7 @@
 #include "XSocketEx.h"
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/timerfd.h>
 
 namespace XSocket {
 
@@ -94,6 +95,7 @@ protected:
 	int epfd_ = 0;
 	int evfd_ = 0;
 	int evfd_pair_[2] = {0};
+	int timerfd_ = -1;
 public:
 	EPollServiceT()
 	{
@@ -120,11 +122,26 @@ public:
 				event.events = EPOLLIN | EPOLLERR;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_pair_[0], &event);
 			}
+			timerfd_ = timerfd_create(CLOCK_REALTIME, O_NONBLOCK);
+			if(timerfd_ == -1) {
+				PRINTF("timerfd_create failed, errno(%d): %s\n", errno, strerror(errno));
+			} else {
+				struct epoll_event event = {0};
+				event.data.ptr = nullptr;
+				event.data.fd = timerfd_;
+				event.events = EPOLLIN | EPOLLERR | EPOLLET;
+				epoll_ctl(epfd_, EPOLL_CTL_ADD, timerfd_, &event);
+			}
 		}
 	}
 	~EPollServiceT() 
 	{
 		if (epfd_) {
+			if(timerfd_) {
+				epoll_ctl(epfd_, EPOLL_CTL_DEL, timerfd_, nullptr);
+				close(timerfd_);
+				timerfd_ = 0;
+			}
 			if(evfd_pair_[0]) {
 				epoll_ctl(epfd_, EPOLL_CTL_DEL, evfd_pair_[0], nullptr);
 				close(evfd_pair_[0]);
@@ -152,6 +169,30 @@ public:
 	inline void PostNotify(void* data)
 	{
 		write(evfd_pair_[1], &data, sizeof(data));
+	}
+
+	inline void PostTimer(size_t millis)
+	{
+		//使用timerfd实现定时器
+		//Base::PostTimer(millis);
+		if(timerfd_ == -1) {
+			return;
+		} 
+		struct itimerspec curr_value = {0};
+		timerfd_gettime(timerfd_, &curr_value);
+		if((curr_value.it_value.tv_sec *1000 + curr_value.it_value.tv_nsec/1000) < millis) {
+			//说明有更快的定时器任务需要执行
+			return;
+		}
+
+		struct timespec now;
+		if (clock_gettime(CLOCK_REALTIME, &now) == -1)
+			return;
+		struct itimerspec new_value = {0};
+		millis += now.tv_nsec/1000;
+		new_value.it_value.tv_sec = now.tv_sec + millis/1000;
+		new_value.it_value.tv_nsec = millis%1000*1000;
+		timerfd_settime(timerfd_, TFD_TIMER_ABSTIME, &new_value, NULL);
 	}
 
 protected:
@@ -186,6 +227,12 @@ protected:
 					void* data = 0;
 					if(sizeof(void*) == read(event.data.fd, &data, sizeof(data))) {
 						OnNotify(data);
+					}
+				} else if(timerfd_ == event.data.fd) {
+					uint64_t data = 0;
+					if(sizeof(uint64_t) == read(event.data.fd, &data, sizeof(data))) {
+						//PRINTF("OnTimer %u", data);
+						OnTimer();
 					}
 				} else {
 					OnEPollEvent(event);

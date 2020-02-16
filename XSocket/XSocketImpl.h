@@ -1121,17 +1121,17 @@ protected:
 	{
 		typedef DealyEventBase Base;
 		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
-		:Base(_delay, _repeat), ptr(_ptr), task(_task) {
-			//PRINTF("Event");
+		:Base(_delay, _repeat), ptr(_ptr), task(std::move(_task)) {
+			PRINTF("Event");
 		}
 		Event(const Event& o):Base(o), ptr(o.ptr), task(o.task) {
-			//PRINTF("levent");
+			PRINTF("levent");
 		}
 		Event(Event&& o):Base(o), ptr(o.ptr), task(std::move(o.task)) {
-			//PRINTF("revent");
+			PRINTF("revent");
 		}
 		~Event() {
-			//PRINTF("~Event");
+			PRINTF("~Event");
 		}
 
 		Event& operator = (const Event& rhs) {
@@ -1169,19 +1169,25 @@ public:
 
 	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
 	{
+		Event evt(std::move(task), ptr, delay, repeat);
 		{
 		std::lock_guard<std::mutex> lock(mutex_);
 		//实时任务排在延迟任务前面，延迟任务按延迟时间和重复次数排队，延迟短和重复次数少排在前面,消费任务从头开始消费
 		auto it = queue_.rbegin();
 		for(; it != queue_.rend(); ++it)
 		{
-			if (it->IsLess(delay,repeat)) {
+			if (it->IsLess(evt)) {
 				break;
 			}
 		}
-		queue_.emplace(it.base(),std::forward<std::function<void()>>(task), ptr, delay, repeat);
+		queue_.emplace(it.base(),std::move(evt));
+		//queue_.emplace(it.base(),std::forward<std::function<void()>>(task), ptr, delay, repeat);
 		}
-		Base::PostNotify();
+		if(delay) {
+			Base::PostTimer(delay);
+		} else {
+			Base::PostNotify();	
+		}
 	}
 
 	template<class F, class... Args>
@@ -1211,18 +1217,26 @@ protected:
 		}
 	}
 
-	void DoTask()
+	void DoTask(bool timer = false)
 	{
 		//从头开始消费
-		for(size_t i = 0, j = queue_.size(), k = 0; i < j; i++)
-		{
-			std::unique_lock<std::mutex> lock(mutex_);
-			if (queue_.empty()) {
-				break;
+		std::unique_lock<std::mutex> lock(mutex_);
+		size_t i = 0, j = queue_.size(), k = 0;
+		if(timer) {
+			for(; i < j; i++)
+			{
+				const Event& evt = queue_[i];
+				if(evt.IsDelay()) {
+					break;
+				}
 			}
-			Event& evt = queue_[k];
+		}
+		for(k = i; i < j; i++)
+		{
+			Event evt = queue_[k];
 			lock.unlock();
-			if (evt.IsActive()) {
+			uint32_t millis = 0;
+			if (evt.IsActive(&millis)) {
 				evt.task();
 				if (evt.IsRepeat()) {
 					evt.Update();
@@ -1231,6 +1245,13 @@ protected:
 					queue_.erase(queue_.begin()+k);
 				}
 			} else {
+				if(timer) {
+					Base::PostTimer(millis);
+				}
+				break;
+			}
+			lock.lock();
+			if (queue_.empty()) {
 				break;
 			}
 		}
@@ -1244,6 +1265,11 @@ protected:
 	virtual void OnNotify()
 	{
 		DoTask();
+	}
+	
+	virtual void OnTimer()
+	{
+		DoTask(true);
 	}
 };
 
