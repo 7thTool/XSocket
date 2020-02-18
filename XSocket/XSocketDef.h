@@ -202,16 +202,6 @@ typedef unsigned char byte;
 #define SAISNULL(sa) (((struct SOCKADDR_IN *)sa)->sin_addr.s_addr == 0) 
 #endif
 
-#ifndef ASSERT
-#include <assert.h>
-#define ASSERT assert
-#endif//
-
-#ifndef ENSURE
-#include <assert.h>
-#define ENSURE assert
-#endif//
-
 #ifdef WIN32
 #define I64D "%I64d"
 #else
@@ -224,11 +214,25 @@ typedef unsigned char byte;
 #endif
 
 #ifndef PRINTF
-#ifdef _DEBUG
-#define PRINTF(format,...) printf("File: %s, Line: %d: "format"\n", __FILE__, __LINE__, ##__VA_ARGS__)
-#else
 #define PRINTF(format,...) printf(format"\n", ##__VA_ARGS__)
 #endif//
+
+#ifndef ASSERT
+#include <assert.h>
+#ifdef _DEBUG
+#define ASSERT(exp) if(!(exp)) { PRINTF("File: %s, Line: %d ASSERT", __FILE__, __LINE__); } assert(exp)
+#else
+#define ASSERT(exp) 
+#endif
+#endif//
+
+#ifndef ENSURE
+#ifdef _DEBUG
+#include <assert.h>
+#define ENSURE(exp) if(!(exp)) { PRINTF("File: %s, Line: %d ENSURE", __FILE__, __LINE__); } assert(exp)
+#else
+#define ENSURE(exp) 
+#endif
 #endif//
 
 #endif//_H_XSOCKETDEF_H_

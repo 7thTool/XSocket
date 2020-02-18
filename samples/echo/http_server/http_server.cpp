@@ -195,7 +195,7 @@ protected:
 			rsp->set_chunked();
 			rsp->set_data(data);
 			http->PostHttpResponse(rsp);
-			//http->PostHttpChunk(std::make_shared<std::string>(std::move(data)));
+			http->PostHttpChunk(std::make_shared<std::string>(std::move(data)));
 			http->PostHttpChunk(nullptr);
 #else
 			rsp->set_field("Content-Length", tostr(data.size()));
@@ -214,12 +214,6 @@ public:
 	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
 	{
 		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);
-	}
-
-	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
-	{
-		Socket::SetLinger(Sock, 0, 0);
-		Base::OnAccept(Sock, lpSockAddr, nSockAddrLen);
 	}
 
 	bool OnChar(char c)
@@ -286,9 +280,9 @@ int main()
     tls_ctx_config.ca_cert_file = "./ssl/dev.crt";
     tls_ctx_config.ca_cert_dir = "./ssl";
     tls_ctx_config.protocols = "TLSv1 TLSv1.1 TLSv1.2";
-    tls_ctx_config.ciphers;
+    tls_ctx_config.ciphers = "ALL:!ADH:!EXPORT56:RC4+RSA:+HIGH:+MEDIUM:+LOW:+SSLv2:+EXP;";
     tls_ctx_config.ciphersuites;
-    tls_ctx_config.prefer_server_ciphers;
+    tls_ctx_config.prefer_server_ciphers = 1;
 	worker::Configure(&tls_ctx_config);
 #endif
 

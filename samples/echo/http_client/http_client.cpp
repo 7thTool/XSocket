@@ -60,13 +60,22 @@ class client;
 typedef SimpleTaskServiceT<SelectService> ClientService;
 
 #ifdef USE_OPENSSL
-typedef SimpleTaskSocketT<SimpleTaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
+typedef SimpleTaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
 #else 
 typedef SimpleTaskSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
 #endif
-class client: public HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
+class client
+#ifdef USE_OPENSSL
+: public HttpsReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
+#else
+: public HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
+#endif//
 {
+#ifdef USE_OPENSSL
+	typedef HttpsReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
+#else
 	typedef HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
+#endif
 protected:
 	//std::once_flag start_flag_;
 	std::string addr_;
@@ -115,8 +124,8 @@ protected:
 	//
 	virtual void OnMessage(const std::shared_ptr<Message>& msg)
 	{
-		if(msg->size())
-			PRINTF("%.19s", msg->data());
+		// if(msg->size())
+		// 	PRINTF("%.19s", msg->data());
 		Base::OnMessage(msg);
 	}
 
@@ -137,11 +146,12 @@ protected:
 #ifdef USE_OPENSSL
 	virtual void OnSSLConnect()
 	{
+		Base::OnSSLConnect();
 #ifdef USE_WEBSOCKET
 		SendWSUpgrade("localhost");
 #else
-		PRINTF("%s",http_get_raw.c_str());
-		SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
+		//PRINTF("%s",http_get_raw.c_str());
+		//SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
 #endif
 	}
 #endif

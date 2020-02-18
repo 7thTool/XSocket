@@ -832,9 +832,7 @@ namespace XSocket {
 		{
 			auto& msg = Msg();
 			msg.done_ = true;
-			if(!msg.chunked_) {
-				on_message();
-			}
+			on_message();
 			return 0;
 		}
 		inline int on_chunk_header ()
@@ -849,7 +847,9 @@ namespace XSocket {
 		{
 			auto& msg = Msg();
 			msg.chunk_done_ = true;
-			on_message();
+			if(!msg.body_.empty()) {
+				on_message();
+			}
 			return 0;
 		}
 
@@ -1196,6 +1196,12 @@ namespace XSocket {
 // 		Base::OnRecvBuf(lpBuf,nBufLen,nFlags);
 // 	}
 
+		virtual void OnRole(int nRole)
+		{
+			Base::OnRole(nRole);
+			Base::SetLinger(0, 0); //保证数据发完，才关闭套接字
+		}
+
 		virtual void OnIdle()
 		{
 			static const std::chrono::steady_clock::time_point tp_zero;
@@ -1219,9 +1225,10 @@ namespace XSocket {
 	template<class T, class TBase>
 	class HttpReqSocketImpl : public SocketExImpl<T,TBase>
 	{
+	public:
 		typedef HttpReqSocketImpl<T, TBase> This;
 		typedef SocketExImpl<T,TBase> Base;
-	protected:
+	//protected:
 		typedef typename Base::Message Message;
 	public:
 		struct RequestInfo {
@@ -1277,10 +1284,6 @@ namespace XSocket {
 		virtual void OnMessage(const std::shared_ptr<Message>& msg)
 		{
 			T* pT = static_cast<T*>(this);
-			bool done = true;
-			if(msg->is_chunked() && msg->size()) {
-				done = false;
-			}
 			auto req_info = req_list_[0];
 			std::shared_ptr<HttpResponse> rsp = std::static_pointer_cast<HttpResponse>(msg);
 			try {
@@ -1292,7 +1295,7 @@ namespace XSocket {
 				//
 			}
 			int timeout = pT->GetConnectionTimeout();
-			if(done) {
+			if(msg->is_done()) {
 				req_list_.erase(req_list_.begin());
 				req_send_count_--;
 				if(msg->is_done()) {
@@ -1353,6 +1356,25 @@ namespace XSocket {
 				req_list_.clear();
 				req_send_count_ = 0;
 			}
+		}
+	};
+	
+	template<class T, class TBase>
+	class HttpsReqSocketImpl : public HttpReqSocketImpl<T,TBase>
+	{
+		typedef HttpReqSocketImpl<T,TBase> Base;
+	public:
+	protected:
+		//
+		virtual void OnSSLConnect()
+		{
+			Base::OnSSLConnect();
+			InnerSendHttpRequest();
+		}
+
+		virtual void OnConnect(int nErrorCode)
+		{
+			Base::Base::OnConnect(nErrorCode);
 		}
 	};
 
@@ -1539,6 +1561,7 @@ namespace XSocket {
 
 		HttpRspSocketImpl()
 		{
+			Base::SetCloseIfTimeOut(3*1000);
 		}
 		~HttpRspSocketImpl() 
 		{ 
@@ -1633,6 +1656,7 @@ namespace XSocket {
 		virtual void OnMessage(const std::shared_ptr<Message>& msg)
 		{
 			T* pT = static_cast<T*>(this);
+			Base::StopCloseIfTimeOut();
 			if(!req_) {
 				req_ = msg;
 				pT->HandleHttpRequest();

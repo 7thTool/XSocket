@@ -197,7 +197,7 @@ public:
 	inline int SetKeepAlive(u_long onoff, u_long time = 30*1000) { return SetKeepAlive(sock_, onoff, time); }
 	inline int SetBlock() { return SetBlock(sock_); }
 	inline int SetNonBlock() { return SetNonBlock(sock_); }
-	static int SetLinger(int onoff, int linger) { return SetLinger(onoff, linger); }
+	inline int SetLinger(int onoff, int linger) { return SetLinger(sock_, onoff, linger); }
 	inline int GetAddrType() { return GetAddrType(sock_); }
 };
 
