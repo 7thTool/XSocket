@@ -453,8 +453,8 @@ namespace XSocket {
 		}
 
 	public:	
-		template<class T>
-		static bool is_response_needs_body(T&& req, const HttpResponse& rsp)
+		template<class TRequest>
+		static bool is_response_needs_body(TRequest&& req, const HttpResponse& rsp)
 		{
 			int method = req.method();
 			int code = rsp.code();
@@ -467,8 +467,8 @@ namespace XSocket {
 		 * If you are the server, respond with the "Connection: close" header.
 		 * If you are the client, close the connection.
 		 */
-		template<class T>
-		static bool is_should_keep_alive(T&& msg, int* timeout = nullptr)
+		template<class TMessage>
+		static bool is_should_keep_alive(TMessage&& msg, int* timeout = nullptr)
 		{
 			const char* connection = msg.field("Connection");
 			if(connection) {
@@ -816,10 +816,10 @@ namespace XSocket {
 		inline int on_headers_complete ()
 		{
 			auto& msg = Msg();
-			msg.http_major = parser_.http_major;
-			msg.http_minor = parser_.http_minor;
-			msg.method_ = parser_.method;
-			msg.status_code = parser_.status_code;
+			msg.http_major = Base::parser_.http_major;
+			msg.http_minor = Base::parser_.http_minor;
+			msg.method_ = Base::parser_.method;
+			msg.status_code = Base::parser_.status_code;
 			return 0;
 		}
 		inline int on_body(const char *at, size_t length)

@@ -191,7 +191,7 @@ protected:
 			rsp->set_code(200);
 			//msg.field("Content-type")
 			rsp->set_field("Content-type", "text/html");
-#if 0
+#if 1
 			rsp->set_chunked();
 			rsp->set_data(data);
 			http->PostHttpResponse(rsp);
@@ -296,7 +296,7 @@ int main()
 	h.Start();
 
 	server *s = new server();
-	s->Start(DEFAULT_IP, DEFAULT_PORT);
+	s->Start("0.0.0.0", DEFAULT_PORT);
 	getchar();
 	s->Stop();
 	delete s;

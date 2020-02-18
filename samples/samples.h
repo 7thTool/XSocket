@@ -3,7 +3,7 @@
 
 #define USE_ZLIB
 //#define USE_OPENSSL
-//#define USE_WEBSOCKET
+#define USE_WEBSOCKET
 
 //////////////////////////////////////////////////////////////////////////
 //IPV4->IPV6
@@ -176,7 +176,7 @@
 #define DEFAULT_MULTICAST_PORTS	"12345"
 #else
 #define DEFAULT_IP		"127.0.0.1"
-#define DEFAULT_PORT	6666
+#define DEFAULT_PORT	5050
 #define DEFAULT_MULTICAST_IP	"224.0.0.255"
 #endif//
 #define DEFAULT_MULTICAST_PORT	12345
