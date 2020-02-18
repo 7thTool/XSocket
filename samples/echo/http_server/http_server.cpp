@@ -185,13 +185,23 @@ protected:
 			[http,req] {
 			if(req->size())
 				PRINTF("%.19s", req->data());
+			std::string data;
+			req->to_string(data);
 			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
 			rsp->set_code(200);
 			//msg.field("Content-type")
 			rsp->set_field("Content-type", "text/html");
-			rsp->set_field("Content-Length", tostr(req->size()));
-			rsp->set_data(std::string(req->data(),req->size()));
-			http->PostHttpResponse(req, rsp);
+#if 0
+			rsp->set_chunked();
+			rsp->set_data(data);
+			http->PostHttpResponse(rsp);
+			//http->PostHttpChunk(std::make_shared<std::string>(std::move(data)));
+			http->PostHttpChunk(nullptr);
+#else
+			rsp->set_field("Content-Length", tostr(data.size()));
+			rsp->set_data(std::move(data));
+			http->PostHttpResponse(rsp);
+#endif
 		});
 	}
 };
@@ -205,7 +215,13 @@ public:
 	{
 		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);
 	}
-	
+
+	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
+	{
+		Socket::SetLinger(Sock, 0, 0);
+		Base::OnAccept(Sock, lpSockAddr, nSockAddrLen);
+	}
+
 	bool OnChar(char c)
 	{
 		switch(c)

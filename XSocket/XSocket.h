@@ -117,6 +117,7 @@ public:
 	static int SetKeepAlive(SOCKET Sock, u_long onoff, u_long time = 30*1000);
 	static int SetBlock(SOCKET Sock);
 	static int SetNonBlock(SOCKET Sock);
+	static int SetLinger(SOCKET Sock, int onoff, int linger);
 
 	static int GetPeerName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 	static int GetSockName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen);
@@ -196,6 +197,7 @@ public:
 	inline int SetKeepAlive(u_long onoff, u_long time = 30*1000) { return SetKeepAlive(sock_, onoff, time); }
 	inline int SetBlock() { return SetBlock(sock_); }
 	inline int SetNonBlock() { return SetNonBlock(sock_); }
+	static int SetLinger(int onoff, int linger) { return SetLinger(onoff, linger); }
 	inline int GetAddrType() { return GetAddrType(sock_); }
 };
 

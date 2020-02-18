@@ -663,6 +663,14 @@ int Socket::SetNonBlock(SOCKET Sock)
 #endif//
 }
 
+int Socket::SetLinger(SOCKET Sock, int onoff, int linger)
+{
+	struct linger lgr;
+	lgr.l_onoff = onoff;
+	lgr.l_linger = linger;
+	return SetSockOpt(Sock, SOL_SOCKET, SO_LINGER, &lgr, sizeof(lgr));
+}
+
 int Socket::GetPeerName(SOCKET Sock, SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 {
 #ifdef WIN32

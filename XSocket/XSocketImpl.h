@@ -1122,16 +1122,15 @@ protected:
 		typedef DealyEventBase Base;
 		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
 		:Base(_delay, _repeat), ptr(_ptr), task(std::move(_task)) {
-			PRINTF("Event");
+			//PRINTF("Event");
 		}
 		Event(const Event& o):Base(o), ptr(o.ptr), task(o.task) {
-			PRINTF("levent");
+			//PRINTF("levent");
 		}
 		Event(Event&& o):Base(o), ptr(o.ptr), task(std::move(o.task)) {
-			PRINTF("revent");
+			//PRINTF("revent");
 		}
 		~Event() {
-			PRINTF("~Event");
 		}
 
 		Event& operator = (const Event& rhs) {
@@ -1141,7 +1140,7 @@ protected:
 			task = rhs.task;
         	return *this;
     	}
-		Event& operator = (const Event&& rhs) {
+		Event& operator = (Event&& rhs) {
 			if(this == &rhs) return *this;
 			DealyEventBase::operator=(std::move(rhs));
 			ptr = rhs.ptr;
@@ -1169,18 +1168,13 @@ public:
 
 	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
 	{
+		ASSERT(task);
 		Event evt(std::move(task), ptr, delay, repeat);
 		{
 		std::lock_guard<std::mutex> lock(mutex_);
 		//实时任务排在延迟任务前面，延迟任务按延迟时间和重复次数排队，延迟短和重复次数少排在前面,消费任务从头开始消费
-		auto it = queue_.rbegin();
-		for(; it != queue_.rend(); ++it)
-		{
-			if (it->IsLess(evt)) {
-				break;
-			}
-		}
-		queue_.emplace(it.base(),std::move(evt));
+		auto it = std::upper_bound(queue_.begin(), queue_.end(), evt);
+		queue_.emplace(it,std::move(evt));
 		//queue_.emplace(it.base(),std::forward<std::function<void()>>(task), ptr, delay, repeat);
 		}
 		if(delay) {

@@ -113,14 +113,14 @@ protected:
 
 protected:
 	//
-	virtual void OnMessage(const HttpBufferMessage& msg)
+	virtual void OnMessage(const std::shared_ptr<Message>& msg)
 	{
-		if(msg.size())
-			PRINTF("%.19s", msg.data());
+		if(msg->size())
+			PRINTF("%.19s", msg->data());
 		Base::OnMessage(msg);
 	}
 
-	virtual void OnUpgrade(const HttpBufferMessage& msg)
+	virtual void OnUpgrade(const std::shared_ptr<Message>& msg)
 	{
 		static std::default_random_engine random;
 #ifdef USE_WEBSOCKET
@@ -207,20 +207,15 @@ public:
 // #endif
 			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
 #ifndef USE_WEBSOCKET
-			PRINTF("%s",http_get_raw.c_str());
-			HttpParser parser;
-			int nParseLen = http_get_raw.size();
-			parser.ParseBuf(http_get_raw.c_str(),nParseLen);
-			const auto& msgs = parser.messages();
-			if(msgs.size()) {
-				std::shared_ptr<client::RequestInfo> req_info = std::make_shared<client::RequestInfo>();
-				msgs.back().to_request(req_info->req_);
-				c->PostHttpRequest(req_info);
-				std::future<std::shared_ptr<HttpResponse>> ret = req_info->rsp_.get_future();
-				std::shared_ptr<HttpResponse> result = ret.get();
+			std::shared_ptr<client::RequestInfo> req_info = std::make_shared<client::RequestInfo>();
+			req_info->req_.set_method(HTTP_GET);
+			req_info->req_.set_url("/test/echo");
+			req_info->req_.set_field("Accept-Encoding", "gzip");
+			req_info->rsp_ = [] (std::shared_ptr<HttpResponse> rsp) {
 				std::string buf;
-				PRINTF("%s",result->to_string(buf).c_str());
-			}
+				PRINTF("%s",rsp->to_string(buf).c_str());
+			};
+			c->PostHttpRequest(req_info);
 #endif
 		}
 		return true;
