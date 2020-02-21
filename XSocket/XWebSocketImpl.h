@@ -364,6 +364,13 @@ enum {
 		inline void EnableWSCache(bool bCache) { ws_buffer_.EnableCache(bCache); }
 		inline bool IsWSCacheEnable() { return ws_buffer_.IsCacheEnable(); }
 
+		//构建数据包
+		static inline void BuildWSBuf(std::string& out, const char* lpBody, int nBodyLen
+		, int nFlags =  SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL, uint32_t mask = 0)
+		{
+			WSBuffer::BuildBuf(out, lpBody, nBodyLen, nFlags, mask);
+		}
+
 		void SendWSBuf(const char* lpBody, int nBodyLen
 		, int nFlags = SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL, uint32_t mask = 0)
 		{
