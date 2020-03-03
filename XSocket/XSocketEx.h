@@ -1384,15 +1384,19 @@ protected:
 			if (sock_ptrs_[i]) {
 				std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
 				if (sock_ptr) {
+					if(sock_ptr->IsSelect(FD_IDLE)) {
+						j++;
+						sock_ptr->RemoveSelect(FD_IDLE);
+						sock_ptr->Trigger(FD_IDLE
+						//, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()
+						, 0
+						);
+					}
 					if (!sock_ptr->IsSocket()) {
 						if(!sock_ptr->IsSelect(-1)) { 
 							//自动移除
 							RemoveSocketByPos(i);
 						}
-					} else if(sock_ptr->IsSelect(FD_IDLE)) {
-						j++;
-						sock_ptr->RemoveSelect(FD_IDLE);
-						sock_ptr->Trigger(FD_IDLE, std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 					}
 				}
 			}

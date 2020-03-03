@@ -345,7 +345,7 @@ void SocketEx::OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLe
 {
 	if(IsDebug()) {
 		char str[64] = {0};
-		PRINTF("(%p %p %u)::OnAccept(%s):%u", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), Sock);
+		PRINTF("(%p %p %u)::OnAccept(%s):%u", Service::service(), this, (SOCKET)*this, lpSockAddr?SockAddr2Str(lpSockAddr,nSockAddrLen,str,64):"", Sock);
 	}
 }
 

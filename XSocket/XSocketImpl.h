@@ -663,6 +663,11 @@ public:
 	typedef typename Base::SocketSet TaskSocketSet;
 public:
 	
+	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
+	{
+		Base::this_service()->Post(std::move(task), ptr, delay, repeat);
+	}
+	
 	inline /*std::future<struct addrinfo*>*/void Resolve(const char *hostname, const char *service, const struct addrinfo *hints)
 	{
 		auto result = std::async(//std::launch::async|std::launch::deferred,
