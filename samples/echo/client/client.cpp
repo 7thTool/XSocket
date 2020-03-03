@@ -9,6 +9,7 @@
 #ifdef USE_OPENSSL
 #include "../../../XSocket/XSSLImpl.h"
 #endif
+#include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 
 class client;

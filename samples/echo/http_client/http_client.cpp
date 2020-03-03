@@ -7,6 +7,7 @@
 #ifdef USE_OPENSSL
 #include "../../../XSocket/XSSLImpl.h"
 #endif
+#include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 #include <random>
 
@@ -57,12 +58,12 @@ const std::string http_trunk_part_2 = "6\r\n world\r\n"
 
 class client;
 
-typedef SimpleTaskServiceT<SelectService> ClientService;
+typedef TaskSocketServiceT<SelectService> ClientService;
 
 #ifdef USE_OPENSSL
-typedef SimpleTaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
+typedef TaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
 #else 
-typedef SimpleTaskSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
+typedef TaskSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
 #endif
 class client
 #ifdef USE_OPENSSL

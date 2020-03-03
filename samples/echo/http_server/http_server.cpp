@@ -12,6 +12,7 @@
 #ifdef USE_OPENSSL
 #include "../../../XSocket/XSSLImpl.h"
 #endif
+#include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 #include <random>
 
@@ -59,11 +60,11 @@ class worker;
 
 class WorkService : public
 #ifdef USE_EPOLL
-SimpleTaskServiceT<EPollService>
+TaskSocketServiceT<EPollService>
 #elif defined(USE_IOCP)
-SimpleTaskServiceT<CompletionPortService>
+TaskSocketServiceT<CompletionPortService>
 #else
-SimpleTaskServiceT<SelectService>
+TaskSocketServiceT<SelectService>
 #endif//
 {
 public:
@@ -82,15 +83,15 @@ typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 
 class worker
 #ifdef USE_OPENSSL
-	: public HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
+	: public HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
 #else
-	: public HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
+	: public HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
 #endif
 {
 #ifdef USE_OPENSSL
-	typedef HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
+	typedef HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
 #else
-	typedef HttpRspSocketImpl<worker,SimpleSvrSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
+	typedef HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
 #endif
 public:
 	worker()
@@ -162,9 +163,9 @@ protected:
 #endif
 };
 
-class HttpHandler : public SimpleTaskServiceT<ThreadCVService>
+class HttpHandler : public TaskSocketServiceT<ThreadCVService>
 {
-	typedef SimpleTaskServiceT<ThreadCVService> Base;
+	typedef TaskSocketServiceT<ThreadCVService> Base;
 public:
 	HttpHandler():Base()
 	{
@@ -259,8 +260,9 @@ void test()
 	std::ostringstream oss(str, std::ios_base::app);
 	oss << "123";
 	PRINTF("oss=%s str=%s", oss.str().c_str(), str.c_str());
-	int i = 0;
+	int i = 10000;
 	test_right(std::move(i));
+	test(-i);
 }
 
 #ifdef WIN32

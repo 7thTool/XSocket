@@ -18,90 +18,54 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _H_XHTTP_IMPL_H_
-#define _H_XHTTP_IMPL_H_
+#ifndef _H_XQUICK_IMPL_H_
+#define _H_XQUICK_IMPL_H_
 
 #include "XSocketImpl.h"
-#include "http-parser/http_parser.h"
-#ifdef USE_WEBSOCKET
-//#include "ws-parser/ws_parser.h" //测试未通过
-#include "websocket-parser/websocket_parser.h" //这个可以解析和构建ws数据包
-#endif//
 #include "XCodec.h"
+
+#ifdef HAVE_CONFIG_H
+#  include <config.h>
+#endif // HAVE_CONFIG_H
+
+#include <vector>
+#include <deque>
+#include <map>
+#include <string_view>
 #include <sstream>
 #include <strstream>
 
+#include <ngtcp2/ngtcp2.h>
+#include <ngtcp2/ngtcp2_crypto.h>
+
 namespace XSocket {
 
-	typedef std::pair<const char*,size_t> strref;
-	class HttpRequest
-	{
-	public:
-		strref url_;
-		strref status_;
-		struct http_header {
-			strref name, value;
-		};
-		std::vector<http_header> fields_;
-		strref body_;
-
-		HttpRequest() {
-			fields_.reserve(16);
-		}
-		
-		inline strref GetFieldValue(const char* name) {
-			for(size_t i = 0; i < fields_.size(); i++)
-			{
-				if(strncmp(fields_[i].name.first,name, fields_[i].name.second) == 0) {
-					return fields_[i].value;
-				}
-			}
-			return strref();
-		}
-
-		inline strref GetBody() { return body_; }
-	};
-
 /*!
- *	@brief HttpSocketT 定义.
+ *	@brief QuickSocketT 定义.
  *
- *	封装HttpSocketT，实现Http/Websocket收发数据功能
+ *	封装QuickSocketT，实现Udp Quick收发数据功能
  */
 template<class TBase>
-class HttpSocketT : public TBase
+class QuickSocketT : public TBase
 {
-	typedef HttpSocketT<TBase> This;
+	typedef QuickSocketT<TBase> This;
 	typedef TBase Base;
+protected:
+  std::map<std::string, std::unique_ptr<Handler>> handlers_;
+  // ctos_ is a mapping between client's initial destination
+  // connection ID, and server source connection ID.
+  std::map<std::string, std::string> ctos_;
+  std::vector<Endpoint> endpoints_;
+  ngtcp2_crypto_aead token_aead_;
+  ngtcp2_crypto_md token_md_;
+  std::array<uint8_t, TOKEN_SECRETLEN> token_secret_;
 public:
-	HttpSocketT(http_parser_type type = HTTP_BOTH)
+	QuickSocketT()
 	{
-			settings_.on_message_begin = &This::on_message_begin;
-			settings_.on_url = &This::on_url;
-			settings_.on_status = &This::on_status;
-			settings_.on_header_field = &This::on_header_field;
-			settings_.on_header_value = &This::on_header_value;
-			settings_.on_body = &This::on_body;
-			settings_.on_message_complete = &This::on_message_complete;
-			http_parser_init(&parser_, type);
-			parser_.data = this;
-#ifdef USE_WEBSOCKET
-			// ws_settings_.on_data_begin = &This::on_data_begin;
-			// ws_settings_.on_data_payload = &This::on_data_payload;
-			// ws_settings_.on_data_end = &This::on_data_end;
-			// ws_settings_.on_control_begin = &This::on_control_begin;
-			// ws_settings_.on_control_payload = &This::on_control_payload;
-			// ws_settings_.on_control_end = &This::on_control_end;
-			websocket_parser_settings_init(&ws_settings_);
-			ws_settings_.on_frame_header = &This::on_frame_header;
-			ws_settings_.on_frame_body = &This::on_frame_body;
-			ws_settings_.on_frame_end = &This::on_frame_end;
-			websocket_parser_init(&ws_parser_);
-			// Attention! Sets your <data> after websocket_parser_init
-			ws_parser_.data = this;
-#endif
+			
 	}
 
-	~HttpSocketT() 
+	~QuickSocketT() 
 	{
 		
 	}
@@ -109,559 +73,536 @@ public:
 protected:
 	//
 	//解析数据包
-	virtual int ParseBuf(const char* lpBuf, int & nBufLen) { 
-		int nParsed = 0;
-			if(!IsUpgrade()) {
-				done_ = 0;
-				nParsed = http_parser_execute(&parser_, &settings_, lpBuf, nBufLen);
-				if(nParsed < 0) {
-					//出错
-					done_ = nParsed;
-				} else if(!IsDone()) {
-					return SOCKET_PACKET_FLAG_PENDING;
-				} else {
-					nBufLen = nParsed;
-					done_ = nParsed;
+	virtual int ParseBuf(const char* lpBuf, int & nBufLen, const SockAddr & stAddr) { 
+		ngtcp2_pkt_hd hd;
+		uint32_t version;
+		const uint8_t *dcid, *scid;
+		size_t dcidlen, scidlen;
+		if (auto rv = ngtcp2_pkt_decode_version_cid(&version, &dcid, &dcidlen,
+													&scid, &scidlen, lpBuf,
+													nBufLen, NGTCP2_SV_SCIDLEN);
+			rv != 0) {
+		if (rv == 1) {
+			send_version_negotiation(version, scid, scidlen, dcid, dcidlen, ep,
+									&su.sa, addrlen);
+			continue;
+		}
+		std::cerr << "Could not decode version and CID from QUIC packet header: "
+					<< ngtcp2_strerror(rv) << std::endl;
+		continue;
+		}
+
+		auto dcid_key = util::make_cid_key(dcid, dcidlen);
+
+		auto handler_it = handlers_.find(dcid_key);
+		if (handler_it == std::end(handlers_)) {
+		auto ctos_it = ctos_.find(dcid_key);
+		if (ctos_it == std::end(ctos_)) {
+			if (auto rv = ngtcp2_accept(&hd, buf.data(), nread); rv == -1) {
+			if (!config.quiet) {
+				std::cerr << "Unexpected packet received: length=" << nread
+						<< std::endl;
+			}
+			continue;
+			} else if (rv == 1) {
+			if (!config.quiet) {
+				std::cerr << "Unsupported version: Send Version Negotiation"
+						<< std::endl;
+			}
+			send_version_negotiation(hd.version, hd.scid.data, hd.scid.datalen,
+									hd.dcid.data, hd.dcid.datalen, ep, &su.sa,
+									addrlen);
+			continue;
+			}
+
+			ngtcp2_cid ocid;
+			ngtcp2_cid *pocid = nullptr;
+			switch (hd.type) {
+			case NGTCP2_PKT_INITIAL:
+			if (config.validate_addr || hd.tokenlen) {
+				std::cerr << "Perform stateless address validation" << std::endl;
+				if (hd.tokenlen == 0 ||
+					verify_token(&ocid, &hd, &su.sa, addrlen) != 0) {
+				send_retry(&hd, ep, &su.sa, addrlen);
+				continue;
 				}
-			} else {
-#ifdef USE_WEBSOCKET
-				ws_done_ = 0;
-				//nParsed = ws_parser_execute(&ws_parser_, &ws_settings_, this, (char*)lpBuf, nBufLen);
-				nParsed = websocket_parser_execute(&ws_parser_, &ws_settings_, lpBuf, nBufLen);
-				if(nParsed < 0) {
-					//出错
-					ws_done_ = nParsed;
-				} else if(!IsWSDone()) {
-					return SOCKET_PACKET_FLAG_PENDING;
-				} else {
-					//nParsed = nBufLen - ws_parser_.bytes_remaining;
-					nBufLen = nParsed;
-					ws_done_ = nParsed;
-				}
-#endif
+				pocid = &ocid;
 			}
-			return SOCKET_PACKET_FLAG_COMPLETE;
+			break;
+			case NGTCP2_PKT_0RTT:
+			send_retry(&hd, ep, &su.sa, addrlen);
+			continue;
+			}
+
+			auto h = std::make_unique<Handler>(loop_, ssl_ctx_, this, &hd.dcid);
+			if (h->init(ep, &su.sa, addrlen, &hd.scid, &hd.dcid, pocid, hd.token,
+						hd.tokenlen, hd.version) != 0) {
+			continue;
+			}
+
+			switch (h->on_read(ep, &su.sa, addrlen, buf.data(), nread)) {
+			case 0:
+			break;
+			case NGTCP2_ERR_RETRY:
+			send_retry(&hd, ep, &su.sa, addrlen);
+			continue;
+			default:
+			continue;
+			}
+
+			switch (h->on_write()) {
+			case 0:
+			case NETWORK_ERR_SEND_BLOCKED:
+			break;
+			default:
+			continue;
+			}
+
+			auto scid = h->scid();
+			auto scid_key = util::make_cid_key(scid);
+			ctos_.emplace(dcid_key, scid_key);
+
+			auto pscid = h->pscid();
+			if (pscid->datalen) {
+			auto pscid_key = util::make_cid_key(pscid);
+			ctos_.emplace(pscid_key, scid_key);
+			}
+
+			handlers_.emplace(scid_key, std::move(h));
+			continue;
+		}
+		if (!config.quiet) {
+			std::cerr << "Forward CID=" << util::format_hex((*ctos_it).first)
+					<< " to CID=" << util::format_hex((*ctos_it).second)
+					<< std::endl;
+		}
+		handler_it = handlers_.find((*ctos_it).second);
+		assert(handler_it != std::end(handlers_));
+		}
+
+		auto h = (*handler_it).second.get();
+		if (ngtcp2_conn_is_in_closing_period(h->conn())) {
+		// TODO do exponential backoff.
+		switch (h->send_conn_close()) {
+		case 0:
+		case NETWORK_ERR_SEND_BLOCKED:
+			break;
+		default:
+			remove(h);
+		}
+		continue;
+		}
+		if (h->draining()) {
+		continue;
+		}
+
+		if (auto rv = h->on_read(ep, &su.sa, addrlen, buf.data(), nread); rv != 0) {
+		if (rv != NETWORK_ERR_CLOSE_WAIT) {
+			remove(h);
+		}
+		continue;
+		}
+
+		h->signal_write();
+		return SOCKET_PACKET_FLAG_COMPLETE; }
 	}
 
-	virtual void OnMessage(const HttpRequest& req)
-	{
-
+	return 0;
 	}
 
-#ifdef USE_WEBSOCKET
-	virtual void OnUpgrade()
-	{
-
+	namespace {
+	uint32_t generate_reserved_version(const sockaddr *sa, socklen_t salen,
+									uint32_t version) {
+	uint32_t h = 0x811C9DC5u;
+	const uint8_t *p = (const uint8_t *)sa;
+	const uint8_t *ep = p + salen;
+	for (; p != ep; ++p) {
+		h ^= *p;
+		h *= 0x01000193u;
 	}
-	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
-	{
-
+	version = htonl(version);
+	p = (const uint8_t *)&version;
+	ep = p + sizeof(version);
+	for (; p != ep; ++p) {
+		h ^= *p;
+		h *= 0x01000193u;
 	}
-	virtual void OnWSClose()
-	{
-		Base::Trigger(FD_CLOSE, 0);
+	h &= 0xf0f0f0f0u;
+	h |= 0x0a0a0a0au;
+	return h;
 	}
-	virtual void OnWSPing()
-	{
-		//Pong();
+	} // namespace
+
+	int send_version_negotiation(uint32_t version, const uint8_t *dcid,
+										size_t dcidlen, const uint8_t *scid,
+										size_t scidlen, Endpoint &ep,
+										const sockaddr *sa, socklen_t salen) {
+	Buffer buf{NGTCP2_MAX_PKTLEN_IPV4};
+	std::array<uint32_t, 2> sv;
+
+	sv[0] = generate_reserved_version(sa, salen, version);
+	sv[1] = NGTCP2_PROTO_VER;
+
+	auto nwrite = ngtcp2_pkt_write_version_negotiation(
+		buf.wpos(), buf.left(),
+		std::uniform_int_distribution<uint8_t>(
+			0, std::numeric_limits<uint8_t>::max())(randgen),
+		dcid, dcidlen, scid, scidlen, sv.data(), sv.size());
+	if (nwrite < 0) {
+		std::cerr << "ngtcp2_pkt_write_version_negotiation: "
+				<< ngtcp2_strerror(nwrite) << std::endl;
+		return -1;
 	}
-	virtual void OnWSPong()
-	{
-		//
+
+	buf.push(nwrite);
+
+	Address remote_addr;
+	remote_addr.len = salen;
+	memcpy(&remote_addr.su.sa, sa, salen);
+
+	if (send_packet(ep, remote_addr, buf.rpos(), buf.size(), 0) !=
+		NETWORK_ERR_OK) {
+		return -1;
 	}
-#endif
 
-// 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
-// 	{
-// 		//PRINTF("%-79s", lpBuf);
-// 		if (IsUpgrade()) {
-// #ifdef USE_WEBSOCKET
-// 			if(!IsWSDone()) {
-// 				if(Base::IsConnectSocket()) {
-// 					//收到接受升级到WEBSOCKET消息
-// 					OnUpgrade();
-// 				} else {
-// 					//先接受升级到WEBSOCKET
-// 					auto key = request_.GetFieldValue("Sec-WebSocket-Key");
-// 					std::string buf = BuildAcceptUpgradeBuf(key.first, key.second);
-// 					SendBuf(buf.c_str(), buf.size(), 0);
-// 				}
-// 				//这里就完成了升级
-// 			} else {
-// 				//说明收到了websocket数据
-// 				auto body = request_.GetBody();
-// 				int nFlags = SOCKET_PACKET_FLAG_COMPLETE;
-// 				if(!IsWSFinal()) {
-// 					Cache(GetOPCode() != WS_OP_CONTINUE, false);
-// 					nFlags |= SOCKET_PACKET_FLAG_CONTINUE; //分片
-// 				} else {
-// 					if(GetOPCode() == WS_OP_CONTINUE) {
-// 						Cache(false, true);
-// 					}
-// 					switch (GetOPCode())
-// 					{
-// 					case WS_OP_CLOSE:
-// 						OnClose();
-// 						break;
-// 					case WS_OP_PING:
-// 						OnPing();
-// 						break;
-// 					case WS_OP_PONG:
-// 						OnPong();
-// 						break;
-// 					case WS_OP_TEXT:
-// 						nFlags |= SOCKET_PACKET_FLAG_TEXT;
-// 					default:
-// 						OnMessage(body.first, body.second, nFlags);
-// 						break;
-// 					}
-// 				}
-// 			}
-// #endif
-// 		} else {
-// 			OnMessage(request_);
-// 		}
-// 		Base::OnRecvBuf(lpBuf,nBufLen,nFlags);
-// 	}
+	return 0;
+	}
 
-// 	virtual void OnSendBuf(const char* lpBuf, int nBufLen)
-// 	{
-// 		Base::OnSendBuf(lpBuf, nBufLen);
-// 	}
+	int send_retry(const ngtcp2_pkt_hd *chd, Endpoint &ep,
+						const sockaddr *sa, socklen_t salen) {
+	std::array<char, NI_MAXHOST> host;
+	std::array<char, NI_MAXSERV> port;
 
-protected:
-		http_parser_settings settings_ = {0};
-		http_parser parser_ = {0};
-		HttpRequest request_;
-		int done_ = 0;
+	if (auto rv = getnameinfo(sa, salen, host.data(), host.size(), port.data(),
+								port.size(), NI_NUMERICHOST | NI_NUMERICSERV);
+		rv != 0) {
+		std::cerr << "getnameinfo: " << gai_strerror(rv) << std::endl;
+		return -1;
+	}
 
-		inline bool IsUpgrade() { return parser_.upgrade; }
-		inline bool IsError() { return done_ < 0; }
-		inline bool IsDone() { return done_ != 0; }
+	if (!config.quiet) {
+		std::cerr << "Sending Retry packet to [" << host.data()
+				<< "]:" << port.data() << std::endl;
+	}
 
-#ifdef USE_WEBSOCKET
-		// ws_parser_callbacks_t ws_settings_;
-		// ws_parser_t ws_parser_;
-		// ws_frame_type_t ws_type_;
-		websocket_parser_settings ws_settings_;
-		websocket_parser ws_parser_;
-		uint8_t ws_flags_ = 0; //分片时Cache标志
-		std::string ws_body_;//分片时Cache数据
-		int ws_done_ = 0;
-		//inline ws_frame_type_t GetWSType() { return ws_type_; }
-		inline int GetOPCode() { return ws_parser_.flags & WS_OP_MASK; }
-		inline bool	IsWSFinal() { return ws_parser_.flags & WS_FIN; }
-		inline bool IsWSError() { return ws_done_ < 0; }
-		inline bool IsWSDone() { return ws_done_ != 0; }
-		inline void ClearCache() { 
-			ws_flags_ = 0;
-			ws_body_.clear();
-		}
-		inline void Cache(bool first, bool end) { 
-			if(first) {
-				ClearCache();
-				ws_flags_ = ws_parser_.flags;
-			}
-			ws_body_.append(request_.body_.first,request_.body_.second); 
-			if(end) {
-				ws_flags_ |= WS_FIN;
-				ws_parser_.flags |= ws_flags_;
-				request_.body_ = strref(ws_body_.c_str(),ws_body_.size());
-			}
-		}
-#endif
+	std::array<uint8_t, 256> token;
+	size_t tokenlen = token.size();
 
-#ifdef USE_WEBSOCKET
-		//升级websocket
-		void Upgrade(const char* host, const char* path = "/")
-		{
-			//Connection: Upgrade：表示要升级协议
-			//Upgrade: websocket：表示要升级到 websocket 协议。
-			//Sec-WebSocket-Version: 13：表示 websocket 的版本。如果服务端不支持该版本，需要返回一个Sec-WebSocket-Version包含服务端支持的版本号。
-			//Sec-WebSocket-Key：与后面服务端响应首部的Sec-WebSocket-Accept是配套的，提供基本的防护，比如恶意的连接，或者无意的连接。
-			char buf[1024] = {0};
-			int buflen = sprintf(buf, "XSocket: %d", rand());
-			char base64_key[1024] = {0};
-			int base64_len = Base64EncodeGetRequiredLength(buflen, BASE64_FLAG_NOCRLF);
-			Base64Encode((const byte*)buf, buflen, (char*)base64_key, &base64_len, BASE64_FLAG_NOCRLF);
-			base64_key[base64_len] = 0; 
-			std::ostrstream ss(Base::SendBuf(1024), 1024);
-			ss << "GET " << path << " HTTP/1.1\r\n"
-			<< "Host: " << host << "\r\n"
-			<< "Origin: http://" << host << "\r\n"
-			<< "Connection: Upgrade\r\n"
-			<< "Upgrade: WebSocket\r\n"
-			<< "Sec-WebSocket-Version: 13\r\n"
-			<< "Sec-WebSocket-Key: " << base64_key << "\r\n"
-			<< "\r\n";
-			//std::string str = ss.str();
-			//int len = str.size();
-			Base::SendBufDirect(1024-ss.pcount());
-			//return str;
-		}
+	if (generate_token(token.data(), tokenlen, sa, salen, &chd->dcid) != 0) {
+		return -1;
+	}
 
-		//接受升级websocket
-		void AcceptUpgrade(const char* key, size_t key_len)
-		{
-			//Sec-WebSocket-Accept根据客户端请求首部的Sec-WebSocket-Key计算出来。
-			//计算公式为：
-			//将Sec-WebSocket-Key跟258EAFA5-E914-47DA-95CA-C5AB0DC85B11拼接。
-			//通过 SHA1 计算出摘要，并转成 base64 字符串。
-			char buf[1024] = {0};
-			int buflen = sprintf(buf, "%.*s%s", key_len, key, WEBSOCKET_UUID);
-			//std::string ws_key = std::string(key,key_len) + WEBSOCKET_UUID;
-			SHA1_HASH hash_key = {0};
-			SHA1(buf, buflen, &hash_key);
-			buflen = Base64EncodeGetRequiredLength(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
-			Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, &buflen, BASE64_FLAG_NOCRLF);
-			buf[buflen] = 0;
-			std::ostrstream ss(Base::SendBuf(1024), 1024);
-			ss << "HTTP/1.1 101 Switching Protocols\r\n"
-			<< "Connection: Upgrade\r\n"
-			<< "Upgrade: WebSocket\r\n"
-			<< "Sec-WebSocket-Accept: " << buf << "\r\n"
-			<< "\r\n";
-			//std::string str = ss.str();
-			//int len = str.size();
-			Base::SendBufDirect(1024-ss.pcount());
-			//return str;
-		}
+	if (!config.quiet) {
+		std::cerr << "Generated address validation token:" << std::endl;
+		util::hexdump(stderr, token.data(), tokenlen);
+	}
 
-		void SendWebSocketBuf(const char* body, int body_len, int flags = WS_OP_TEXT|WS_FINAL_FRAME, uint32_t mask = 0)
-		{
-			if(mask) {
-				mask = htonl(mask);
-				flags |= WS_HAS_MASK;
-			}
-			size_t frame_len = websocket_calc_frame_size(flags, body_len);
-			websocket_build_frame((char*)Base::SendBuf(frame_len), flags, (char*)&mask, body, body_len);
-			Base::SendBufDirect(0);
-		}
-#endif//
-		
-	protected:
-		//
-		static int on_message_begin (http_parser* parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_message_begin();
-			}
-			return 0;
-		}
-		static int on_url(http_parser* parser, const char *at, size_t length)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_url(at,length);
-			}
-			return 0;
-		}
-		static int on_status(http_parser* parser, const char *at, size_t length)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_status(at,length);
-			}
-			return 0;
-		}
-		static int on_header_field(http_parser* parser, const char *at, size_t length)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_header_field(at,length);
-			}
-			return 0;
-		}
-		static int on_header_value(http_parser* parser, const char *at, size_t length)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_header_value(at,length);
-			}
-			return 0;
-		}
-		static int on_headers_complete (http_parser* parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_headers_complete();
-			}
-			return 0;
-		}
-		static int on_body(http_parser* parser, const char *at, size_t length)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_body(at,length);
-			}
-			return 0;
-		}
-		static int on_message_complete (http_parser* parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_message_complete();
-			}
-			return 0;
-		}
-		static int on_chunk_header (http_parser* parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_chunk_header();
-			}
-			return 0;
-		}
-		static int on_chunk_complete (http_parser* parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				return pThis->on_chunk_complete();
-			}
-			return 0;
-		}
-		
-		inline int on_message_begin() 
-		{
-			return 0;
-		}
-		
-		inline int on_url(const char *at, size_t length)
-		{
-			request_.url_ = strref(at,length);
-			return 0;
-		}
-		inline int on_status(const char *at, size_t length)
-		{
-			request_.status_ = strref(at,length);
-			return 0;
-		}
-		inline int on_header_field(const char *at, size_t length)
-		{
-			request_.fields_.resize(request_.fields_.size()+1);
-			request_.fields_.back().name = strref(at,length);
-			return 0;
-		}
-		inline int on_header_value(const char *at, size_t length)
-		{
-			request_.fields_.back().value = strref(at,length);
-			return 0;
-		}
-		inline int on_headers_complete ()
-		{
-			return 0;
-		}
-		inline int on_body(const char *at, size_t length)
-		{
-			request_.body_ = strref(at,length);
-			return 0;
-		}
-		inline int on_message_complete ()
-		{
-			done_ = true;
-			//
-			if (IsUpgrade()) {
-#ifdef USE_WEBSOCKET
-				if(Base::IsConnectSocket()) {
-					//收到接受升级到WEBSOCKET消息
-					OnUpgrade();
-				} else {
-					//先接受升级到WEBSOCKET
-					auto key = request_.GetFieldValue("Sec-WebSocket-Key");
-					AcceptUpgrade(key.first, key.second);
-				}
-				//这里就完成了升级
-#endif
-			} else {
-				OnMessage(request_);
-			}
-			return 0;
-		}
-		inline int on_chunk_header ()
-		{
-			return 0;
-		}
-		inline int on_chunk_complete ()
-		{
-			return 0;
-		}
+	Buffer buf{NGTCP2_MAX_PKTLEN_IPV4};
+	ngtcp2_pkt_hd hd;
 
-#ifdef USE_WEBSOCKET
-		// static int on_data_begin(void* data, ws_frame_type_t type)
-		// {
-		// 	This* pThis = (This*)data;
-		// 	if(pThis) {
-		// 		return pThis->on_data_begin(type);
-		// 	}
-		// 	return 0;
-		// }
-		
-		// static int on_data_payload(void* data, const char* at, size_t length)
-		// {
-		// 	This* pThis = (This*)data;
-		// 	if(pThis) {
-		// 		return pThis->on_data_payload(at, length);
-		// 	}
-		// 	return 0;
-		// }
-		
-		// static int on_data_end(void* data)
-		// {
-		// 	This* pThis = (This*)data;
-		// 	if(pThis) {
-		// 		return pThis->on_data_end();
-		// 	}
-		// 	return 0;
-		// }
-		
-		// static int on_control_begin(void* data, ws_frame_type_t type)
-		// {
-		// 	This* pThis = (This*)data;
-		// 	if(pThis) {
-		// 		return pThis->on_control_begin(type);
-		// 	}
-		// 	return 0;
-		// }
-		
-		// static int on_control_payload(void* data, const char* at, size_t length)
-		// {
-		// 	This* pThis = (This*)data;
-		// 	if(pThis) {
-		// 		return pThis->on_control_payload(at, length);
-		// 	}
-		// 	return 0;
-		// }
-		
-		// static int on_control_end(void* data)
-		// {
-		// 	This* pThis = (This*)data;
-		// 	if(pThis) {
-		// 		return pThis->on_control_end();
-		// 	}
-		// 	return 0;
-		// }
+	hd.version = chd->version;
+	hd.flags = NGTCP2_PKT_FLAG_LONG_FORM;
+	hd.type = NGTCP2_PKT_RETRY;
+	hd.pkt_num = 0;
+	hd.token = nullptr;
+	hd.tokenlen = 0;
+	hd.len = 0;
+	hd.dcid = chd->scid;
+	hd.scid.datalen = NGTCP2_SV_SCIDLEN;
+	auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
+	std::generate(hd.scid.data, hd.scid.data + hd.scid.datalen,
+					[&dis]() { return dis(randgen); });
 
-		// inline int on_data_begin(ws_frame_type_t type)
-		// {
-		// 	ws_type_ = type;
-		// 	return 0;
-		// }
-		
-		// inline int on_data_payload(const char* at, size_t length)
-		// {
-		// 	body_ = strref(at,length);
-		// 	return 0;
-		// }
-		
-		// inline int on_data_end()
-		// {
-		// 	ws_done_ = true;
-		// 	return 0;
-		// }
-		
-		// inline int on_control_begin(ws_frame_type_t type)
-		// {
-		// 	ws_type_ = type;
-		// 	return 0;
-		// }
-		
-		// inline int on_control_payload(const char* at, size_t length)
-		// {
-		// 	body_ = strref(at,length);
-		// 	return 0;
-		// }
-		
-		// inline int on_control_end()
-		// {
-		// 	ws_done_ = true;
-		// 	return 0;
-		// }
-		
-		static int on_frame_header(websocket_parser *parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				pThis->on_frame_header();
-			}
-			return 0;
-		}
+	auto nwrite = ngtcp2_pkt_write_retry(buf.wpos(), buf.left(), &hd, &chd->dcid,
+										token.data(), tokenlen);
+	if (nwrite < 0) {
+		std::cerr << "ngtcp2_pkt_write_retry: " << ngtcp2_strerror(nwrite)
+				<< std::endl;
+		return -1;
+	}
 
-		static int on_frame_body(websocket_parser *parser, const char *at, size_t length)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				pThis->on_frame_body(at,length);
-			}
-			return 0;
-		}
+	buf.push(nwrite);
 
-		static int on_frame_end(websocket_parser *parser)
-		{
-			This* pThis = (This*)parser->data;
-			if(pThis) {
-				pThis->on_frame_end();
-			}
-			return 0;
-		}
+	Address remote_addr;
+	remote_addr.len = salen;
+	memcpy(&remote_addr.su.sa, sa, salen);
 
-		inline int on_frame_header()
-		{
-			if (ws_parser_.length) {
-				// body_ = strref();
-				// decode_body_.clear();
-				// if (ws_parser_.flags & WS_HAS_MASK) {
-				// 	decode_body_.resize(ws_parser_.length); // allocate memory for frame body, if body exists
-				// }
-			}
-			return 0;
-		}
+	if (send_packet(ep, remote_addr, buf.rpos(), buf.size(), 0) !=
+		NETWORK_ERR_OK) {
+		return -1;
+	}
 
-		inline int on_frame_body(const char *at, size_t length)
-		{
-			if (ws_parser_.flags & WS_HAS_MASK) {
-				// if frame has mask, we have to copy and decode data via websocket_parser_copy_masked function
-				//websocket_parser_decode(&decode_body_[ws_parser_.offset], at, length, &ws_parser_);
-				websocket_parser_decode((char*)at, at, length, &ws_parser_);
-			}
-			request_.body_ = strref(at,length);
-			return 0;
-		}
+	return 0;
+	}
 
-		inline int on_frame_end()
-		{
-			ws_done_ = true;
-			//
-				int nFlags = SOCKET_PACKET_FLAG_COMPLETE;
-				if(!IsWSFinal()) {
-					Cache(GetOPCode() != WS_OP_CONTINUE, false);
-					nFlags |= SOCKET_PACKET_FLAG_CONTINUE; //分片
-				} else {
-					if(GetOPCode() == WS_OP_CONTINUE) {
-						Cache(false, true);
-					}
-					auto body = request_.GetBody();
-					switch (GetOPCode())
-					{
-					case WS_OP_CLOSE:
-						OnWSClose();
-						break;
-					case WS_OP_PING:
-						OnWSPing();
-						break;
-					case WS_OP_PONG:
-						OnWSPong();
-						break;
-					case WS_OP_TEXT:
-						nFlags |= SOCKET_PACKET_FLAG_TEXT;
-					default:
-						OnWSMessage(body.first, body.second, nFlags);
-						break;
-					}
-				}
-			return 0;
+	int derive_token_key(uint8_t *key, size_t &keylen, uint8_t *iv,
+								size_t &ivlen, const uint8_t *rand_data,
+								size_t rand_datalen) {
+	std::array<uint8_t, 32> secret;
+
+	if (ngtcp2_crypto_hkdf_extract(secret.data(), secret.size(), &token_md_,
+									token_secret_.data(), token_secret_.size(),
+									rand_data, rand_datalen) != 0) {
+		return -1;
+	}
+
+	keylen = ngtcp2_crypto_aead_keylen(&token_aead_);
+	ivlen = ngtcp2_crypto_packet_protection_ivlen(&token_aead_);
+
+	if (ngtcp2_crypto_derive_packet_protection_key(key, iv, nullptr, &token_aead_,
+													&token_md_, secret.data(),
+													secret.size()) != 0) {
+		return -1;
+	}
+
+	return 0;
+	}
+
+	int generate_rand_data(uint8_t *buf, size_t len) {
+	std::array<uint8_t, 16> rand;
+	std::array<uint8_t, 32> md;
+	auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
+	std::generate_n(rand.data(), rand.size(), [&dis]() { return dis(randgen); });
+
+	auto ctx = EVP_MD_CTX_new();
+	if (ctx == nullptr) {
+		return -1;
+	}
+
+	auto ctx_deleter = defer(EVP_MD_CTX_free, ctx);
+
+	unsigned int mdlen = md.size();
+	if (!EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) ||
+		!EVP_DigestUpdate(ctx, rand.data(), rand.size()) ||
+		!EVP_DigestFinal_ex(ctx, md.data(), &mdlen)) {
+		return -1;
+	}
+
+	std::copy_n(std::begin(md), len, buf);
+	return 0;
+	}
+
+	int generate_token(uint8_t *token, size_t &tokenlen, const sockaddr *sa,
+							socklen_t salen, const ngtcp2_cid *ocid) {
+	std::array<uint8_t, 4096> plaintext;
+
+	uint64_t t = std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::system_clock::now().time_since_epoch())
+					.count();
+
+	auto p = std::begin(plaintext);
+	p = std::copy_n(reinterpret_cast<const uint8_t *>(sa), salen, p);
+	// Host byte order
+	p = std::copy_n(reinterpret_cast<uint8_t *>(&t), sizeof(t), p);
+	p = std::copy_n(ocid->data, ocid->datalen, p);
+
+	std::array<uint8_t, TOKEN_RAND_DATALEN> rand_data;
+	std::array<uint8_t, 32> key, iv;
+	auto keylen = key.size();
+	auto ivlen = iv.size();
+
+	if (generate_rand_data(rand_data.data(), rand_data.size()) != 0) {
+		return -1;
+	}
+	if (derive_token_key(key.data(), keylen, iv.data(), ivlen, rand_data.data(),
+						rand_data.size()) != 0) {
+		return -1;
+	}
+
+	auto plaintextlen = std::distance(std::begin(plaintext), p);
+	if (ngtcp2_crypto_encrypt(token, &token_aead_, plaintext.data(), plaintextlen,
+								key.data(), iv.data(), ivlen,
+								reinterpret_cast<const uint8_t *>(sa),
+								salen) != 0) {
+		return -1;
+	}
+
+	tokenlen = plaintextlen + ngtcp2_crypto_aead_taglen(&token_aead_);
+	memcpy(token + tokenlen, rand_data.data(), rand_data.size());
+	tokenlen += rand_data.size();
+
+	return 0;
+	}
+
+	int verify_token(ngtcp2_cid *ocid, const ngtcp2_pkt_hd *hd,
+							const sockaddr *sa, socklen_t salen) {
+	std::array<char, NI_MAXHOST> host;
+	std::array<char, NI_MAXSERV> port;
+
+	if (auto rv = getnameinfo(sa, salen, host.data(), host.size(), port.data(),
+								port.size(), NI_NUMERICHOST | NI_NUMERICSERV);
+		rv != 0) {
+		std::cerr << "getnameinfo: " << gai_strerror(rv) << std::endl;
+		return -1;
+	}
+
+	if (!config.quiet) {
+		std::cerr << "Verifying token from [" << host.data() << "]:" << port.data()
+				<< std::endl;
+	}
+
+	if (!config.quiet) {
+		std::cerr << "Received address validation token:" << std::endl;
+		util::hexdump(stderr, hd->token, hd->tokenlen);
+	}
+
+	if (hd->tokenlen < TOKEN_RAND_DATALEN) {
+		if (!config.quiet) {
+		std::cerr << "Token is too short" << std::endl;
 		}
-#endif
+		return -1;
+	}
+
+	auto rand_data = hd->token + hd->tokenlen - TOKEN_RAND_DATALEN;
+	auto ciphertext = hd->token;
+	auto ciphertextlen = hd->tokenlen - TOKEN_RAND_DATALEN;
+
+	std::array<uint8_t, 32> key, iv;
+	auto keylen = key.size();
+	auto ivlen = iv.size();
+
+	if (derive_token_key(key.data(), keylen, iv.data(), ivlen, rand_data,
+						TOKEN_RAND_DATALEN) != 0) {
+		return -1;
+	}
+
+	std::array<uint8_t, 4096> plaintext;
+
+	if (ngtcp2_crypto_decrypt(plaintext.data(), &token_aead_, ciphertext,
+								ciphertextlen, key.data(), iv.data(), ivlen,
+								reinterpret_cast<const uint8_t *>(sa),
+								salen) != 0) {
+		if (!config.quiet) {
+		std::cerr << "Could not decrypt token" << std::endl;
+		}
+		return -1;
+	}
+
+	assert(ciphertextlen >= ngtcp2_crypto_aead_taglen(&token_aead_));
+
+	auto plaintextlen = ciphertextlen - ngtcp2_crypto_aead_taglen(&token_aead_);
+	if (plaintextlen < salen + sizeof(uint64_t)) {
+		if (!config.quiet) {
+		std::cerr << "Bad token construction" << std::endl;
+		}
+		return -1;
+	}
+
+	auto cil = plaintextlen - salen - sizeof(uint64_t);
+	if (cil != 0 && (cil < NGTCP2_MIN_CIDLEN || cil > NGTCP2_MAX_CIDLEN)) {
+		if (!config.quiet) {
+		std::cerr << "Bad token construction" << std::endl;
+		}
+		return -1;
+	}
+
+	if (memcmp(plaintext.data(), sa, salen) != 0) {
+		if (!config.quiet) {
+		std::cerr << "Client address does not match" << std::endl;
+		}
+		return -1;
+	}
+
+	uint64_t t;
+	memcpy(&t, plaintext.data() + salen, sizeof(uint64_t));
+
+	uint64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+						std::chrono::system_clock::now().time_since_epoch())
+						.count();
+
+	// Allow 10 seconds window
+	if (t + 10ULL * NGTCP2_SECONDS < now) {
+		if (!config.quiet) {
+		std::cerr << "Token has been expired" << std::endl;
+		}
+		return -1;
+	}
+
+	ngtcp2_cid_init(ocid, plaintext.data() + salen + sizeof(uint64_t), cil);
+
+	return 0;
+	}
+
+	int send_packet(Endpoint &ep, const Address &remote_addr,
+							const uint8_t *data, size_t datalen, size_t gso_size,
+							ev_io *wev) {
+	if (debug::packet_lost(config.tx_loss_prob)) {
+		if (!config.quiet) {
+		std::cerr << "** Simulated outgoing packet loss **" << std::endl;
+		}
+		return NETWORK_ERR_OK;
+	}
+
+	iovec msg_iov;
+	msg_iov.iov_base = const_cast<uint8_t *>(data);
+	msg_iov.iov_len = datalen;
+
+	msghdr msg{};
+	msg.msg_name = const_cast<sockaddr *>(&remote_addr.su.sa);
+	msg.msg_namelen = remote_addr.len;
+	msg.msg_iov = &msg_iov;
+	msg.msg_iovlen = 1;
+
+	#if NGTCP2_ENABLE_UDP_GSO
+	std::array<uint8_t, CMSG_SPACE(sizeof(uint16_t))> msg_ctrl{};
+	if (gso_size && datalen > gso_size) {
+		msg.msg_control = msg_ctrl.data();
+		msg.msg_controllen = msg_ctrl.size();
+
+		auto cm = CMSG_FIRSTHDR(&msg);
+		cm->cmsg_level = SOL_UDP;
+		cm->cmsg_type = UDP_SEGMENT;
+		cm->cmsg_len = CMSG_LEN(sizeof(uint16_t));
+		*(reinterpret_cast<uint16_t *>(CMSG_DATA(cm))) = gso_size;
+	}
+	#endif // NGTCP2_ENABLE_UDP_GSO
+
+	ssize_t nwrite = 0;
+
+	do {
+		nwrite = sendmsg(ep.fd, &msg, 0);
+	} while (nwrite == -1 && errno == EINTR);
+
+	if (nwrite == -1) {
+		std::cerr << "sendmsg: " << strerror(errno) << std::endl;
+		// TODO We have packet which is expected to fail to send (e.g.,
+		// path validation to old path).
+		return NETWORK_ERR_OK;
+	}
+
+	if (!config.quiet) {
+		std::cerr << "Sent packet: local="
+				<< util::straddr(&ep.addr.su.sa, ep.addr.len) << " remote="
+				<< util::straddr(&remote_addr.su.sa, remote_addr.len) << " "
+				<< nwrite << " bytes" << std::endl;
+	}
+
+	return NETWORK_ERR_OK;
+	}
+
+	void associate_cid(const ngtcp2_cid *cid, Handler *h) {
+	ctos_.emplace(util::make_cid_key(cid), util::make_cid_key(h->scid()));
+	}
+
+	void dissociate_cid(const ngtcp2_cid *cid) {
+	ctos_.erase(util::make_cid_key(cid));
+	}
+
+	void remove(const Handler *h) {
+	ctos_.erase(util::make_cid_key(h->rcid()));
+	ctos_.erase(util::make_cid_key(h->pscid()));
+
+	auto conn = h->conn();
+	std::vector<ngtcp2_cid> cids(ngtcp2_conn_get_num_scid(conn));
+	ngtcp2_conn_get_scid(conn, cids.data());
+
+	for (auto &cid : cids) {
+		ctos_.erase(util::make_cid_key(&cid));
+	}
+
+	handlers_.erase(util::make_cid_key(h->scid()));
+	}
+
 };
 
 }

@@ -10,6 +10,7 @@
 #include "../../XSocket/XSSLImpl.h"
 #endif
 #include "../../XSocket/XDNSImpl.h"
+#include "../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 
 class client;
