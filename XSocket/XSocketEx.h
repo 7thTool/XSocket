@@ -427,29 +427,46 @@ class Service
 protected:
     //停止标记，默认停止状态，启动后停止状态为false
     std::atomic<bool> stop_flag_;
-	uint32_t wait_timeout_; //服务等待时间（毫秒）
 	uint32_t idle_flag_:1; //空闲处理标志,0表示不执行空闲任务，1表示执行空闲任务
 	uint32_t notify_flag_:1; //通知处理标志,0表示没有通知任务，1表示有通知任务
-	uint32_t timer_timeout_:30; //最短定时任务时间,0表示没有定时任务，非0表示最短定时任务
+	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
+	std::chrono::steady_clock::time_point timer_time_; //最短定时任务时间,0表示没有定时任务，非0表示最短定时任务
 
 public:
 	static Service* service();
 
 	Service();
 
-	inline bool IsStopFlag() {
-		return stop_flag_;
+	inline bool StartTest()
+	{
+		bool expected = true;
+		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+			return false; //已经Start过了
+		}
+		return true;
 	}
+	inline void Start() { ASSERT(!IsStopFlag()); }
+	inline bool StopTest()
+	{
+		bool expected = false;
+		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+			return false; //已经Stop过了
+		}
+		return true;
+	}
+	inline void Stop() { ASSERT(IsStopFlag()); }
+	inline bool IsStopFlag() { return stop_flag_; }
 
 	inline void SetWaitTimeOut(size_t millis) { wait_timeout_ = millis; }
 	inline size_t GetWaitTimeOut() { return wait_timeout_; }
 	
 	inline void PostNotify() { notify_flag_ = true; idle_flag_ = false; }
 	inline void PostTimer(size_t millis) { 
-		if(!timer_timeout_) {
-			timer_timeout_ = millis;
-		} else if(millis < timer_timeout_) { 
-			timer_timeout_ = millis; 
+		std::chrono::steady_clock::time_point time = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
+		if(!timer_time_.time_since_epoch().count()) {
+			timer_time_ = time;
+		} else if(timer_time_ > time) { 
+			timer_time_ = time; 
 		} 
 	}
 	
@@ -464,9 +481,14 @@ protected:
 		if(notify_flag_) {
 			return 0;
 		}
-		if(timer_timeout_) {
-			if(timer_timeout_ < wait_timeout_) {
-				return timer_timeout_;
+		if(timer_time_.time_since_epoch().count()) {
+			std::chrono::milliseconds span = std::chrono::duration_cast<std::chrono::milliseconds>(timer_time_ - std::chrono::steady_clock::now());
+			int64_t span_count = span.count();
+			if(span_count <= 0) {
+				return 0;
+			}
+			if(span_count < wait_timeout_) {
+				return span_count;
 			}
 		}
 		return wait_timeout_;
@@ -484,6 +506,11 @@ protected:
 
 	}
 
+	virtual void OnWait()
+	{
+
+	}
+	
 	virtual void OnTimer()
 	{
 
@@ -494,25 +521,29 @@ protected:
 
 	}
 	
-	virtual void OnRunOnce()
-	{
-		if(notify_flag_) {
-			notify_flag_ = false;
-			idle_flag_ = true;
-			OnNotify();
-		}
-		if(timer_timeout_ != 0) {
-			timer_timeout_ = 0;
-			OnTimer();
-		}
-	}
-	
 	virtual void OnRun()
 	{
 		if(OnInit()) {
 			while (!IsStopFlag()) {
 				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
-				OnRunOnce();
+				if(notify_flag_) {
+					notify_flag_ = false;
+					idle_flag_ = true;
+					OnNotify();
+				}
+				if(IsStopFlag()) {
+					break;
+				}
+				OnWait();
+				if(IsStopFlag()) {
+					break;
+				}
+				if(timer_time_.time_since_epoch().count()) {
+					if(timer_time_ <= std::chrono::steady_clock::now()) {
+						timer_time_ = std::chrono::steady_clock::time_point();
+						OnTimer();
+					}
+				}
 				if(idle_flag_) {
 					if(IsStopFlag()) {
 						break;
@@ -548,6 +579,12 @@ class CVServiceT : public TBase
 	typedef TBase Base;
 public:
 
+	inline void Stop()
+	{
+		cv_.notify_one(); 
+		Base::Stop();
+	}
+	
 	inline void PostNotify() { 
 		//std::lock_guard<std::mutex> lock(mutex_);
 		Base::PostNotify();
@@ -556,9 +593,8 @@ public:
 	
 protected:
 	//
-	virtual void OnRunOnce()
+	virtual void OnWait()
 	{
-		Base::OnRunOnce();
 		size_t timeout = Base::GetWaitingTimeOut();
 		if (timeout) {
 			std::unique_lock<std::mutex> lock(mutex_);
@@ -584,11 +620,10 @@ public:
 	typedef TService Service;
 public:
 
-	bool Start()
+	void Start()
 	{
-		bool ret = Service::Start();
+		Service::Start();
 		Socket::AttachService(this);
-		return ret;
 	}
 
 	void Stop()
@@ -786,24 +821,24 @@ public:
 	bool Start()
 	{
 		Stop();
-		bool expected = true;
-		if (!Base::stop_flag_.compare_exchange_strong(expected, false)) {
-			return true;
+		if(!Base::StartTest()) {
+			return true; //说明其他线程调用Start了，这里直接返回true
 		}
+		Base::Start();
 		thread_ptr_ = std::make_shared<std::thread>(std::bind(&This::OnRun,this));
 		return true;
 	}
 
 	void Stop()
 	{
-		bool expected = false;
-		if (!Base::stop_flag_.compare_exchange_strong(expected, true)) {
-			return;
+		if(!Base::StopTest()) {
+			return; //说明其他线程调用Stop了，这里直接返回
 		}
 		if(thread_ptr_) {
 			thread_ptr_->join();
 			thread_ptr_.reset();
 		}
+		Base::Stop();
 	}
 
 protected:
@@ -1226,11 +1261,6 @@ public:
 	{
 	}
 
-	void Stop()
-	{
-		Service::Stop();
-	}
-
 	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
 	inline size_t GetSocketCount() { return sock_count_; }
 
@@ -1607,10 +1637,8 @@ public:
 
 protected:
 	//
-	virtual void OnRunOnce()
+	virtual void OnWait()
 	{
-		Base::OnRunOnce();
-
 		struct timeval tv = {0, Service::GetWaitingTimeOut()*1000};
 		if(!Base::IsSocket()) {
 			if(tv.tv_usec)
@@ -1771,10 +1799,8 @@ public:
 
 protected:
 	//
-	virtual void OnRunOnce()
+	virtual void OnWait()
 	{
-		Base::OnRunOnce();
-		
 		int nfds = 0;
 		int maxfds = 0;
 		fd_set exceptfds;
@@ -1943,10 +1969,10 @@ public:
 	{
 		address_ = address;
 		port_ = port;
-		if(!Base::Start()) {
+		if(!SockManager::Start()) {
 			return false;
 		}
-		if(!SockManager::Start()) {
+		if(!Base::Start()) {
 			return false;
 		}
 		return true;
@@ -1954,8 +1980,8 @@ public:
 
 	void Stop()
 	{
-		SockManager::Stop();
 		Base::Stop();
+		SockManager::Stop();
 	}
 
 protected:

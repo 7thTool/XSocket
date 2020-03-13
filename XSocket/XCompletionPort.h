@@ -513,10 +513,8 @@ protected:
 		return false;
 	}
 	//
-	virtual void OnRunOnce()
+	virtual void OnWait()
 	{
-		Base::OnRunOnce();
-
 		do {
 		ULONG_PTR Key = 0;
 		DWORD dwTransfer = 0;

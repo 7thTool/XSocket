@@ -855,10 +855,10 @@ protected:
 		}
 	}
 	
-	virtual void OnIdle()
-	{
-		DoTask();
-	}
+	// virtual void OnIdle()
+	// {
+	// 	DoTask();
+	// }
 	
 	virtual void OnNotify()
 	{

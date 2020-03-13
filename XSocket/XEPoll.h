@@ -207,10 +207,8 @@ protected:
 		//
 	}
 	
-	virtual void OnRunOnce()
+	virtual void OnWait()
 	{
-		Base::OnRunOnce();
-
 		struct epoll_event events[1024] = {0};
 		//Specifying a timeout of -1 makes epoll_wait wait indefinitely, while specifying a timeout equal to zero makes epoll_wait to return immediately even if no events are available (return code equal to zero).
 		int nfds = epoll_wait(epfd_, events, 1024, Base::GetWaitingTimeOut());

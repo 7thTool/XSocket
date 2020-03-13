@@ -379,7 +379,7 @@ Service* Service::service()
 	return s_thread_service_;
 }
 
-Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),timer_timeout_(0),wait_timeout_(0)
+Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_timeout_(0)
 {
 	
 }
