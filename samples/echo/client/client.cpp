@@ -53,8 +53,6 @@ public:
 		return evt.dst;
 	}
 	inline bool IsActive(Event& evt) { return evt.IsActive(); }
-	inline bool IsRepeat(Event& evt) { return evt.IsRepeat(); }
-	inline void UpdateRepeat(Event& evt) { evt.Update(); }
 };
 typedef SimpleSocketEvtServiceT<EventService> ClientService;
 
@@ -127,7 +125,8 @@ public:
 		addr_ = addr;
 		port_ = port;
 		m_incr = 0;
-		return Base::Start();
+		Base::Start();
+		return true;
 	}
 protected:
 	//

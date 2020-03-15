@@ -93,7 +93,8 @@ public:
 	{
 		addr_ = addr;
 		port_ = port;
-		return Base::Start();
+		Base::Start();
+		return true;
 	}
 protected:
 	//

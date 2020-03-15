@@ -273,9 +273,7 @@ public:
 	{
 		addr_ = address;
 		port_ = port;
-		if(!Base::Start()) {
-			return false;
-		}
+		Base::Start();
 		return true;
 	}
 

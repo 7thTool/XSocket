@@ -724,8 +724,8 @@ protected:
 	struct Event : public DealyEventBase
 	{
 		typedef DealyEventBase Base;
-		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0, size_t _repeat = 0)
-		:Base(_delay, _repeat), ptr(_ptr), task(std::move(_task)) {
+		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0)
+		:Base(_delay), ptr(_ptr), task(std::move(_task)) {
 			//PRINTF("Event");
 		}
 		Event(const Event& o):Base(o), ptr(o.ptr), task(o.task) {
@@ -770,10 +770,10 @@ public:
 		queue_.reserve(1024);
 	}
 
-	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
+	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0)
 	{
 		ASSERT(task);
-		Event evt(std::move(task), ptr, delay, repeat);
+		Event evt(std::move(task), ptr, delay);
 		{
 		std::lock_guard<std::mutex> lock(mutex_);
 		//实时任务排在延迟任务前面，延迟任务按延迟时间和重复次数排队，延迟短和重复次数少排在前面,消费任务从头开始消费
@@ -789,7 +789,7 @@ public:
 	}
 
 	template<class F, class... Args>
-	static inline std::function<void()> Package(std::future<typename std::result_of<F(Args...)>::type>& fu, F&& f, Args&&... args)
+	static inline std::function<void()> Package(std::future<typename std::result_of<F(Args...)>::type>& res, F&& f, Args&&... args)
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
 
@@ -797,7 +797,7 @@ public:
 				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
 			);
 
-		fu = task->get_future();
+		res = task->get_future();
 
 		return [task](){ (*task)(); };
 	}
@@ -836,12 +836,7 @@ protected:
 			uint32_t millis = 0;
 			if (evt.IsActive(&millis)) {
 				evt.task();
-				if (evt.IsRepeat()) {
-					evt.Update();
-					k++;
-				} else {
-					queue_.erase(queue_.begin()+k);
-				}
+				queue_.erase(queue_.begin()+k);
 			} else {
 				if(timer) {
 					Base::PostTimer(millis);
@@ -958,10 +953,6 @@ protected:
 			if (Pop(evt)) {
 				if (Base::IsActive(evt)) {
 					OnEvent(evt);
-					if (Base::IsRepeat(evt)) {
-						Base::UpdateRepeat(evt);
-						Post(evt);
-					}
 				} else {
 					Post(evt);
 				}

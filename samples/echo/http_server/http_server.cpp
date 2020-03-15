@@ -109,7 +109,7 @@ public:
 	inline void PostBuf(const std::string& Buf, int nFlags = 0)
 	{
 		this_service()->Post(std::function<void()>([this,Buf,nFlags](){ SendBuf(Buf, nFlags); }));
-		this_service()->Post(std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags), this, 3000, 10);
+		this_service()->Post(std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags), this, 3000);
 		//std::future<int> fu;
 		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 	}
