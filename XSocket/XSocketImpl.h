@@ -663,9 +663,9 @@ public:
 	typedef typename Base::SocketSet TaskSocketSet;
 public:
 	
-	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0, size_t repeat = 0)
+	inline void Post(std::function<void()> && task, size_t delay = 0)
 	{
-		Base::this_service()->Post(std::move(task), ptr, delay, repeat);
+		Base::this_service()->Post(std::move(task), this, delay);
 	}
 	
 	inline /*std::future<struct addrinfo*>*/void Resolve(const char *hostname, const char *service, const struct addrinfo *hints)
@@ -721,17 +721,16 @@ class TaskSocketServiceT : public TBase
 {
 	typedef TBase Base;
 protected:
-	struct Event : public DealyEventBase
+	struct Event
 	{
-		typedef DealyEventBase Base;
 		Event(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0)
-		:Base(_delay), ptr(_ptr), task(std::move(_task)) {
+		:task(std::move(_task)), ptr(_ptr), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {
 			//PRINTF("Event");
 		}
-		Event(const Event& o):Base(o), ptr(o.ptr), task(o.task) {
+		Event(const Event& o):task(o.task),ptr(o.ptr),time(o.time) {
 			//PRINTF("levent");
 		}
-		Event(Event&& o):Base(o), ptr(o.ptr), task(std::move(o.task)) {
+		Event(Event&& o):task(std::move(o.task)),ptr(o.ptr),time(o.time) {
 			//PRINTF("revent");
 		}
 		~Event() {
@@ -739,21 +738,39 @@ protected:
 
 		Event& operator = (const Event& rhs) {
 			if(this == &rhs) return *this;
-			DealyEventBase::operator=(rhs);
+			//DealyEventBase::operator=(rhs);
 			ptr = rhs.ptr;
 			task = rhs.task;
+			time = rhs.time;
         	return *this;
     	}
 		Event& operator = (Event&& rhs) {
 			if(this == &rhs) return *this;
-			DealyEventBase::operator=(std::move(rhs));
+			//DealyEventBase::operator=(std::move(rhs));
 			ptr = rhs.ptr;
 			task = std::move(rhs.task);
+			time = rhs.time;
         	return *this;
     	}
 
+		inline bool operator<(const Event& o) const
+		{
+			return time < o.time;
+		}
+
+		inline bool IsActive(uint32_t* millis = nullptr) const {
+			int64_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();
+			if(diff <= 0) {
+				return true;
+			}
+			if(millis) {
+				*millis = diff;
+			}
+			return false;
+		}
 		void* ptr = nullptr;
 		std::function<void()> task;
+		std::chrono::steady_clock::time_point time;
 	};
 	std::vector<Event> queue_;
 	std::mutex mutex_;
@@ -776,7 +793,7 @@ public:
 		Event evt(std::move(task), ptr, delay);
 		{
 		std::lock_guard<std::mutex> lock(mutex_);
-		//实时任务排在延迟任务前面，延迟任务按延迟时间和重复次数排队，延迟短和重复次数少排在前面,消费任务从头开始消费
+		//实时任务排在延迟任务前面，延迟任务按延迟时间排队，延迟短排在前面,消费任务从头开始消费
 		auto it = std::upper_bound(queue_.begin(), queue_.end(), evt);
 		queue_.emplace(it,std::move(evt));
 		//queue_.emplace(it.base(),std::forward<std::function<void()>>(task), ptr, delay, repeat);
@@ -815,35 +832,25 @@ protected:
 		}
 	}
 
-	void DoTask(bool timer = false)
+	void DoTask()
 	{
 		//从头开始消费
 		std::unique_lock<std::mutex> lock(mutex_);
-		size_t i = 0, j = queue_.size(), k = 0;
-		if(timer) {
-			for(; i < j; i++)
-			{
-				const Event& evt = queue_[i];
-				if(evt.IsDelay()) {
-					break;
-				}
-			}
-		}
-		for(k = i; i < j; i++)
+		size_t i = 0, j = queue_.size();
+		for(; i < j; i++)
 		{
-			Event evt = queue_[k];
-			lock.unlock();
+			Event& evt = queue_.front();
 			uint32_t millis = 0;
 			if (evt.IsActive(&millis)) {
-				evt.task();
-				queue_.erase(queue_.begin()+k);
+				auto task(std::move(evt.task));
+				queue_.erase(queue_.begin());
+				lock.unlock();
+				task();
+				lock.lock();
 			} else {
-				if(timer) {
-					Base::PostTimer(millis);
-				}
+				Base::PostTimer(millis);
 				break;
 			}
-			lock.lock();
 			if (queue_.empty()) {
 				break;
 			}
@@ -862,7 +869,7 @@ protected:
 	
 	virtual void OnTimer()
 	{
-		DoTask(true);
+		DoTask();
 	}
 };
 

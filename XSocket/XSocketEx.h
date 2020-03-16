@@ -714,9 +714,9 @@ public:
 class DealyEventBase
 {
 public:
-	DealyEventBase(size_t _delay = 0):time(std::chrono::steady_clock::now()),delay(_delay){}
-	DealyEventBase(const DealyEventBase& o):time(o.time),delay(o.delay){}
-	//DealyEventBase(DealyEventBase&& o):time(o.time),delay(o.delay){}
+	DealyEventBase(size_t _delay = 0, size_t _repeat = 0):time(std::chrono::steady_clock::now()),delay(_delay),repeat(_repeat){}
+	DealyEventBase(const DealyEventBase& o):time(o.time),delay(o.delay),repeat(o.repeat){}
+	//DealyEventBase(DealyEventBase&& o):time(o.time),delay(o.delay),repeat(o.repeat){}
 
 	inline bool operator<(const DealyEventBase& o) const
     {
@@ -726,26 +726,34 @@ public:
 	inline bool IsLess(const DealyEventBase& o) const { 
 		if(!delay) {
 			if(!o.delay) {
-				return false;
+				if(repeat < o.repeat) {
+					return true;
+				} else {
+					return false;
+				}
 			} else {
 				return true;
 			}
 		} else {
 			if(!o.delay) {
-				return true;
+				return false;
 			}
 		}
 		std::chrono::steady_clock::time_point tp = time + std::chrono::milliseconds(delay);
 		std::chrono::steady_clock::time_point _tp = o.time + std::chrono::milliseconds(o.delay);
         if(tp < _tp) {
 			return true;
+		} else if(tp == _tp) {
+			if(repeat < o.repeat) {
+				return true;
+			}
 		}
 		return false;
 	} 
 
 	inline bool IsActive(uint32_t* millis = nullptr) const {
-		//PRINTF("IsActive delay=%d", delay.count());
-		if(delay > 0) {
+		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
+		if(delay > 0 && repeat >= 0) {
 			uint32_t elapse = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-time).count();
 			if(elapse > delay) {
 				return true;
@@ -760,8 +768,21 @@ public:
 	inline bool IsDelay() const {
 		return delay > 0;
 	}
+	inline bool IsRepeat() const {
+		return repeat > 0;
+	}
+	inline void Update() {
+		if(delay > 0 && repeat > 0) {
+			time = std::chrono::steady_clock::now();
+			//dealy;
+			if(repeat != (uint32_t)-1) {
+				--repeat;
+			}
+		}
+	}
 	std::chrono::steady_clock::time_point time;
 	uint32_t delay = 0;
+	uint32_t repeat = 0;
 };
 
 /*!
