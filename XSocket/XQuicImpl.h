@@ -40,6 +40,174 @@
 
 namespace XSocket {
 
+template<class TSocket, class TSockAddr>
+class QuickHandler {
+public:
+QuickHandler(struct ev_loop *loop, SSL_CTX *ssl_ctx, Server *server,
+                 const ngtcp2_cid *rcid)
+    : endpoint_{nullptr},
+      remote_addr_{},
+      max_pktlen_(0),
+      loop_(loop),
+      ssl_ctx_(ssl_ctx),
+      ssl_(nullptr),
+      server_(server),
+      qlog_(nullptr),
+      crypto_{},
+      conn_(nullptr),
+      scid_{},
+      pscid_{},
+      rcid_(*rcid),
+      httpconn_{nullptr},
+      sendbuf_{NGTCP2_MAX_PKTLEN_IPV4},
+      last_error_{QUICErrorType::Transport, 0},
+      nkey_update_(0),
+      draining_(false) {
+  ev_io_init(&wev_, writecb, 0, EV_WRITE);
+  wev_.data = this;
+  ev_timer_init(&timer_, timeoutcb, 0.,
+                static_cast<double>(config.timeout) / NGTCP2_SECONDS);
+  timer_.data = this;
+  ev_timer_init(&rttimer_, retransmitcb, 0., 0.);
+  rttimer_.data = this;
+}
+
+~QuickHandler() {
+  if (!config.quiet) {
+    std::cerr << "Closing QUIC connection" << std::endl;
+  }
+
+  ev_timer_stop(loop_, &rttimer_);
+  ev_timer_stop(loop_, &timer_);
+  ev_io_stop(loop_, &wev_);
+
+  if (httpconn_) {
+    nghttp3_conn_del(httpconn_);
+  }
+
+  if (conn_) {
+    ngtcp2_conn_del(conn_);
+  }
+
+  if (ssl_) {
+    SSL_free(ssl_);
+  }
+
+  if (qlog_) {
+    fclose(qlog_);
+  }
+}
+
+  int init(const Endpoint &ep, const sockaddr *sa, socklen_t salen,
+           const ngtcp2_cid *dcid, const ngtcp2_cid *scid,
+           const ngtcp2_cid *ocid, const uint8_t *token, size_t tokenlen,
+           uint32_t version);
+
+  int on_read(const Endpoint &ep, const sockaddr *sa, socklen_t salen,
+              uint8_t *data, size_t datalen);
+  int on_write();
+  int write_streams();
+  int feed_data(const Endpoint &ep, const sockaddr *sa, socklen_t salen,
+                uint8_t *data, size_t datalen);
+  void schedule_retransmit();
+  int handle_expiry();
+  void signal_write();
+  int handshake_completed();
+
+  void write_server_handshake(ngtcp2_crypto_level crypto_level,
+                              const uint8_t *data, size_t datalen);
+
+  int recv_crypto_data(ngtcp2_crypto_level crypto_level, const uint8_t *data,
+                       size_t datalen);
+
+  int recv_client_initial(const ngtcp2_cid *dcid);
+  Server *server() const;
+  const Address &remote_addr() const;
+  ngtcp2_conn *conn() const;
+  int recv_stream_data(int64_t stream_id, uint8_t fin, const uint8_t *data,
+                       size_t datalen);
+  int acked_stream_data_offset(int64_t stream_id, size_t datalen);
+  const ngtcp2_cid *scid() const;
+  const ngtcp2_cid *pscid() const;
+  const ngtcp2_cid *rcid() const;
+  uint32_t version() const;
+  void remove_tx_crypto_data(ngtcp2_crypto_level crypto_level, uint64_t offset,
+                             size_t datalen);
+  void on_stream_open(int64_t stream_id);
+  int on_stream_close(int64_t stream_id, uint64_t app_error_code);
+  void start_draining_period();
+  int start_closing_period();
+  bool draining() const;
+  int handle_error();
+  int send_conn_close();
+  void update_endpoint(const ngtcp2_addr *addr);
+  void update_remote_addr(const ngtcp2_addr *addr);
+
+  int on_key(ngtcp2_crypto_level level, const uint8_t *rsecret,
+             const uint8_t *wsecret, size_t secretlen);
+
+  void set_tls_alert(uint8_t alert);
+
+  int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
+                 uint8_t *rx_iv, uint8_t *tx_key, uint8_t *tx_iv,
+                 const uint8_t *current_rx_secret,
+                 const uint8_t *current_tx_secret, size_t secretlen);
+
+  int setup_httpconn();
+  void http_consume(int64_t stream_id, size_t nconsumed);
+  void extend_max_remote_streams_bidi(uint64_t max_streams);
+  Stream *find_stream(int64_t stream_id);
+  void http_begin_request_headers(int64_t stream_id);
+  void http_recv_request_header(int64_t stream_id, int32_t token,
+                                nghttp3_rcbuf *name, nghttp3_rcbuf *value);
+  int http_end_request_headers(int64_t stream_id);
+  int http_end_stream(int64_t stream_id);
+  int start_response(int64_t stream_id);
+  int on_stream_reset(int64_t stream_id);
+  int extend_max_stream_data(int64_t stream_id, uint64_t max_data);
+  void shutdown_read(int64_t stream_id, int app_error_code);
+  void http_acked_stream_data(int64_t stream_id, size_t datalen);
+  int push_content(int64_t stream_id, const std::string_view &authority,
+                   const std::string_view &path);
+  void http_stream_close(int64_t stream_id, uint64_t app_error_code);
+
+  void reset_idle_timer();
+
+  void write_qlog(const void *data, size_t datalen);
+  void singal_write();
+
+private:
+  TSocket *endpoint_;
+  TSockAddr remote_addr_;
+  size_t max_pktlen_;
+  struct ev_loop *loop_;
+  SSL_CTX *ssl_ctx_;
+  SSL *ssl_;
+  Server *server_;
+  ev_io wev_;
+  ev_timer timer_;
+  ev_timer rttimer_;
+  FILE *qlog_;
+  Crypto crypto_[3];
+  ngtcp2_conn *conn_;
+  ngtcp2_cid scid_;
+  ngtcp2_cid pscid_;
+  ngtcp2_cid rcid_;
+  nghttp3_conn *httpconn_;
+  std::map<int64_t, std::unique_ptr<Stream>> streams_;
+  // common buffer used to store packet data before sending
+  Buffer sendbuf_;
+  // conn_closebuf_ contains a packet which contains CONNECTION_CLOSE.
+  // This packet is repeatedly sent as a response to the incoming
+  // packet in draining period.
+  std::unique_ptr<Buffer> conn_closebuf_;
+  QUICError last_error_;
+  // nkey_update_ is the number of key update occurred.
+  size_t nkey_update_;
+  // draining_ becomes true when draining period starts.
+  bool draining_;
+};
+
 /*!
  *	@brief QuickSocketT 定义.
  *

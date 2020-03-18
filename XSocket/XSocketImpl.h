@@ -819,17 +819,21 @@ public:
 		return [task](){ (*task)(); };
 	}
 
-protected:
-	//
-	inline void RemoveSocket(SocketEx* sock_ptr) {
+	inline void Remove(void* ptr) {
 		std::unique_lock<std::mutex> lock(mutex_);
 		for(int i = queue_.size() - 1; i >= 0; i--)
 		{
 			const Event& evt = queue_[i];
-			if (evt.ptr == sock_ptr) {
+			if (evt.ptr == ptr) {
 				queue_.erase(queue_.begin() + i);
 			}
 		}
+	}
+
+protected:
+	//
+	inline void RemoveSocket(SocketEx* sock_ptr) {
+		Remove(sock_ptr);
 	}
 
 	void DoTask()
