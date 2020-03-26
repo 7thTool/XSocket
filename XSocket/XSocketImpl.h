@@ -283,12 +283,13 @@ protected:
  *
  *	封装UdpSocket，定义Udp套接字实现接口
  */
-template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN>
+template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN, u_short uMaxBufSize = 1024>
 class UdpSocket : public TBase
 {
 	typedef TBase Base;
 public:
 	typedef TSockAddr SockAddr;
+	static const u_short MaxBufSize = uMaxBufSize;
 protected:
 	int m_nSendLen;
 	const char* m_pSendBuf;
@@ -362,8 +363,8 @@ protected:
 		do {
 			bConitnue = false;
 			//UDP 保证一次接收一个完整UDP包
-			char lpBuf[1025] = {0};
-			int nBufLen = 1024;
+			char lpBuf[uMaxBufSize+1] = {0};
+			int nBufLen = uMaxBufSize;
 			SockAddr stAddr;
 			int nAddrLen = sizeof(SockAddr);
 			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,(SOCKADDR*)&stAddr,&nAddrLen);
@@ -453,6 +454,9 @@ protected:
 		}
 	}
 };
+
+template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN, u_short uMaxBufSize = 1024>
+const u_short UdpSocket<TBase,TSockAddr,uMaxBufSize>::MaxBufSize = uMaxBufSize;
 
 /*!
  *	@brief StableUdpSocketT 定义.
@@ -557,53 +561,27 @@ protected:
  *	ConnectionT定义了应用层连接接口和基本实现
  */
 template<class TSocket>
-class ConnectionT
+class ConnectionT : public SocketEx
 {
-protected:
-	TSocket* sock_;
+	typedef SocketEx Base;
 public:
-	ConnectionT(TSocket* sock):sock_(this){}
+	ConnectionT(TSocket* sock) {
+		Base::sock_ = (SOCKET)this;
+	}
 	virtual ~ConnectionT() {}
 
-	void Close() {
-		sock_->Close(this);
+	inline bool IsSocket() {  return Base::sock_ != nullptr; }
+	inline TSocket* Socket() { return (TSocket*)Base::sock_; }
+	inline void Close() { 
+		if(Base::sock_) { 
+			TSocket* sock = (TSocket*)Base::sock_; 
+			sock->Close(this); 
+			sock_ = nullptr; 
+		} 
 	}
 
-	inline void Trigger(int evt, int nErrorCode) {
-		switch (evt)
-		{
-		case FD_READ:
-			break;
-		case FD_WRITE:
-			break;
-		case FD_OOB:
-			break;
-		case FD_ACCEPT:
-			OnAccept(nErrorCode);
-			break;
-		case FD_CONNECT:
-			OnConnect(nErrorCode);
-			break;
-		case FD_CLOSE:
-			OnClose(nErrorCode);
-			break;
-		case FD_IDLE:
-			OnIdle();
-			break;
-		default:
-			break;
-		}
-	}
-	
 protected:
 	//
-	virtual void OnIdle() {}
-	
-	virtual void OnAccept(int nErrorCode) {}
-	
-	virtual void OnConnect(int nErrorCode) {}
-
-	virtual void OnClose(int nErrorCode) {}
 };
 
 /*!
@@ -630,23 +608,6 @@ protected:
 		Base::OnClose(nErrorCode);
 
 		pT->Close();
-	}
-};
-
-/*!
- *	@brief ConnSocketT封装.
- *
- *	ConnSocketT定义了应用层连接Socket接口和基本实现
- */
-template<class TConnection, class TBase = SocketEx>
-class ConnSocketT : public TBase
-{
-	typedef TBase Base;
-public:
-
-	inline void Close(TConnection* conn)
-	{
-		
 	}
 };
 

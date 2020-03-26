@@ -260,10 +260,10 @@ public:
  *
  *	封装SimpleUdpSocketT，实现简单的Udp数据包网络架构
  */
-template<class TBase, class TSockAddr = SOCKADDR_IN>
-class SimpleUdpSocketT : public UdpSocket<TBase,TSockAddr>
+template<class TBase, class TSockAddr = SOCKADDR_IN, u_short uMaxBufSize = 1024>
+class SimpleUdpSocketT : public UdpSocket<TBase,TSockAddr,uMaxBufSize>
 {
-	typedef UdpSocket<TBase,TSockAddr> Base;
+	typedef UdpSocket<TBase,TSockAddr,uMaxBufSize> Base;
 public:
 	typedef TSockAddr SockAddr;
 protected:

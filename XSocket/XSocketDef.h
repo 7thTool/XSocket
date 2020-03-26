@@ -213,14 +213,36 @@ typedef unsigned char byte;
 #define I64U "%llu"
 #endif
 
+//DATE TIME [日志级别] [标识] 内容
+
+#ifndef XSOCKET_LOGOUT
+#define XSOCKET_LOGOUT(format,...) printf("%s %s "format"\n", __DATE__, __TIME__, ##__VA_ARGS__)
+#endif//
+
+#ifndef XSOCKET_LOG4E 
+#define XSOCKET_LOG4E(format,...) XSOCKET_LOGOUT("[ERROR] [%s:%s]"format, __FILE__, __LINE__, ##__VA_ARGS__)
+#endif//
+
+#ifndef XSOCKET_LOG4W 
+#define XSOCKET_LOG4W(format,...) XSOCKET_LOGOUT("[WARN] "format, ##__VA_ARGS__)
+#endif//
+
+#ifndef XSOCKET_LOG4I 
+#define XSOCKET_LOG4I(format,...) XSOCKET_LOGOUT("[INFO] "format, ##__VA_ARGS__)
+#endif//
+
+#ifndef XSOCKET_LOG4D 
+#define XSOCKET_LOG4D(format,...) XSOCKET_LOGOUT("[DEBUG] [%s] "format, __FUNCTION__, ##__VA_ARGS__)
+#endif//
+
 #ifndef PRINTF
-#define PRINTF(format,...) printf(format"\n", ##__VA_ARGS__)
+#define PRINTF XSOCKET_LOG4D
 #endif//
 
 #ifndef ASSERT
 #include <assert.h>
 #ifdef _DEBUG
-#define ASSERT(exp) if(!(exp)) { PRINTF("File: %s, Line: %d ASSERT", __FILE__, __LINE__); } assert(exp)
+#define ASSERT(exp) do { if(!(exp)) { XSOCKET_LOG4E("ASSERT"); } assert(exp); } while(0)
 #else
 #define ASSERT(exp) 
 #endif
@@ -229,7 +251,7 @@ typedef unsigned char byte;
 #ifndef ENSURE
 #ifdef _DEBUG
 #include <assert.h>
-#define ENSURE(exp) if(!(exp)) { PRINTF("File: %s, Line: %d ENSURE", __FILE__, __LINE__); } assert(exp)
+#define ENSURE(exp) do { if(!(exp)) { XSOCKET_LOG4E("ENSURE"); } assert(exp); } while(0)
 #else
 #define ENSURE(exp) 
 #endif
