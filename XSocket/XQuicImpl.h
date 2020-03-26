@@ -665,7 +665,7 @@ int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
     //util::hexdump(stderr, token.data(), tokenlen);
   }
 
-  UdpBuffer buf = {0};
+  uint8_t buf[sizeof(UdpBuffer)] = {0};
   ngtcp2_cid scid;
 
   scid.datalen = NGTCP2_SV_SCIDLEN;

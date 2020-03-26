@@ -54,7 +54,7 @@ IF(WIN32)
 #添加头文件搜索路径
 INCLUDE_DIRECTORIES(../../../XSocket ../../../../ngtcp2/lib/includes ../../../../ngtcp2/build/lib/includes ../../../../ngtcp2/crypto/includes ../../../../openssl/lib/x86/include)
 #添加库文件搜索路径
-LINK_DIRECTORIES(../../../../ngtcp2/build/lib/Debug ../../../../openssl/lib/x86/lib)
+LINK_DIRECTORIES(../../../../ngtcp2/build/lib/Debug ../../../../ngtcp2/build/crypto/openssl/Debug ../../../../openssl/lib/x86/lib)
 ELSE()
 #添加头文件搜索路径
 INCLUDE_DIRECTORIES(../../../XSocket ../../../../ngtcp2/lib/includes ../../../../ngtcp2/crypto/includes ../../../../openssl/build/include)
