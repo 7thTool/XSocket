@@ -289,7 +289,8 @@ class UdpSocket : public TBase
 	typedef TBase Base;
 public:
 	typedef TSockAddr SockAddr;
-	static const u_short MaxBufSize = uMaxBufSize;
+	typedef char UdpBuffer[uMaxBufSize];
+	//static const u_short GetMaxBufSize() const { return uMaxBufSize; }
 protected:
 	int m_nSendLen;
 	const char* m_pSendBuf;
@@ -455,9 +456,6 @@ protected:
 	}
 };
 
-template<class TBase = SocketEx, class TSockAddr = SOCKADDR_IN, u_short uMaxBufSize = 1024>
-const u_short UdpSocket<TBase,TSockAddr,uMaxBufSize>::MaxBufSize = uMaxBufSize;
-
 /*!
  *	@brief StableUdpSocketT 定义.
  *
@@ -570,7 +568,7 @@ public:
 	}
 	virtual ~ConnectionT() {}
 
-	inline bool IsSocket() {  return Base::sock_ != nullptr; }
+	inline bool IsSocket() {  return Base::sock_ != 0; }
 	inline TSocket* Socket() { return (TSocket*)Base::sock_; }
 	inline void Close() { 
 		if(Base::sock_) { 

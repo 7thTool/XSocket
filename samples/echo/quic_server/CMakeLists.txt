@@ -50,15 +50,22 @@ ENDIF()
 # 	MESSAGE(FATAL_ERROR "OpenSSL library not found")
 # ENDIF()
 
+IF(WIN32)
 #添加头文件搜索路径
 INCLUDE_DIRECTORIES(../../../XSocket ../../../../ngtcp2/lib/includes ../../../../ngtcp2/build/lib/includes ../../../../ngtcp2/crypto/includes ../../../../openssl/lib/x86/include)
 #添加库文件搜索路径
 LINK_DIRECTORIES(../../../../ngtcp2/build/lib/Debug ../../../../openssl/lib/x86/lib)
+ELSE()
+#添加头文件搜索路径
+INCLUDE_DIRECTORIES(../../../XSocket ../../../../ngtcp2/lib/includes ../../../../ngtcp2/crypto/includes ../../../../openssl/build/include)
+#添加库文件搜索路径
+LINK_DIRECTORIES(../../../../ngtcp2/lib ../../../../ngtcp2/crypto/openssl ../../../../openssl/build/lib)
+ENDIF()
 
 IF(WIN32)
 	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket ngtcp2 ngtcp2_crypto_openssl libcrypto libssl)
 ELSE()
-	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket ngtcp2 ngtcp2_crypto_openssl crypto ssl pthread)
+	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket ngtcp2.la ngtcp2_crypto_openssl.la crypto ssl pthread)
 ENDIF()
 
 # 添加可执行文件

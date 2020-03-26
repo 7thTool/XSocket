@@ -380,6 +380,7 @@ class QuickServerSocketT : public QuickSocketT<TBase>
 	typedef QuickSocketT<TBase> Base;
 public:
 	typedef typename Base::SockAddr SockAddr;
+  typedef typename Base::UdpBuffer UdpBuffer;
 	typedef THandler Handler;
 protected:
   std::map<std::string, std::unique_ptr<Handler>> handlers_;
@@ -664,7 +665,7 @@ int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
     //util::hexdump(stderr, token.data(), tokenlen);
   }
 
-  uint8_t buf[MaxBufSize] = {0};
+  UdpBuffer buf = {0};
   ngtcp2_cid scid;
 
   scid.datalen = NGTCP2_SV_SCIDLEN;
@@ -673,7 +674,7 @@ int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
                 [&dis]() { return dis(randgen)%255; });
 
   auto nwrite =
-      ngtcp2_crypto_write_retry(buf, MaxBufSize, &chd->scid, &scid,
+      ngtcp2_crypto_write_retry(buf, sizeof(buf), &chd->scid, &scid,
                                 &chd->dcid, token.data(), tokenlen);
   if (nwrite < 0) {
     std::cerr << "ngtcp2_crypto_write_retry failed" << std::endl;
@@ -817,7 +818,7 @@ protected:
           return SOCKET_PACKET_FLAG_COMPLETE;
         }
 
-        auto h = std::make_unique<Handler>(this, ssl_ctx_, &hd.dcid);
+        auto h = std::unique_ptr<Handler>(new Handler(this, Base::ssl_ctx_, &hd.dcid));
         if (h->init(sa, &hd.scid, &hd.dcid, pocid, hd.token,
                     hd.tokenlen, hd.version) != 0) {
           return SOCKET_PACKET_FLAG_COMPLETE;
