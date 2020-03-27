@@ -168,7 +168,7 @@ int init(const SockAddr& sa,
   ssl_ = SSL_new(ssl_ctx_);
   SSL_set_app_data(ssl_, this);
   SSL_set_accept_state(ssl_);
-  //SSL_set_quic_early_data_enabled(ssl_, 1);
+  SSL_set_quic_early_data_enabled(ssl_, 1);
 
 //   auto callbacks = ngtcp2_conn_callbacks{
 //       nullptr, // client_initial
