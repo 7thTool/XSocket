@@ -141,6 +141,28 @@ inline bool HexDecode(
 	return true;
 }
 
+inline std::string format_hex(const uint8_t *s, size_t len) {
+  const char LOWER_XDIGITS[] = "0123456789abcdef";
+  std::string res;
+  res.resize(len * 2);
+
+  for (size_t i = 0; i < len; ++i) {
+    auto c = s[i];
+
+    res[i * 2] = LOWER_XDIGITS[c >> 4];
+    res[i * 2 + 1] = LOWER_XDIGITS[c & 0x0f];
+  }
+  return res;
+}
+
+inline std::string format_hex(uint8_t c) {
+  return format_hex(&c, 1);
+}
+
+inline std::string format_hex(const std::string &s) {
+  return format_hex(reinterpret_cast<const uint8_t *>(s.data()), s.size());
+}
+
 //=======================================================================
 // Base64Encode/Base64Decode
 // compliant with RFC 2045

@@ -578,6 +578,14 @@ public:
 		} 
 	}
 
+	inline void Select(int lEvent) { 
+		Base::Select(lEvent);
+		if(Base::sock_) { 
+			TSocket* sock = (TSocket*)Base::sock_; 
+			sock->Select(lEvent); 
+		}
+	}
+
 protected:
 	//
 };

@@ -220,7 +220,7 @@ typedef unsigned char byte;
 #endif//
 
 #ifndef XSOCKET_LOG4E 
-#define XSOCKET_LOG4E(format,...) XSOCKET_LOGOUT("[ERROR] [%s:%s]"format, __FILE__, __LINE__, ##__VA_ARGS__)
+#define XSOCKET_LOG4E(format,...) XSOCKET_LOGOUT("[ERROR] [%s:%d]"format, __FILE__, __LINE__, ##__VA_ARGS__)
 #endif//
 
 #ifndef XSOCKET_LOG4W 
