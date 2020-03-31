@@ -18,10 +18,10 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _H_XHTTP_IMPL_H_
-#define _H_XHTTP_IMPL_H_
+#ifndef _H_XHTTP2_IMPL_H_
+#define _H_XHTTP2_IMPL_H_
 
 #include "XSocketImpl.h"
 #include "XHttpImpl.h"
 
-#endif//_H_XHTTP_IMPL_H_
+#endif//_H_XHTTP2_IMPL_H_

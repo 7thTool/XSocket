@@ -349,24 +349,98 @@ protected:
 };
 
 /*!
- *	@brief 简单的SimpleUdpConnectionT封装.
+ *	@brief SimpleUdpSocketExT 定义.
  *
- *	SimpleUdpConnectionT定义了应用层连接接口和基本实现
+ *	封装SimpleUdpSocketExT，实现简单的Udp数据包网络架构，更自由的封装
  */
-template<class TSocket>
-class SimpleUdpConnectionT : public ConnectionT<TSocket>
+template<class TBase>
+class SimpleUdpSocketExT : public UdpSocketEx<TBase>
 {
-	typedef ConnectionT<TSocket> Base;
-public:
-	typedef typename TSocket::SockAddr SockAddr;
+	typedef UdpSocketEx<TBase> Base;
 protected:
-	SockAddr addr_;
-public:
-	SimpleUdpConnectionT(TSocket* sock, const SockAddr& addr):Base(this),addr_(addr){}
-
-	int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	typedef struct tagSABuf
 	{
-		return Base::sock_->SendBuf(lpBuf, nBufLen, addr_, nFlags);
+		int nSendBufLen;
+		int nSendAddrLen;
+		int nSendFlags;
+		//+ SendBuf
+		//+ SendAddr
+	}SABUF,*PSABUF;
+	std::deque<PSABUF> SendBuffers_;
+public:
+	SimpleUdpSocketExT()
+	{
+		//SendBuffers_.reserve(256);
+	}
+
+	virtual ~SimpleUdpSocketExT()
+	{
+		
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+
+		for(auto& buffer : SendBuffers_)
+		{
+			free(buffer);
+		}
+		SendBuffers_.clear();
+
+		return ret;
+	}
+
+	int SendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0)
+	{
+		ASSERT(Base::IsSocket());
+		char* pNewBuf = malloc(sizeof(SABUF) + nBufLen + nAddrLen);
+		PSABUF pSABuf = (PSABUF)pNewBuf;
+		pSABuf->nSendBufLen = nBufLen;
+		pSABuf->nSendAddrLen = nAddrLen;
+		pSABuf->nSendFlags = nFlags;
+		char* pSendBuf = pNewBuf + sizeof(SABUF);
+		memcpy(pSendBuf, lpBuf, nBufLen);
+		SOCKADDR* pSendAddr = (SOCKADDR*)(pSendBuf + nBufLen);
+		memcpy(pSendAddr, lpAddr, nAddrLen);
+		SendBuffers_.push_back(pSABuf);
+		if(!Base::IsSelect(FD_WRITE)) {
+			Base::Select(FD_WRITE);
+		}
+		return nBufLen;
+	}
+
+protected:
+	//
+	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SOCKADDR* & lpAddr, int & nAddrLen)
+	{
+		thread_local std::string _RecvBuf(1024*2); //Udp一个包大小一般不会很大，大了就会切片传输
+		lpBuf = (char*)_RecvBuf.c_str();
+		nBufLen = _RecvBuf.size() - sizeof(SOCKADDR_STORAGE);
+		lpAddr = (SOCKADDR*)(lpBuf + nBufLen);
+		nAddrLen = sizeof(SOCKADDR_STORAGE);
+		return true;
+	}
+
+	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SOCKADDR* & lpAddr, int & nAddrLen)
+	{
+		if (!SendBuffers_.empty()) {
+			auto& pSABuf = SendBuffers_.front();
+			lpBuf = (const char*)(pSABuf + 1);
+			nBufLen = pSABuf->nSendBufLen;
+			lpAddr = (const SOCKADDR*)(lpBuf + nBufLen);
+			nAddrLen = pSABuf->nSendAddrLen;
+			return true;
+		}
+		return false;
+	}
+
+	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen) 
+	{
+		Base::OnSendBuf(lpBuf, nBufLen, lpAddr, nAddrLen);
+		auto& pSABuf = SendBuffers_.front();
+		free(pSABuf);
+		SendBuffers_.pop_front();
 	}
 };
 

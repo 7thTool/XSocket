@@ -457,6 +457,187 @@ protected:
 };
 
 /*!
+ *	@brief UdpSocketEx 定义.
+ *
+ *	封装UdpSocketEx，定义Udp套接字实现接口，更自由的封装
+ */
+template<class TBase = SocketEx>
+class UdpSocketEx : public TBase
+{
+	typedef TBase Base;
+protected:
+	int m_nSendLen;
+	const char* m_pSendBuf;
+	int m_nSendBufLen;
+	const SOCKADDR* m_pSendAddr;
+	int m_nSendAddrLen;
+public:
+	UdpSocketEx()
+		:Base()
+		,m_nSendLen(0)
+		,m_pSendBuf(nullptr)
+		,m_nSendBufLen(0)
+		,m_pSendAddr(nullptr)
+		,m_nSendAddrLen(0)
+	{
+
+	}
+
+	virtual ~UdpSocketEx()
+	{
+
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		m_nSendLen = 0;
+		m_pSendBuf = nullptr;
+		m_nSendBufLen = 0;
+		m_pSendAddr = nullptr;
+		m_nSendAddrLen = 0;
+		return ret;
+	}
+
+protected:
+	//
+	//解析数据包
+	virtual int ParseBuf(const char* lpBuf, int & nBufLen, const SOCKADDR* lpAddr, int nAddrLen) { return SOCKET_PACKET_FLAG_COMPLETE; }
+
+	//准备接收缓存
+	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SOCKADDR* & lpAddr, int & nAddrLen)
+	{
+		return false;
+	}
+
+	//接收完整一个包
+	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen)
+	{
+
+	}
+
+	//准备发送数据包
+	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SOCKADDR* & lpAddr, int & nAddrLen)
+	{
+		return false;
+	}
+
+	//发送完整一个包
+	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen)
+	{
+
+	}
+
+protected:
+	//
+	virtual void OnReceive(int nErrorCode)
+	{
+		if (nErrorCode) {
+			Base::OnReceive(nErrorCode);
+			return;
+		}
+
+		bool bConitnue = false;
+		do {
+			bConitnue = false;
+			char lpBuf = nullptr;
+			int nBufLen = 0;
+			SOCKADDR* lpAddr = nullptr;
+			int nAddrLen = 0;
+			if(!PrepareRecvBuf(lpBuf, nBufLen, lpAddr, nAddrLen)) {
+				//说明没有可接收缓存
+				return;
+			}
+			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,lpAddr,&nAddrLen);
+			if (nBufLen<0) {
+				Base::OnReceive(XSocket::Socket::GetLastError());
+			} else if(nBufLen == 0) {
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
+			} else {
+				Base::Trigger(FD_READ, lpBuf, nBufLen,(const SOCKADDR*)&stAddr, nAddrLen, 0);
+				bConitnue = Base::IsSocket();
+			}
+		} while(bConitnue);
+	}
+
+	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags)
+	{
+		Base::OnReceiveFrom(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags); 
+		const char* lpParseBuf = lpBuf;
+		int nParseBufLen = nBufLen; //还剩多少数据长度需要解析
+		do {
+			int nPacketBufLen = nParseBufLen;
+			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, lpAddr, nAddrLen);
+			if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
+				//UDP不允许存在解包不完整，不完整就丢弃
+				//Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
+				break;
+			}
+			OnRecvBuf(lpParseBuf, nPacketBufLen, lpAddr, nAddrLen);
+			lpParseBuf += nPacketBufLen;
+			nParseBufLen -= nPacketBufLen;
+		} while (nParseBufLen > 0);
+	}
+
+	virtual void OnSend(int nErrorCode)
+	{
+		if (nErrorCode) {
+			Base::OnSend(nErrorCode);
+			return;
+		}
+		bool bConitnue = false;
+		do {
+			bConitnue = false;
+			const char* lpBuf = nullptr;
+			int nBufLen = 0;
+			SOCKADDR* lpAddr = nullptr;
+			int nAddrLen = 0;
+			if (!m_pSendBuf) {
+				if(!PrepareSendBuf(lpBuf,nBufLen,lpAddr,nAddrLen)) {
+					//说明没有可发送数据
+					return;
+				}
+				m_nSendLen = 0;
+				m_pSendBuf = lpBuf;
+				m_nSendBufLen = nBufLen;
+				m_pSendAddr = lpAddr;
+				m_nSendAddrLen = nAddrLen;
+			}
+			ASSERT(m_nSendLen == 0);
+			lpBuf = m_pSendBuf+m_nSendLen;
+			nBufLen = (int)(m_nSendBufLen-m_nSendLen);
+			lpAddr = m_pSendAddr;
+			nAddrLen = m_nSendAddrLen;
+			ASSERT(lpBuf && nBufLen>0);
+			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,nAddrLen);
+			if (nBufLen<0) {
+				Base::OnSend(XSocket::Socket::GetLastError());
+			} else if(nBufLen == 0) {
+				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
+			} else {
+				Base::Trigger(FD_WRITE, lpBuf, nBufLen, (const SOCKADDR*)lpAddr, nAddrLen, 0);
+				bConitnue = Base::IsSocket(); //继续发送
+			}
+		} while(bConitnue);
+	}
+	
+	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags)
+	{
+		Base::OnSendTo(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags);
+		m_nSendLen += nBufLen;
+		if (m_nSendLen >= m_nSendBufLen) {
+			OnSendBuf(m_pSendBuf, m_nSendLen, lpAddr, nAddrLen);
+			m_nSendLen = 0;
+			m_pSendBuf = nullptr;
+			m_nSendBufLen = 0;
+			m_pSendAddr = nullptr;
+		} else {
+			ASSERT(0); //UDP 不应该发送太大的包导致发不完，建议1024字节包
+		}
+	}
+};
+
+/*!
  *	@brief StableUdpSocketT 定义.
  *
  *	封装StableUdpSocketT，定义基于UDP的稳定可靠传输的网络架构
@@ -558,32 +739,31 @@ protected:
  *
  *	ConnectionT定义了应用层连接接口和基本实现
  */
-template<class TSocket>
-class ConnectionT : public SocketEx
+template<class TSocket, class TBase = SocketEx>
+class ConnectionT : public TBase
 {
-	typedef SocketEx Base;
+	typedef TBase Base;
 public:
 	ConnectionT(TSocket* sock) {
 		Base::sock_ = (SOCKET)this;
 	}
 	virtual ~ConnectionT() {}
 
+	inline TSocket* Attach(TSocket* Sock) { Base::sock_ = (SOCKET)Sock; }
+	inline TSocket* Detach() {
+		TSocket* sock = (TSocket*)Base::sock_; 
+		Base::sock_ = nullptr; 
+		return sock;
+	}
+
 	inline bool IsSocket() {  return Base::sock_ != 0; }
 	inline TSocket* Socket() { return (TSocket*)Base::sock_; }
 	inline void Close() { 
 		if(Base::sock_) { 
 			TSocket* sock = (TSocket*)Base::sock_; 
-			sock->Close(this); 
-			sock_ = nullptr; 
+			sock->Close(this); //通知最新套接字关闭连接
+			Detach();
 		} 
-	}
-
-	inline void Select(int lEvent) { 
-		Base::Select(lEvent);
-		if(Base::sock_) { 
-			TSocket* sock = (TSocket*)Base::sock_; 
-			sock->Select(lEvent); 
-		}
 	}
 
 protected:

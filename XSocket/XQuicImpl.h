@@ -77,6 +77,18 @@ enum network_error {
   NETWORK_ERR_DROP_CONN = -14,
 };
 
+union sockaddr_union {
+  sockaddr_storage storage;
+  sockaddr sa;
+  sockaddr_in6 in6;
+  sockaddr_in in;
+};
+
+struct Address {
+  socklen_t len;
+  union sockaddr_union su;
+};
+
 namespace {
 int rand(ngtcp2_conn *conn, uint8_t *dest, size_t destlen, ngtcp2_rand_ctx ctx,
          void *user_data) {
@@ -308,14 +320,12 @@ int extend_max_stream_data(ngtcp2_conn *conn, int64_t stream_id,
 }
 } // namespace
 
- template<class TSocket, class TSockAddr = SOCKADDR_IN>
- class QuickHandler : public ConnectionT<TSocket>
+ template<class TSocket>
+ class QuickHandler : public ConnectionT<TSocket,TaskSocketT<SocketEx>>
  {
-	 typedef ConnectionT<TSocket> Base;
-public:
-  typedef TSockAddr SockAddr;
+	 typedef ConnectionT<TSocket,TaskSocketT<SocketEx>> Base;
  protected:
-  SockAddr remote_addr_;
+  Address remote_addr_;
   SSL_CTX *ssl_ctx_ ;
   SSL *ssl_;
   //Crypto crypto_[3];
@@ -357,17 +367,18 @@ const ngtcp2_cid *pscid() const { return &pscid_; }
 
 const ngtcp2_cid *rcid() const { return &rcid_; }
 
-const SockAddr &remote_addr() const { return remote_addr_; }
+const Address &remote_addr() const { return remote_addr_; }
 
 ngtcp2_conn *conn() const { return conn_; }
 
 	
-int init(const SockAddr& sa,
+int init(const sockaddr *sa, socklen_t salen,
                   const ngtcp2_cid *dcid, const ngtcp2_cid *scid,
                   const ngtcp2_cid *ocid, const uint8_t *token, size_t tokenlen,
                   uint32_t version) 
 {
-	remote_addr_ = sa;				  
+  remote_addr_.len = salen;
+  memcpy(&remote_addr_.su.sa, sa, salen);	  
 
   ssl_ = SSL_new(ssl_ctx_);
   SSL_set_app_data(ssl_, this);
@@ -687,7 +698,7 @@ void signal_write() {  }
 bool draining() const { return draining_; }
 
 
-  int on_read(const SockAddr& sa, uint8_t *data, size_t datalen)
+  int on_read(const sockaddr *sa, socklen_t salen,, uint8_t *data, size_t datalen)
 {
 	return 0;
 }
@@ -724,10 +735,10 @@ int send_conn_close() {
  *	封装QuickSocketT，实现Udp Quick收发数据功能
  */
 template<class TBase>
-class QuickSocketT : public TBase
+class QuickSocketT : public TaskSocketT<TBase>
 {
 	typedef QuickSocketT<TBase> This;
-	typedef TBase Base;
+	typedef TaskSocketT<TBase> Base;
 protected:
   	SSL_CTX *ssl_ctx_;
 public:
@@ -753,8 +764,6 @@ class QuickServerSocketT : public QuickSocketT<TBase>
 	typedef QuickServerSocketT<TBase,THandler> This;
 	typedef QuickSocketT<TBase> Base;
 public:
-	typedef typename Base::SockAddr SockAddr;
-  typedef typename Base::UdpBuffer UdpBuffer;
 	typedef THandler Handler;
 protected:
   std::map<std::string, std::unique_ptr<Handler>> handlers_;
@@ -987,11 +996,11 @@ int verify_token(ngtcp2_cid *ocid, const ngtcp2_pkt_hd *hd,
   return 0;
 }
 
-int send_version_negotiation(uint32_t version, const uint8_t *dcid,size_t dcidlen, const uint8_t *scid,size_t scidlen, const SockAddr& sa) {
-	uint8_t buf[sizeof(UdpBuffer)] = {0};
+int send_version_negotiation(uint32_t version, const uint8_t *dcid,size_t dcidlen, const uint8_t *scid,size_t scidlen, const sockaddr *sa, socklen_t salen) {
+	uint8_t buf[NGTCP2_MAX_PKTLEN_IPV4] = {0};
 	uint32_t sv[2] = {0};
 
-	sv[0] = generate_reserved_version((const sockaddr *)&sa, sizeof(sa), version);
+	sv[0] = generate_reserved_version(sa, salen, version);
 	sv[1] = NGTCP2_PROTO_VER;
 
 	auto nwrite = ngtcp2_pkt_write_version_negotiation(
@@ -1004,16 +1013,16 @@ int send_version_negotiation(uint32_t version, const uint8_t *dcid,size_t dcidle
 		return -1;
 	}
 
-	SendBuf((const char*)buf, nwrite, sa);
+	SendBuf((const char*)buf, nwrite, sa, salen);
 
 	return 0;
 	}
 
-int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
+int send_retry(const ngtcp2_pkt_hd *chd, const sockaddr *sa, socklen_t salen) {
   std::array<char, NI_MAXHOST> host;
   std::array<char, NI_MAXSERV> port;
   
-  auto rv = getnameinfo((const sockaddr *)&sa, sizeof(sa), host.data(), host.size(), port.data(),
+  auto rv = getnameinfo(sa, salen, host.data(), host.size(), port.data(),
                             port.size(), NI_NUMERICHOST | NI_NUMERICSERV);
   if (rv != 0) {
     std::cerr << "getnameinfo: " << gai_strerror(rv) << std::endl;
@@ -1028,7 +1037,7 @@ int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
   std::array<uint8_t, 256> token;
   size_t tokenlen = token.size();
 
-  if (generate_token(token.data(), tokenlen, (const sockaddr *)&sa, sizeof(sa), &chd->dcid) != 0) {
+  if (generate_token(token.data(), tokenlen, sa, salen, &chd->dcid) != 0) {
     return -1;
   }
 
@@ -1037,7 +1046,7 @@ int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
     //util::hexdump(stderr, token.data(), tokenlen);
   }
 
-  uint8_t buf[sizeof(UdpBuffer)] = {0};
+  uint8_t buf[NGTCP2_MAX_PKTLEN_IPV4] = {0};
   ngtcp2_cid scid;
 
   scid.datalen = NGTCP2_SV_SCIDLEN;
@@ -1053,13 +1062,13 @@ int send_retry(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
     return -1;
   }
 
-  SendBuf((const char*)buf, nwrite, sa);
+  SendBuf((const char*)buf, nwrite, sa, salen);
 
   return 0;
 }
 
-int send_stateless_connection_close(const ngtcp2_pkt_hd *chd, const SockAddr& sa) {
-  uint8_t buf[sizeof(UdpBuffer)] = {0};
+int send_stateless_connection_close(const ngtcp2_pkt_hd *chd, const sockaddr *sa, socklen_t salen) {
+  uint8_t buf[NGTCP2_MAX_PKTLEN_IPV4] = {0};
 
   auto nwrite = ngtcp2_crypto_write_connection_close(
       buf, sizeof(buf), &chd->scid, &chd->dcid, NGTCP2_INVALID_TOKEN);
@@ -1068,7 +1077,7 @@ int send_stateless_connection_close(const ngtcp2_pkt_hd *chd, const SockAddr& sa
     return -1;
   }
 
-  SendBuf((const char*)buf, nwrite, sa);
+  SendBuf((const char*)buf, nwrite, sa, salen);
 
   return 0;
 }
@@ -1099,7 +1108,7 @@ void remove(const Handler *h) {
 protected:
 	//
 	//解析数据包
-	virtual int ParseBuf(const char* buf, int & nread, const SockAddr & sa) { 
+	virtual int ParseBuf(const char* buf, int & nread, const SOCKADDR* sa, int salen) { 
 // 		sockaddr_union su;
 //   socklen_t addrlen;
 //   std::array<uint8_t, 64_k> buf;
@@ -1186,7 +1195,7 @@ protected:
               send_retry(&hd, sa);
               return SOCKET_PACKET_FLAG_COMPLETE;
             }
-            if (verify_token(&ocid, &hd, (const sockaddr *)&sa, sizeof(sa)) != 0) {
+            if (verify_token(&ocid, &hd, sa, salen) != 0) {
               send_stateless_connection_close(&hd, sa);
               return SOCKET_PACKET_FLAG_COMPLETE;
             }

@@ -31,6 +31,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #endif
+#include <string>
 
 namespace XSocket {
 
