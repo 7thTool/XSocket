@@ -25,9 +25,18 @@ typedef QuickHandler<server> handler;
 // 	//
 // };
 
-class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,QuickServerSocketT<SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>,handler>>>
+typedef TaskSocketServiceT<ThreadCVService> WorkService;
+
+class WorkConnectSet : public SocketSetT<WorkService,handler,DEFAULT_FD_SETSIZE>
 {
-	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,QuickServerSocketT<SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>,handler>>> Base;
+
+};
+
+typedef SocketManagerT<WorkConnectSet> ConnectManager;
+
+class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,QuickServerSocketT<SimpleUdpSocketExT<SelectSocketT<ThreadService,SocketEx>>,handler>>>
+{
+	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,QuickServerSocketT<SimpleUdpSocketExT<SelectSocketT<ThreadService,SocketEx>>,handler>>> Base;
 protected:
 	std::string addr_;
 	u_short port_;
@@ -104,9 +113,16 @@ int main()
 	//worker::Configure(&tls_ctx_config);
 #endif
 
+	ConnectManager mgr;
+	mgr.Start();
+
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
+
 	getchar();
+
+	mgr.Stop();
+
 	s->Stop();
 	delete s;
 

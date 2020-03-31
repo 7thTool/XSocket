@@ -7,5 +7,5 @@ add_subdirectory(client)
 add_subdirectory(server)
 add_subdirectory(http_client)
 add_subdirectory(http_server)
-add_subdirectory(quic_server)
+#add_subdirectory(quic_server)
 
