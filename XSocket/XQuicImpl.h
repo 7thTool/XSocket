@@ -171,6 +171,7 @@ int init(const sockaddr *sa, socklen_t salen,
 
   auto callbacks = ngtcp2_conn_callbacks{
       nullptr, // client_initial
+      //::recv_client_initial,
       [](ngtcp2_conn *conn, const ngtcp2_cid *dcid,void *user_data) -> int {
         auto h = static_cast<This *>(user_data);
 
@@ -180,6 +181,7 @@ int init(const sockaddr *sa, socklen_t salen,
 
         return 0;
       },
+      //::recv_crypto_data,
       [](ngtcp2_conn *conn, ngtcp2_crypto_level crypto_level,
                      uint64_t offset, const uint8_t *data, size_t datalen,
                      void *user_data) -> int {
@@ -198,8 +200,8 @@ int init(const sockaddr *sa, socklen_t salen,
   }
 
   return 0;
-}
-,
+},
+//::handshake_completed,
 [](ngtcp2_conn *conn, void *user_data) {
   auto h = static_cast<This *>(user_data);
 
@@ -215,7 +217,8 @@ int init(const sockaddr *sa, socklen_t salen,
 },
       nullptr, // recv_version_negotiation
       ngtcp2_crypto_encrypt_cb,
-      ngtcp2_crypto_decrypt_cb,
+      ngtcp2_crypto_decrypt_cb,      
+      //do_hp_mask,
 [](uint8_t *dest, const ngtcp2_crypto_cipher *hp,
                const uint8_t *hp_key, const uint8_t *sample) {
   if (ngtcp2_crypto_hp_mask(dest, hp, hp_key, sample) != 0) {
@@ -227,7 +230,8 @@ int init(const sockaddr *sa, socklen_t salen,
   // }
 
   return 0;
-},
+},      
+//::recv_stream_data,
 [](ngtcp2_conn *conn, int64_t stream_id, int fin,
                      uint64_t offset, const uint8_t *data, size_t datalen,
                      void *user_data, void *stream_user_data) {
@@ -239,12 +243,14 @@ int init(const sockaddr *sa, socklen_t salen,
 
   return 0;
 },
+//acked_crypto_offset,  
 [](ngtcp2_conn *conn, ngtcp2_crypto_level crypto_level,
                         uint64_t offset, size_t datalen, void *user_data) {
   auto h = static_cast<This *>(user_data);
   h->remove_tx_crypto_data(crypto_level, offset, datalen);
   return 0;
-},
+},    
+//::acked_stream_data_offset,
 [](ngtcp2_conn *conn, int64_t stream_id,
                              uint64_t offset, size_t datalen, void *user_data,
                              void *stream_user_data) {
@@ -253,12 +259,14 @@ int init(const sockaddr *sa, socklen_t salen,
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
   return 0;
-},
+},      
+//stream_open,
 [](ngtcp2_conn *conn, int64_t stream_id, void *user_data) {
   auto h = static_cast<This *>(user_data);
   h->on_stream_open(stream_id);
   return 0;
 },
+//stream_close,
 [](ngtcp2_conn *conn, int64_t stream_id, uint64_t app_error_code,
                  void *user_data, void *stream_user_data) {
   auto h = static_cast<This *>(user_data);
@@ -271,12 +279,14 @@ int init(const sockaddr *sa, socklen_t salen,
       nullptr, // recv_retry
       nullptr, // extend_max_streams_bidi
       nullptr, // extend_max_streams_uni
+      //rand,
 [](ngtcp2_conn *conn, uint8_t *dest, size_t destlen, ngtcp2_rand_ctx ctx,
          void *user_data) {
   auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
   std::generate(dest, dest + destlen, [&dis]() { return dis(randgen); });
   return 0;
 },
+      //get_new_connection_id,
 [](ngtcp2_conn *conn, ngtcp2_cid *cid, uint8_t *token,
                           size_t cidlen, void *user_data) {
   auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
@@ -295,13 +305,15 @@ int init(const sockaddr *sa, socklen_t salen,
   h->server()->associate_cid(cid, h);
 
   return 0;
-},
+},      
+//remove_connection_id,
  [](ngtcp2_conn *conn, const ngtcp2_cid *cid,
                          void *user_data) {
   auto h = static_cast<This *>(user_data);
   h->server()->dissociate_cid(cid);
   return 0;
-},
+},      
+//::update_key,
 [](ngtcp2_conn *conn, uint8_t *rx_secret, uint8_t *tx_secret,
                uint8_t *rx_key, uint8_t *rx_iv, uint8_t *tx_key, uint8_t *tx_iv,
                const uint8_t *current_rx_secret,
@@ -313,7 +325,8 @@ int init(const sockaddr *sa, socklen_t salen,
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
   return 0;
-},
+},      
+//path_validation,
 [](ngtcp2_conn *conn, const ngtcp2_path *path,
                     ngtcp2_path_validation_result res, void *user_data) {
   // if (!config.quiet) {
@@ -321,7 +334,8 @@ int init(const sockaddr *sa, socklen_t salen,
   // }
   return 0;
 },
-      nullptr, // select_preferred_addr
+      nullptr, // select_preferred_addr      
+      //::stream_reset,
       [](ngtcp2_conn *conn, int64_t stream_id, uint64_t final_size,
                  uint64_t app_error_code, void *user_data,
                  void *stream_user_data) {
@@ -330,14 +344,16 @@ int init(const sockaddr *sa, socklen_t salen,
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
   return 0;
-},//::stream_reset,
+},      
+//::extend_max_remote_streams_bidi,
 [](ngtcp2_conn *conn, uint64_t max_streams,
                                    void *user_data) {
   auto h = static_cast<This *>(user_data);
   h->extend_max_remote_streams_bidi(max_streams);
   return 0;
-},//::extend_max_remote_streams_bidi,
-      nullptr, // extend_max_remote_streams_uni,
+},
+      nullptr, // extend_max_remote_streams_uni,      
+      //::extend_max_stream_data,
   [](ngtcp2_conn *conn, int64_t stream_id,
                            uint64_t max_data, void *user_data,
                            void *stream_user_data) {
@@ -346,7 +362,7 @@ int init(const sockaddr *sa, socklen_t salen,
     return NGTCP2_ERR_CALLBACK_FAILURE;
   }
   return 0;
-},//::extend_max_stream_data,
+},
   };
 
   auto dis = std::uniform_int_distribution<>(0);
