@@ -548,13 +548,13 @@ protected:
 				//说明没有可接收缓存
 				return;
 			}
-			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,lpAddr,&nAddrLen);
+			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,lpAddr, &nAddrLen);
 			if (nBufLen<0) {
 				Base::OnReceive(XSocket::Socket::GetLastError());
 			} else if(nBufLen == 0) {
 				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
-				Base::Trigger(FD_READ, lpBuf, nBufLen,(const SOCKADDR*)&stAddr, nAddrLen, 0);
+				Base::Trigger(FD_READ, lpBuf, nBufLen, lpAddr, nAddrLen, 0);
 				bConitnue = Base::IsSocket();
 			}
 		} while(bConitnue);

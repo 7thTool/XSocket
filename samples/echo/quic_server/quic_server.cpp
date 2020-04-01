@@ -16,27 +16,34 @@
 using namespace XSocket;
 #include <random>
 
+typedef TaskSocketServiceT<ThreadService> udp_socket_service;
+typedef TaskSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
+
+class manager;
 class server;
 
-typedef QuickHandler<server> handler;
+typedef QuickHandler<manager,server,CVSocketT<ThreadCVService,SocketEx>> handler;
 // class handler : public QuickHandler<server>
 // {
 // public:
 // 	//
 // };
 
-typedef TaskSocketServiceT<ThreadCVService> WorkService;
+typedef TaskSocketServiceT<ThreadCVService> handler_service;
+class handler_set : public SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE>
+{
 
-class WorkConnectSet : public SocketSetT<WorkService,handler,DEFAULT_FD_SETSIZE>
+};
+typedef SocketManagerT<handler_set> handler_manager;
+
+class manager : public QuickServerT<manager,server,handler>
 {
 
 };
 
-typedef SocketManagerT<WorkConnectSet> ConnectManager;
-
-class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,QuickServerSocketT<SimpleUdpSocketExT<SelectSocketT<ThreadService,SocketEx>>,handler>>>
+class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
 {
-	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,QuickServerSocketT<SimpleUdpSocketExT<SelectSocketT<ThreadService,SocketEx>>,handler>>> Base;
+	typedef SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>> Base;
 protected:
 	std::string addr_;
 	u_short port_;

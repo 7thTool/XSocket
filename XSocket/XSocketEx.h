@@ -608,6 +608,21 @@ protected:
 };
 
 /*!
+ *	@brief CVSocket 模板定义.
+ *
+ *	封装CVSocket
+ */
+template<class TSocketSet, class TBase = SocketEx>
+class CVSocketT : public TBase
+{
+	typedef TBase Base;
+public:
+	typedef TSocketSet SocketSet;
+public:
+	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
+};
+
+/*!
  *	@brief SocketService 定义.
  *
  *	封装SocketService，实现套接字和事件服务框架关联，这里需要使用者继承自enable_shared_from_this将SocketService对象添加到SocketSet里
@@ -1747,7 +1762,7 @@ protected:
 /*!
  *	@brief SelectSocket 模板定义.
  *
- *	封装SelectSocket，实现对select模型管理一个客户端连接Socket
+ *	封装SelectSocket
  */
 template<class TSocketSet, class TBase = SocketEx>
 class SelectSocketT : public TBase
