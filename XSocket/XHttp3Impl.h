@@ -48,63 +48,12 @@ constexpr nghttp3_nv make_nv(const S1 &name, const S2 &value) {
                     name.size(), value.size(), NGHTTP3_NV_FLAG_NONE};
 }
 
-nghttp3_ssize read_data(nghttp3_conn *conn, int64_t stream_id, nghttp3_vec *vec,
-                        size_t veccnt, uint32_t *pflags, void *user_data,
-                        void *stream_user_data) {
-  auto stream = static_cast<Stream *>(stream_user_data);
-
-  vec[0].base = stream->data;
-  vec[0].len = stream->datalen;
-  *pflags |= NGHTTP3_DATA_FLAG_EOF | NGHTTP3_DATA_FLAG_NO_END_STREAM;
-
-  return 1;
-}
-} // namespace
-
-auto dyn_buf = std::make_unique<std::array<uint8_t, 16_k>>();
-
-namespace {
-nghttp3_ssize dyn_read_data(nghttp3_conn *conn, int64_t stream_id,
-                            nghttp3_vec *vec, size_t veccnt, uint32_t *pflags,
-                            void *user_data, void *stream_user_data) {
-  auto stream = static_cast<Stream *>(stream_user_data);
-
-  if (stream->dynbuflen > MAX_DYNBUFLEN) {
-    return NGHTTP3_ERR_WOULDBLOCK;
-  }
-
-  auto len =
-      std::min(dyn_buf->size(), static_cast<size_t>(stream->dyndataleft));
-
-  vec[0].base = dyn_buf->data();
-  vec[0].len = len;
-
-  stream->dynbuflen += len;
-  stream->dyndataleft -= len;
-
-  if (stream->dyndataleft == 0) {
-    *pflags |= NGHTTP3_DATA_FLAG_EOF | NGHTTP3_DATA_FLAG_NO_END_STREAM;
-    auto stream_id_str = std::to_string(stream_id);
-    std::array<nghttp3_nv, 1> trailers{
-        make_nv("x-ngtcp2-stream-id", stream_id_str),
-    };
-
-    if (auto rv = nghttp3_conn_submit_trailers(conn, stream_id, trailers.data(),
-                                               trailers.size());
-        rv != 0) {
-      std::cerr << "nghttp3_conn_submit_trailers: " << nghttp3_strerror(rv)
-                << std::endl;
-      return NGHTTP3_ERR_CALLBACK_FAILURE;
-    }
-  }
-
-  return 1;
-}
 } // namespace
 
 template<class THandler>
 struct Stream 
 {
+typedef Stream<THandler> This;
 typedef THandler Handler;
 
 Stream(int64_t stream_id, Handler *handler)
@@ -125,6 +74,51 @@ Stream(int64_t stream_id, Handler *handler)
   if (fd != -1) {
     close(fd);
   }
+}
+
+nghttp3_ssize read_data(nghttp3_conn *conn, int64_t stream_id, nghttp3_vec *vec,
+                        size_t veccnt, uint32_t *pflags, void *user_data) {
+  vec[0].base = data;
+  vec[0].len = datalen;
+  *pflags |= NGHTTP3_DATA_FLAG_EOF | NGHTTP3_DATA_FLAG_NO_END_STREAM;
+
+  return 1;
+}
+
+nghttp3_ssize dyn_read_data(nghttp3_conn *conn, int64_t stream_id,
+                            nghttp3_vec *vec, size_t veccnt, uint32_t *pflags, void *user_data) {
+  if (dynbuflen > MAX_DYNBUFLEN) {
+    return NGHTTP3_ERR_WOULDBLOCK;
+  }
+
+  static auto dyn_buf = std::unique_ptr<std::array<uint8_t, 16_k>>(new std::array<uint8_t, 16_k>());
+
+  auto len =
+      std::min(dyn_buf->size(), static_cast<size_t>(dyndataleft));
+
+  vec[0].base = dyn_buf->data();
+  vec[0].len = len;
+
+  dynbuflen += len;
+  dyndataleft -= len;
+
+  if (dyndataleft == 0) {
+    *pflags |= NGHTTP3_DATA_FLAG_EOF | NGHTTP3_DATA_FLAG_NO_END_STREAM;
+    auto stream_id_str = std::to_string(stream_id);
+    std::array<nghttp3_nv, 1> trailers{
+        make_nv("x-ngtcp2-stream-id", stream_id_str),
+    };
+
+    auto rv = nghttp3_conn_submit_trailers(conn, stream_id, trailers.data(),
+                                               trailers.size());
+    if (rv != 0) {
+      std::cerr << "nghttp3_conn_submit_trailers: " << nghttp3_strerror(rv)
+                << std::endl;
+      return NGHTTP3_ERR_CALLBACK_FAILURE;
+    }
+  }
+
+  return 1;
 }
 
 int start_response(nghttp3_conn *httpconn) {
@@ -173,7 +167,12 @@ int start_response(nghttp3_conn *httpconn) {
       return 0;
     }
 
-    dr.read_data = read_data;
+    dr.read_data = [](nghttp3_conn *conn, int64_t stream_id, nghttp3_vec *vec,
+                      size_t veccnt, uint32_t *pflags, void *user_data,
+                      void *stream_user_data) {
+        auto stream = static_cast<This *>(stream_user_data);
+        return stream->read_data(conn, stream_id, vec, veccnt, pflags, user_data);
+    };
 
     auto ext = std::end(req.path) - 1;
     for (; ext != std::begin(req.path) && *ext != '.' && *ext != '/'; --ext)
@@ -192,7 +191,12 @@ int start_response(nghttp3_conn *httpconn) {
     dynresp = true;
     dyndataleft = dyn_len;
 
-    dr.read_data = dyn_read_data;
+    dr.read_data = [](nghttp3_conn *conn, int64_t stream_id,
+                      nghttp3_vec *vec, size_t veccnt, uint32_t *pflags,
+                      void *user_data, void *stream_user_data) {
+        auto stream = static_cast<This *>(stream_user_data);
+        return stream->dyn_read_data(conn, stream_id, vec, veccnt, pflags, user_data);
+    };
 
     content_type = "application/octet-stream";
   }
@@ -271,11 +275,9 @@ int map_file(size_t len) {
   return 0;
 }
 
-  int map_file(size_t len);
-  
 int send_status_response(nghttp3_conn *httpconn,
                                  unsigned int status_code,
-                                 const std::vector<HTTPHeader> &extra_headers = {}) {
+                                 const std::vector<HttpHeader> &extra_headers = {}) {
   status_resp_body = make_status_body(status_code);
 
   auto status_code_str = std::to_string(status_code);
@@ -296,7 +298,12 @@ int send_status_response(nghttp3_conn *httpconn,
   datalen = status_resp_body.size();
 
   nghttp3_data_reader dr{};
-  dr.read_data = read_data;
+  dr.read_data = [](nghttp3_conn *conn, int64_t stream_id, nghttp3_vec *vec,
+                      size_t veccnt, uint32_t *pflags, void *user_data,
+                      void *stream_user_data) {
+        auto stream = static_cast<This *>(stream_user_data);
+        return stream->read_data(conn, stream_id, vec, veccnt, pflags, user_data);
+    };
 
   if (auto rv = nghttp3_conn_submit_response(httpconn, stream_id, nva.data(),
                                              nva.size(), &dr);
@@ -326,12 +333,12 @@ int send_status_response(nghttp3_conn *httpconn,
 
 int send_redirect_response(nghttp3_conn *httpconn,
                                    unsigned int status_code,
-                                   const std::string_view &path) {
+                                   const std::string &path) {
   return send_status_response(httpconn, status_code, {{"location", path}});
 }
 
   
-int64_t find_dyn_length(const std::string_view &path) {
+int64_t find_dyn_length(const std::string &path) {
   assert(path[0] == '/');
 
   uint64_t n = 0;
@@ -388,14 +395,14 @@ void http_acked_stream_data(size_t datalen) {
 };
 
 
-    template<class TSocket>
-    class Http3Handler : public QuicHandler<TSocket>
+    template<class T, class TManager, class TSocket, class TBase>
+    class Http3Handler : public QuicHandler<T,TManager,TSocket,TBase>
     {
-        typedef QuicHandler<TSocket> Base;
+        typedef QuicHandler<T,TManager,TSocket,TBase> Base;
     public:
     protected:
         nghttp3_conn *httpconn_;
-        std::map<int64_t, std::unique_ptr<Stream>> streams_;
+        std::map<int64_t, std::unique_ptr<Stream<T>>> streams_;
     public:
 
 virtual int recv_stream_data(int64_t stream_id, uint8_t fin,

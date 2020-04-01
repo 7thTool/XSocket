@@ -50,6 +50,45 @@
 
 //Quic 包的大小应该不大于MTU，以避免ip 分片。当前的Quic实现在ipv6环境每个包 最大限制为1350的字节，ipv4环境下为1370，这两个限制都不包含ip 和 udp 头。
 
+// inspired by <http://blog.korfuri.fr/post/go-defer-in-cpp/>, but our
+// template can take functions returning other than void.
+template <typename F, typename... T> struct Defer {
+  Defer(F &&f, T &&... t)
+      : f(std::bind(std::forward<F>(f), std::forward<T>(t)...)) {}
+  Defer(Defer &&o) noexcept : f(std::move(o.f)) {}
+  ~Defer() { f(); }
+
+  using ResultType = typename std::result_of<typename std::decay<F>::type(
+      typename std::decay<T>::type...)>::type;
+  std::function<ResultType()> f;
+};
+
+template <typename F, typename... T> Defer<F, T...> defer(F &&f, T &&... t) {
+  return Defer<F, T...>(std::forward<F>(f), std::forward<T>(t)...);
+}
+
+template <typename T, size_t N> constexpr size_t array_size(T (&)[N]) {
+  return N;
+}
+
+template <typename T, size_t N> constexpr size_t str_size(T (&)[N]) {
+  return N - 1;
+}
+
+// User-defined literals for K, M, and G (powers of 1024)
+
+constexpr unsigned long long operator"" _k(unsigned long long k) {
+  return k * 1024;
+}
+
+constexpr unsigned long long operator"" _m(unsigned long long m) {
+  return m * 1024 * 1024;
+}
+
+constexpr unsigned long long operator"" _g(unsigned long long g) {
+  return g * 1024 * 1024 * 1024;
+}
+
 namespace XSocket {
 
 namespace {
@@ -103,10 +142,10 @@ struct Address {
 // }
 // } // namespace
 
- template<class TManager, class TSocket, class TBase>
+ template<class T, class TManager, class TSocket, class TBase>
  class QuickHandler : public ConnectionT<TSocket,TaskSocketT<TBase>>
  {
-   typedef QuickHandler<TManager,TSocket,TBase> This;
+   typedef QuickHandler<T,TManager,TSocket,TBase> This;
 	 typedef ConnectionT<TSocket,TaskSocketT<TBase>> Base;
  protected:
   TManager* manager_;
@@ -185,184 +224,177 @@ int init(const sockaddr *sa, socklen_t salen,
       [](ngtcp2_conn *conn, ngtcp2_crypto_level crypto_level,
                      uint64_t offset, const uint8_t *data, size_t datalen,
                      void *user_data) -> int {
-  // if (!config.quiet && !config.no_quic_dump) {
-  //   debug::print_crypto_data(crypto_level, data, datalen);
-  // }
+        // if (!config.quiet && !config.no_quic_dump) {
+        //   debug::print_crypto_data(crypto_level, data, datalen);
+        // }
 
-  auto h = static_cast<This *>(user_data);
+        auto h = static_cast<This *>(user_data);
 
-  if (h->recv_crypto_data(crypto_level, data, datalen) != 0) {
-    auto err = ngtcp2_conn_get_tls_error(conn);
-    if (err) {
-      return err;
-    }
-    return NGTCP2_ERR_CRYPTO;
-  }
+        if (h->recv_crypto_data(crypto_level, data, datalen) != 0) {
+          auto err = ngtcp2_conn_get_tls_error(conn);
+          if (err) {
+            return err;
+          }
+          return NGTCP2_ERR_CRYPTO;
+        }
 
-  return 0;
-},
-//::handshake_completed,
-[](ngtcp2_conn *conn, void *user_data) {
-  auto h = static_cast<This *>(user_data);
+        return 0;
+      },
+      //::handshake_completed,
+      [](ngtcp2_conn *conn, void *user_data) {
+        auto h = static_cast<This *>(user_data);
 
-  // if (!config.quiet) {
-  //   debug::handshake_completed(conn, user_data);
-  // }
+        // if (!config.quiet) {
+        //   debug::handshake_completed(conn, user_data);
+        // }
 
-  if (h->handshake_completed() != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
+        if (h->handshake_completed() != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
 
-  return 0;
-},
+        return 0;
+      },
       nullptr, // recv_version_negotiation
       ngtcp2_crypto_encrypt_cb,
       ngtcp2_crypto_decrypt_cb,      
       //do_hp_mask,
-[](uint8_t *dest, const ngtcp2_crypto_cipher *hp,
-               const uint8_t *hp_key, const uint8_t *sample) {
-  if (ngtcp2_crypto_hp_mask(dest, hp, hp_key, sample) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
+      [](uint8_t *dest, const ngtcp2_crypto_cipher *hp,
+                    const uint8_t *hp_key, const uint8_t *sample) {
+        if (ngtcp2_crypto_hp_mask(dest, hp, hp_key, sample) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
 
-  // if (!config.quiet && config.show_secret) {
-  //   debug::print_hp_mask(dest, NGTCP2_HP_MASKLEN, sample, NGTCP2_HP_SAMPLELEN);
-  // }
+        // if (!config.quiet && config.show_secret) {
+        //   debug::print_hp_mask(dest, NGTCP2_HP_MASKLEN, sample, NGTCP2_HP_SAMPLELEN);
+        // }
 
-  return 0;
-},      
-//::recv_stream_data,
-[](ngtcp2_conn *conn, int64_t stream_id, int fin,
-                     uint64_t offset, const uint8_t *data, size_t datalen,
-                     void *user_data, void *stream_user_data) {
-  auto h = static_cast<This *>(user_data);
+        return 0;
+      },      
+      //::recv_stream_data,
+      [](ngtcp2_conn *conn, int64_t stream_id, int fin,
+                          uint64_t offset, const uint8_t *data, size_t datalen,
+                          void *user_data, void *stream_user_data) {
+        auto h = static_cast<This *>(user_data);
 
-  if (h->recv_stream_data(stream_id, fin, data, datalen) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
+        if (h->recv_stream_data(stream_id, fin, data, datalen) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
 
-  return 0;
-},
-//acked_crypto_offset,  
-[](ngtcp2_conn *conn, ngtcp2_crypto_level crypto_level,
-                        uint64_t offset, size_t datalen, void *user_data) {
-  auto h = static_cast<This *>(user_data);
-  h->remove_tx_crypto_data(crypto_level, offset, datalen);
-  return 0;
-},    
-//::acked_stream_data_offset,
-[](ngtcp2_conn *conn, int64_t stream_id,
-                             uint64_t offset, size_t datalen, void *user_data,
-                             void *stream_user_data) {
-  auto h = static_cast<This *>(user_data);
-  if (h->acked_stream_data_offset(stream_id, datalen) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
-  return 0;
-},      
-//stream_open,
-[](ngtcp2_conn *conn, int64_t stream_id, void *user_data) {
-  auto h = static_cast<This *>(user_data);
-  h->on_stream_open(stream_id);
-  return 0;
-},
-//stream_close,
-[](ngtcp2_conn *conn, int64_t stream_id, uint64_t app_error_code,
-                 void *user_data, void *stream_user_data) {
-  auto h = static_cast<This *>(user_data);
-  if (h->on_stream_close(stream_id, app_error_code) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
-  return 0;
-},
+        return 0;
+      },
+      //acked_crypto_offset,  
+      [](ngtcp2_conn *conn, ngtcp2_crypto_level crypto_level,
+                              uint64_t offset, size_t datalen, void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        h->remove_tx_crypto_data(crypto_level, offset, datalen);
+        return 0;
+      },    
+      //::acked_stream_data_offset,
+      [](ngtcp2_conn *conn, int64_t stream_id,
+                                  uint64_t offset, size_t datalen, void *user_data,
+                                  void *stream_user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->acked_stream_data_offset(stream_id, datalen) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },      
+      //stream_open,
+      [](ngtcp2_conn *conn, int64_t stream_id, void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        h->on_stream_open(stream_id);
+        return 0;
+      },
+      //stream_close,
+      [](ngtcp2_conn *conn, int64_t stream_id, uint64_t app_error_code,
+                      void *user_data, void *stream_user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->on_stream_close(stream_id, app_error_code) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },
       nullptr, // recv_stateless_reset
       nullptr, // recv_retry
       nullptr, // extend_max_streams_bidi
       nullptr, // extend_max_streams_uni
       //rand,
-[](ngtcp2_conn *conn, uint8_t *dest, size_t destlen, ngtcp2_rand_ctx ctx,
-         void *user_data) {
-  auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
-  std::generate(dest, dest + destlen, [&dis]() { return dis(randgen); });
-  return 0;
-},
+      [](ngtcp2_conn *conn, uint8_t *dest, size_t destlen, ngtcp2_rand_ctx ctx,
+              void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->rand(conn, dest, destlen, ctx) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },
       //get_new_connection_id,
-[](ngtcp2_conn *conn, ngtcp2_cid *cid, uint8_t *token,
-                          size_t cidlen, void *user_data) {
-  auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
-  auto f = [&dis]() { return dis(randgen); };
-
-  std::generate_n(cid->data, cidlen, f);
-  cid->datalen = cidlen;
-  auto md = ngtcp2_crypto_md{const_cast<EVP_MD *>(EVP_sha256())};
-  if (ngtcp2_crypto_generate_stateless_reset_token(
-          token, &md, config.static_secret.data(), config.static_secret.size(),
-          cid) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
-
-  auto h = static_cast<This *>(user_data);
-  h->server()->associate_cid(cid, h);
-
-  return 0;
-},      
-//remove_connection_id,
- [](ngtcp2_conn *conn, const ngtcp2_cid *cid,
-                         void *user_data) {
-  auto h = static_cast<This *>(user_data);
-  h->server()->dissociate_cid(cid);
-  return 0;
-},      
-//::update_key,
-[](ngtcp2_conn *conn, uint8_t *rx_secret, uint8_t *tx_secret,
-               uint8_t *rx_key, uint8_t *rx_iv, uint8_t *tx_key, uint8_t *tx_iv,
-               const uint8_t *current_rx_secret,
-               const uint8_t *current_tx_secret, size_t secretlen,
-               void *user_data) {
-  auto h = static_cast<This *>(user_data);
-  if (h->update_key(rx_secret, tx_secret, rx_key, rx_iv, tx_key, tx_iv,
-                    current_rx_secret, current_tx_secret, secretlen) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
-  return 0;
-},      
-//path_validation,
-[](ngtcp2_conn *conn, const ngtcp2_path *path,
-                    ngtcp2_path_validation_result res, void *user_data) {
-  // if (!config.quiet) {
-  //   debug::path_validation(path, res);
-  // }
-  return 0;
-},
+      [](ngtcp2_conn *conn, ngtcp2_cid *cid, uint8_t *token,
+                                size_t cidlen, void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->get_new_connection_id(conn, cid, token, cidlen) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },      
+      //remove_connection_id,
+      [](ngtcp2_conn *conn, const ngtcp2_cid *cid,
+                              void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->remove_connection_id(conn, cid) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },      
+      //::update_key,tx是发送(transport),rx是接收(receive)
+      [](ngtcp2_conn *conn, uint8_t *rx_secret, uint8_t *tx_secret,
+                    uint8_t *rx_key, uint8_t *rx_iv, uint8_t *tx_key, uint8_t *tx_iv,
+                    const uint8_t *current_rx_secret,
+                    const uint8_t *current_tx_secret, size_t secretlen,
+                    void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->update_key(rx_secret, tx_secret, rx_key, rx_iv, tx_key, tx_iv,
+                          current_rx_secret, current_tx_secret, secretlen) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },      
+      //path_validation,
+      [](ngtcp2_conn *conn, const ngtcp2_path *path,
+                          ngtcp2_path_validation_result res, void *user_data) {
+        // if (!config.quiet) {
+        //   debug::path_validation(path, res);
+        // }
+        return 0;
+      },
       nullptr, // select_preferred_addr      
       //::stream_reset,
       [](ngtcp2_conn *conn, int64_t stream_id, uint64_t final_size,
                  uint64_t app_error_code, void *user_data,
                  void *stream_user_data) {
-  auto h = static_cast<This *>(user_data);
-  if (h->on_stream_reset(stream_id) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
-  return 0;
-},      
-//::extend_max_remote_streams_bidi,
-[](ngtcp2_conn *conn, uint64_t max_streams,
-                                   void *user_data) {
-  auto h = static_cast<This *>(user_data);
-  h->extend_max_remote_streams_bidi(max_streams);
-  return 0;
-},
+        auto h = static_cast<This *>(user_data);
+        if (h->on_stream_reset(stream_id) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },      
+      //::extend_max_remote_streams_bidi,
+      [](ngtcp2_conn *conn, uint64_t max_streams,
+                                        void *user_data) {
+        auto h = static_cast<This *>(user_data);
+        h->extend_max_remote_streams_bidi(max_streams);
+        return 0;
+      },
       nullptr, // extend_max_remote_streams_uni,      
       //::extend_max_stream_data,
-  [](ngtcp2_conn *conn, int64_t stream_id,
-                           uint64_t max_data, void *user_data,
-                           void *stream_user_data) {
-  auto h = static_cast<This *>(user_data);
-  if (h->extend_max_stream_data(stream_id, max_data) != 0) {
-    return NGTCP2_ERR_CALLBACK_FAILURE;
-  }
-  return 0;
-},
+      [](ngtcp2_conn *conn, int64_t stream_id,
+                              uint64_t max_data, void *user_data,
+                              void *stream_user_data) {
+        auto h = static_cast<This *>(user_data);
+        if (h->extend_max_stream_data(stream_id, max_data) != 0) {
+          return NGTCP2_ERR_CALLBACK_FAILURE;
+        }
+        return 0;
+      },
   };
 
   auto dis = std::uniform_int_distribution<>(0);
@@ -370,10 +402,10 @@ int init(const sockaddr *sa, socklen_t salen,
   scid_.datalen = NGTCP2_SV_SCIDLEN;
   std::generate(scid_.data, scid_.data + scid_.datalen,
                 [&dis]() { return dis(randgen)%255; });
-
+/*
   ngtcp2_settings settings;
   ngtcp2_settings_default(&settings);
-  settings.log_printf = config.quiet ? nullptr : debug::log_printf;
+  settings.log_printf = IsDebug() ? printf : nullptr;
   settings.initial_ts = util::timestamp(loop_);
   settings.token = ngtcp2_vec{const_cast<uint8_t *>(token), tokenlen};
   if (!config.qlog_dir.empty()) {
@@ -467,7 +499,7 @@ int init(const sockaddr *sa, socklen_t salen,
   }
 
   ev_io_set(&wev_, endpoint_->fd, EV_WRITE);
-  ev_timer_again(loop_, &timer_);
+  ev_timer_again(loop_, &timer_);*/
 
   return 0;
 }
@@ -512,7 +544,7 @@ int recv_crypto_data(ngtcp2_crypto_level crypto_level,
 }
 
 int handshake_completed() {
-  if (!config.quiet) {
+  if (IsDebug()) {
     std::cerr << "Negotiated cipher suite is " << SSL_get_cipher_name(ssl_)
               << std::endl;
 
@@ -549,9 +581,9 @@ void on_stream_open(int64_t stream_id) {
   if (!ngtcp2_is_bidi_stream(stream_id)) {
     return;
   }
-  auto it = streams_.find(stream_id);
-  assert(it == std::end(streams_));
-  streams_.emplace(stream_id, std::make_unique<Stream>(stream_id, this));
+  // auto it = streams_.find(stream_id);
+  // assert(it == std::end(streams_));
+  // streams_.emplace(stream_id, std::make_unique<Stream>(stream_id, this));
 }
 
 virtual int on_stream_close(int64_t stream_id, uint64_t app_error_code) {
@@ -567,6 +599,40 @@ virtual int extend_max_stream_data(int64_t stream_id, uint64_t max_data) {
 }
 
 virtual int on_stream_reset(int64_t stream_id) {
+  return 0;
+}
+
+int rand(ngtcp2_conn *conn, uint8_t *dest, size_t destlen, ngtcp2_rand_ctx ctx)
+{
+  auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
+  std::generate(dest, dest + destlen, [&dis]() { return dis(randgen); });
+  return 0;
+}
+
+int get_new_connection_id(ngtcp2_conn *conn, ngtcp2_cid *cid, uint8_t *token,
+                          size_t cidlen)
+{
+  auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
+  auto f = [&dis]() { return dis(randgen); };
+
+  std::generate_n(cid->data, cidlen, f);
+  cid->datalen = cidlen;
+  auto md = ngtcp2_crypto_md{const_cast<EVP_MD *>(EVP_sha256())};
+  if (ngtcp2_crypto_generate_stateless_reset_token(
+          token, &md, manager_->static_secret.data(), manager_->static_secret.size(),
+          cid) != 0)
+  {
+    return NGTCP2_ERR_CALLBACK_FAILURE;
+  }
+
+  server()->associate_cid(cid, this);
+
+  return 0;
+}
+//,
+int remove_connection_id(ngtcp2_conn *conn, const ngtcp2_cid *cid)
+{
+  server()->dissociate_cid(cid);
   return 0;
 }
 
@@ -644,20 +710,77 @@ public:
 	}
 
 protected:
+  Address preferred_ipv4_addr;
+  Address preferred_ipv6_addr;
   // tx_loss_prob is probability of losing outgoing packet.
-  static double tx_loss_prob;
+  double tx_loss_prob;
   // rx_loss_prob is probability of losing incoming packet.
-  static double rx_loss_prob;
+  double rx_loss_prob;
+  // ciphers is the list of enabled ciphers.
+  const char *ciphers;
+  // groups is the list of supported groups.
+  const char *groups;
+  // htdocs is a root directory to serve documents.
+  std::string htdocs;
+  // mime_types_file is a path to "MIME media types and the
+  // extensions" file.  Ubuntu mime-support package includes it in
+  // /etc/mime/types.
+  const char *mime_types_file;
+  // mime_types maps file extension to MIME media type.
+  std::map<std::string, std::string> mime_types;
+  // port is the port number which server listens on for incoming
+  // connections.
+  uint16_t port;
+  // quiet suppresses the output normally shown except for the error
+  // messages.
+  bool quiet;
+  // timeout is an idle timeout for QUIC connection.
+  ngtcp2_duration timeout;
+  // show_secret is true if transport secrets should be printed out.
+  bool show_secret;
   // validate_addr is true if server requires address validation.
-  static bool validate_addr;
+  bool validate_addr;
+  // early_response is true if server starts sending response when it
+  // receives HTTP header fields without waiting for request body.  If
+  // HTTP response data is written before receiving request body,
+  // STOP_SENDING is sent.
+  bool early_response;
+  // verify_client is true if server verifies client with X.509
+  // certificate based authentication.
+  bool verify_client;
+  // qlog_dir is the path to directory where qlog is stored.
+  //std::string_view qlog_dir;
+  // no_quic_dump is true if hexdump of QUIC STREAM and CRYPTO data
+  // should be disabled.
+  bool no_quic_dump;
+  // no_http_dump is true if hexdump of HTTP response body should be
+  // disabled.
+  bool no_http_dump;
+  // max_data is the initial connection-level flow control window.
+  uint64_t max_data;
+  // max_stream_data_bidi_local is the initial stream-level flow
+  // control window for a bidirectional stream that the local endpoint
+  // initiates.
+  uint64_t max_stream_data_bidi_local;
+  // max_stream_data_bidi_remote is the initial stream-level flow
+  // control window for a bidirectional stream that the remote
+  // endpoint initiates.
+  uint64_t max_stream_data_bidi_remote;
+  // max_stream_data_uni is the initial stream-level flow control
+  // window for a unidirectional stream.
+  uint64_t max_stream_data_uni;
+  // max_streams_bidi is the number of the concurrent bidirectional
+  // streams.
+  uint64_t max_streams_bidi;
+  // max_streams_uni is the number of the concurrent unidirectional
+  // streams.
+  uint64_t max_streams_uni;
+  // max_dyn_length is the maximum length of dynamically generated
+  // response.
+  uint64_t max_dyn_length;
   // static_secret is used to derive keying materials for Retry and
   // Stateless Retry token.
-  static std::array<uint8_t, 32> static_secret;
-
-	static bool packet_lost(double prob) {
-		auto p = std::uniform_real_distribution<>(0, 1)(randgen);
-		return p < prob;
-	}
+  std::array<uint8_t, 32> static_secret;
 
 static uint32_t generate_reserved_version(const sockaddr *sa, socklen_t salen,
 									uint32_t version) {
@@ -688,6 +811,16 @@ static inline std::string make_cid_key(const uint8_t *cid, size_t cidlen) {
   return std::string(cid, cid + cidlen);
 }
 
+static inline void generate_rand_data(uint8_t *buf, size_t len) {
+  auto dis = std::uniform_int_distribution<>(0);
+  std::generate_n(buf, len, [&dis]() { return dis(randgen)%255; });
+}
+
+static bool packet_lost(double prob) {
+		auto p = std::uniform_real_distribution<>(0, 1)(randgen);
+		return p < prob;
+	}
+
 inline int derive_token_key(uint8_t *key, size_t &keylen, uint8_t *iv,
                              size_t &ivlen, const uint8_t *rand_data,
                              size_t rand_datalen) {
@@ -709,11 +842,6 @@ inline int derive_token_key(uint8_t *key, size_t &keylen, uint8_t *iv,
   }
 
   return 0;
-}
-
-static inline void generate_rand_data(uint8_t *buf, size_t len) {
-  auto dis = std::uniform_int_distribution<>(0);
-  std::generate_n(buf, len, [&dis]() { return dis(randgen)%255; });
 }
 
 inline int generate_token(uint8_t *token, size_t &tokenlen, const sockaddr *sa,
@@ -1142,15 +1270,6 @@ protected:
   return SOCKET_PACKET_FLAG_COMPLETE;
 	}
 };
-
-template<class TSocket, class THandler>
-double QuickServerT<TSocket,THandler>::tx_loss_prob = 0.5;
-template<class TSocket, class THandler>
-double QuickServerT<TSocket,THandler>::rx_loss_prob = 0.5;
-template<class TSocket, class THandler>
-bool QuickServerT<TSocket,THandler>::validate_addr = true;
-template<class TSocket, class THandler>
-std::array<uint8_t, 32> QuickServerT<TSocket,THandler>::static_secret;
 
 /*!
  *	@brief QuickSocketT 定义.

@@ -540,7 +540,7 @@ protected:
 		bool bConitnue = false;
 		do {
 			bConitnue = false;
-			char lpBuf = nullptr;
+			char* lpBuf = nullptr;
 			int nBufLen = 0;
 			SOCKADDR* lpAddr = nullptr;
 			int nAddrLen = 0;
@@ -590,7 +590,7 @@ protected:
 			bConitnue = false;
 			const char* lpBuf = nullptr;
 			int nBufLen = 0;
-			SOCKADDR* lpAddr = nullptr;
+			const SOCKADDR* lpAddr = nullptr;
 			int nAddrLen = 0;
 			if (!m_pSendBuf) {
 				if(!PrepareSendBuf(lpBuf,nBufLen,lpAddr,nAddrLen)) {

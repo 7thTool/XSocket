@@ -126,6 +126,12 @@ namespace XSocket {
 			return std::string();
 		}
 	};
+	struct HttpHeader {
+			HttpHeader() {}
+			HttpHeader(const std::string& _name, const std::string& _value):name(_name),value(_value){}
+			HttpHeader(std::string&& _name, std::string&& _value):name(std::move(_name)),value(std::move(_value)){}
+			std::string name, value;
+	};
 	class HttpMessage
 	{
 	public:
@@ -206,13 +212,7 @@ namespace XSocket {
 
 		unsigned short http_major = 0;
 		unsigned short http_minor = 0;
-		struct field {
-			field() {}
-			field(const std::string& _name, const std::string& _value):name(_name),value(_value){}
-			field(std::string&& _name, std::string&& _value):name(std::move(_name)),value(std::move(_value)){}
-			std::string name, value;
-		};
-		std::vector<field> fields_;
+		std::vector<HttpHeader> fields_;
 		std::string body_;
 		
 		unsigned short major() const { return http_major; }

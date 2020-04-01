@@ -9,9 +9,6 @@
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
-#ifdef USE_OPENSSL
-#include "../../../XSocket/XSSLImpl.h"
-#endif
 #include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 #include <random>
@@ -22,12 +19,11 @@ typedef TaskSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx
 class manager;
 class server;
 
-typedef QuickHandler<manager,server,CVSocketT<ThreadCVService,SocketEx>> handler;
-// class handler : public QuickHandler<server>
-// {
-// public:
-// 	//
-// };
+class handler : public QuickHandler<handler,manager,server,CVSocketT<ThreadCVService,SocketEx>>
+{
+public:
+	//
+};
 
 typedef TaskSocketServiceT<ThreadCVService> handler_service;
 class handler_set : public SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE>
@@ -120,7 +116,7 @@ int main()
 	//worker::Configure(&tls_ctx_config);
 #endif
 
-	ConnectManager mgr;
+	handler_manager mgr(DEFAULT_MAX_FD_SETSIZE);
 	mgr.Start();
 
 	server *s = new server();
