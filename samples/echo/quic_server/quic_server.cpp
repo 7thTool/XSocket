@@ -19,7 +19,7 @@ typedef TaskSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx
 class manager;
 class server;
 
-class handler : public QuickHandler<handler,manager,server,CVSocketT<ThreadCVService,SocketEx>>
+class handler : public QuicServerHandlerT<handler,manager,server,CVSocketT<ThreadCVService,SocketEx>>
 {
 public:
 	//
@@ -32,7 +32,7 @@ class handler_set : public SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE
 };
 typedef SocketManagerT<handler_set> handler_manager;
 
-class manager : public QuickServerT<manager,server,handler>
+class manager : public QuicServerManagerT<manager,server,handler>
 {
 
 };
