@@ -757,7 +757,7 @@ public:
 	}
 
 	inline bool IsSocket() {  return Base::sock_ != 0; }
-	inline TSocket* Socket() { return (TSocket*)Base::sock_; }
+	inline TSocket* GetSocket() { return (TSocket*)Base::sock_; }
 	inline void Close() { 
 		if(Base::sock_) { 
 			TSocket* sock = (TSocket*)Base::sock_; 

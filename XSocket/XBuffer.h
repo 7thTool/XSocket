@@ -2,6 +2,7 @@
 #define __H_XBUFFER_H__
 
 #include "XSocketDef.h"
+#include <string>
 
 namespace XSocket {
 

@@ -593,9 +593,13 @@ protected:
     std::map<int64_t, std::unique_ptr<Stream<T>>> streams_;
 
 public:
-    virtual int on_recv_stream_data(int64_t stream_id, uint8_t fin,
+    int recv_stream_data(int64_t stream_id, uint8_t fin,
                                  const uint8_t *data, size_t datalen)
-    {
+    { 
+    // if (!config.quiet && !config.no_quic_dump) {
+    //   debug::print_stream_data(stream_id, data, datalen);
+    // }
+
         if (!httpconn_)
         {
             return 0;
@@ -609,6 +613,9 @@ public:
                       << std::endl;
             return -1;
         }
+
+        ngtcp2_conn_extend_max_stream_offset(this->conn_, stream_id, nconsumed);
+        ngtcp2_conn_extend_max_offset(this->conn_, nconsumed);
 
         return nconsumed;
     }

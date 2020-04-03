@@ -55,6 +55,11 @@ constexpr nghttp3_nv make_nv(const S1 &name, const S2 &value)
 
 } // namespace
 
+inline QUICError quic_err_app(int liberr) {
+  return {QUICErrorType::Application,
+          nghttp3_err_infer_quic_app_error_code(liberr)};
+}
+
 } // namespace XSocket
 
 #endif //_H_XHTTP3_IMPL_H_
