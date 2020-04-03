@@ -31,12 +31,11 @@ class QuicServerHandlerT
   typedef QuicServerHandlerT<T, TManager, TSocket, TBase> This;
   typedef QuicHandlerBaseT<T, TManager, TSocket, TBase> Base;
   using typename Base::Buffer;
+
  protected:
   ngtcp2_cid scid_;
   ngtcp2_cid pscid_;
   ngtcp2_cid rcid_;
-  // common buffer used to store packet data before sending
-  Buffer sendbuf_;
   // conn_closebuf_ contains a packet which contains CONNECTION_CLOSE.
   // This packet is repeatedly sent as a response to the incoming
   // packet in draining period.
@@ -51,7 +50,6 @@ class QuicServerHandlerT
         scid_{},
         pscid_{},
         rcid_(*rcid),
-        sendbuf_{NGTCP2_MAX_PKTLEN_IPV4},
         draining_(false) {}
 
   const ngtcp2_cid *scid() const { return &scid_; }
@@ -68,16 +66,16 @@ class QuicServerHandlerT
     this->remote_addr_.len = salen;
     memcpy(&this->remote_addr_.su.sa, sa, salen);
 
-  switch (this->remote_addr_.su.storage.ss_family) {
-  case AF_INET:
-    this->max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV4;
-    break;
-  case AF_INET6:
-    this->max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV6;
-    break;
-  default:
-    return -1;
-  }
+    switch (this->remote_addr_.su.storage.ss_family) {
+      case AF_INET:
+        this->max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV4;
+        break;
+      case AF_INET6:
+        this->max_pktlen_ = NGTCP2_MAX_PKTLEN_IPV6;
+        break;
+      default:
+        return -1;
+    }
 
     this->ssl_ = SSL_new(this->ssl_ctx_);
     SSL_set_app_data(this->ssl_, this);
@@ -219,7 +217,7 @@ class QuicServerHandlerT
           }
           return 0;
         },
-        //::update_key,tx是发送(transport),rx是接收(receive)
+        //::update_key
         [](ngtcp2_conn *conn, uint8_t *rx_secret, uint8_t *tx_secret,
            uint8_t *rx_key, uint8_t *rx_iv, uint8_t *tx_key, uint8_t *tx_iv,
            const uint8_t *current_rx_secret, const uint8_t *current_tx_secret,
@@ -273,105 +271,174 @@ class QuicServerHandlerT
     scid_.datalen = NGTCP2_SV_SCIDLEN;
     std::generate(scid_.data, scid_.data + scid_.datalen,
                   [&dis]() { return dis(randgen) % 255; });
-    /*
-      ngtcp2_settings settings;
-      ngtcp2_settings_default(&settings);
-      settings.log_printf = IsDebug() ? printf : nullptr;
-      settings.initial_ts = util::timestamp(loop_);
-      settings.token = ngtcp2_vec{const_cast<uint8_t *>(token), tokenlen};
-      if (!config.qlog_dir.empty()) {
-        auto path = std::string{config.qlog_dir};
-        path += '/';
-        path += util::format_hex(scid_.data, scid_.datalen);
-        path += ".qlog";
-        qlog_ = fopen(path.c_str(), "w");
-        if (qlog_ == nullptr) {
-          std::cerr << "Could not open qlog file " << path << ": "
-                    << strerror(errno) << std::endl;
-          return -1;
-        }
-        settings.qlog.write = ::write_qlog;
-        settings.qlog.odcid = *scid;
-      }
-      auto &params = settings.transport_params;
-      params.initial_max_stream_data_bidi_local =
-      config.max_stream_data_bidi_local;
-      params.initial_max_stream_data_bidi_remote =
-          config.max_stream_data_bidi_remote;
-      params.initial_max_stream_data_uni = config.max_stream_data_uni;
-      params.initial_max_data = config.max_data;
-      params.initial_max_streams_bidi = config.max_streams_bidi;
-      params.initial_max_streams_uni = config.max_streams_uni;
-      params.max_idle_timeout = config.timeout;
-      params.stateless_reset_token_present = 1;
-      params.active_connection_id_limit = 7;
 
-      if (ocid) {
-        params.original_connection_id = *ocid;
-        params.original_connection_id_present = 1;
+    ngtcp2_settings settings = {0};
+    ngtcp2_settings_default(&settings);
+    settings.log_printf = IsDebug() ? printf : nullptr;
+    settings.initial_ts = timestamp();
+    settings.token = ngtcp2_vec{const_cast<uint8_t *>(token), tokenlen};
+    /*if (!config.qlog_dir.empty()) {
+      auto path = std::string{config.qlog_dir};
+      path += '/';
+      path += util::format_hex(scid_.data, scid_.datalen);
+      path += ".qlog";
+      qlog_ = fopen(path.c_str(), "w");
+      if (qlog_ == nullptr) {
+        std::cerr << "Could not open qlog file " << path << ": "
+                  << strerror(errno) << std::endl;
+        return -1;
+      }
+      settings.qlog.write = ::write_qlog;
+      settings.qlog.odcid = *scid;
+    }*/
+    auto &params = settings.transport_params;
+    params.initial_max_stream_data_bidi_local =
+        this->manager_->max_stream_data_bidi_local;
+    params.initial_max_stream_data_bidi_remote =
+        this->manager_->max_stream_data_bidi_remote;
+    params.initial_max_stream_data_uni = this->manager_->max_stream_data_uni;
+    params.initial_max_data = this->manager_->max_data;
+    params.initial_max_streams_bidi = this->manager_->max_streams_bidi;
+    params.initial_max_streams_uni = this->manager_->max_streams_uni;
+    params.max_idle_timeout = this->manager_->timeout;
+    params.stateless_reset_token_present = 1;
+    params.active_connection_id_limit = 7;
+
+    if (ocid) {
+      params.original_connection_id = *ocid;
+      params.original_connection_id_present = 1;
+    }
+
+    std::generate(std::begin(params.stateless_reset_token),
+                  std::end(params.stateless_reset_token),
+                  [&dis]() { return dis(randgen); });
+
+    if (this->manager_->preferred_ipv4_addr.len ||
+        this->manager_->preferred_ipv6_addr.len) {
+      params.preferred_address_present = 1;
+      if (this->manager_->preferred_ipv4_addr.len) {
+        auto &dest = params.preferred_address.ipv4_addr;
+        const auto &addr = this->manager_->preferred_ipv4_addr;
+        assert(sizeof(dest) == sizeof(addr.su.in.sin_addr));
+        memcpy(&dest, &addr.su.in.sin_addr, sizeof(dest));
+        params.preferred_address.ipv4_port = htons(addr.su.in.sin_port);
+      }
+      if (this->manager_->preferred_ipv6_addr.len) {
+        auto &dest = params.preferred_address.ipv6_addr;
+        const auto &addr = this->manager_->preferred_ipv6_addr;
+        assert(sizeof(dest) == sizeof(addr.su.in6.sin6_addr));
+        memcpy(&dest, &addr.su.in6.sin6_addr, sizeof(dest));
+        params.preferred_address.ipv6_port = htons(addr.su.in6.sin6_port);
       }
 
-      std::generate(std::begin(params.stateless_reset_token),
-                    std::end(params.stateless_reset_token),
+      auto &token = params.preferred_address.stateless_reset_token;
+      std::generate(std::begin(token), std::end(token),
                     [&dis]() { return dis(randgen); });
 
-      if (config.preferred_ipv4_addr.len || config.preferred_ipv6_addr.len) {
-        params.preferred_address_present = 1;
-        if (config.preferred_ipv4_addr.len) {
-          auto &dest = params.preferred_address.ipv4_addr;
-          const auto &addr = config.preferred_ipv4_addr;
-          assert(sizeof(dest) == sizeof(addr.su.in.sin_addr));
-          memcpy(&dest, &addr.su.in.sin_addr, sizeof(dest));
-          params.preferred_address.ipv4_port = htons(addr.su.in.sin_port);
-        }
-        if (config.preferred_ipv6_addr.len) {
-          auto &dest = params.preferred_address.ipv6_addr;
-          const auto &addr = config.preferred_ipv6_addr;
-          assert(sizeof(dest) == sizeof(addr.su.in6.sin6_addr));
-          memcpy(&dest, &addr.su.in6.sin6_addr, sizeof(dest));
-          params.preferred_address.ipv6_port = htons(addr.su.in6.sin6_port);
-        }
+      pscid_.datalen = NGTCP2_SV_SCIDLEN;
+      std::generate(pscid_.data, pscid_.data + pscid_.datalen,
+                    [&dis]() { return dis(randgen); });
+      params.preferred_address.cid = pscid_;
+    }
 
-        auto &token = params.preferred_address.stateless_reset_token;
-        std::generate(std::begin(token), std::end(token),
-                      [&dis]() { return dis(randgen); });
+    auto ep = GetSocket();
+    auto path = ngtcp2_path{
+        {ep->addr_.len,
+         const_cast<uint8_t *>(
+             reinterpret_cast<const uint8_t *>(&ep->addr_.su)),
+         ep},
+        {salen, const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(sa))}};
+    auto rv = ngtcp2_conn_server_new(&this->conn_, dcid, &scid_, &path, version,
+                                     &callbacks, &settings, nullptr, this);
+    if (rv != 0) {
+      std::cerr << "ngtcp2_conn_server_new: " << ngtcp2_strerror(rv)
+                << std::endl;
+      return -1;
+    }
 
-        pscid_.datalen = NGTCP2_SV_SCIDLEN;
-        std::generate(pscid_.data, pscid_.data + pscid_.datalen,
-                      [&dis]() { return dis(randgen); });
-        params.preferred_address.cid = pscid_;
-      }
+    std::array<uint8_t, 512> buf;
 
-      auto path = ngtcp2_path{
-          {ep.addr.len,
-           const_cast<uint8_t *>(reinterpret_cast<const uint8_t
-      *>(&ep.addr.su)), const_cast<Endpoint *>(&ep)}, {salen, const_cast<uint8_t
-      *>(reinterpret_cast<const uint8_t *>(sa))}}; if (auto rv =
-      ngtcp2_conn_server_new(&conn_, dcid, &scid_, &path, version, &callbacks,
-      &settings, nullptr, this); rv != 0) { std::cerr <<
-      "ngtcp2_conn_server_new: " << ngtcp2_strerror(rv) << std::endl; return -1;
-      }
+    auto nwrite = ngtcp2_encode_transport_params(
+        buf.data(), buf.size(),
+        NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS, &params);
+    if (nwrite < 0) {
+      std::cerr << "ngtcp2_encode_transport_params: " << ngtcp2_strerror(nwrite)
+                << std::endl;
+      return -1;
+    }
 
-      std::array<uint8_t, 512> buf;
+    if (SSL_set_quic_transport_params(this->ssl_, buf.data(), nwrite) != 1) {
+      std::cerr << "SSL_set_quic_transport_params failed" << std::endl;
+      return -1;
+    }
 
-      auto nwrite = ngtcp2_encode_transport_params(
-          buf.data(), buf.size(),
-      NGTCP2_TRANSPORT_PARAMS_TYPE_ENCRYPTED_EXTENSIONS, &params); if (nwrite <
-      0) { std::cerr << "ngtcp2_encode_transport_params: " <<
-      ngtcp2_strerror(nwrite)
-                  << std::endl;
-        return -1;
-      }
-
-      if (SSL_set_quic_transport_params(ssl_, buf.data(), nwrite) != 1) {
-        std::cerr << "SSL_set_quic_transport_params failed" << std::endl;
-        return -1;
-      }
-
-      ev_io_set(&wev_, endpoint_->fd, EV_WRITE);
-      ev_timer_again(loop_, &timer_);*/
+    post_timer(static_cast<double>(this->manager_->timeout) / NGTCP2_MILLISECONDS);
 
     return 0;
+  }
+
+  void post_timer(int millis) {
+    Post(
+        [this]() {
+          auto s = this->manager_;
+
+          if (ngtcp2_conn_is_in_closing_period(this->conn())) {
+            if (IsDebug()) {
+              std::cerr << "Closing Period is over" << std::endl;
+            }
+
+            s->remove(this);
+            return;
+          }
+          if (draining()) {
+            if (IsDebug()) {
+              std::cerr << "Draining Period is over" << std::endl;
+            }
+
+            s->remove(this);
+            return;
+          }
+
+          if (IsDebug()) {
+            std::cerr << "Timeout" << std::endl;
+          }
+
+          this->start_draining_period();
+        }, millis);
+  }
+
+  void post_rttimer() {
+    Post([this]() {
+      int rv;
+
+      auto s = this->manager_;
+
+      if (IsDebug()) {
+        std::cerr << "Timer expired" << std::endl;
+      }
+
+      rv = this->handle_expiry();
+      if (rv != 0) {
+        goto fail;
+      }
+
+      rv = this->on_write();
+      if (rv != 0) {
+        goto fail;
+      }
+
+      return;
+
+    fail:
+      switch (rv) {
+        case NETWORK_ERR_CLOSE_WAIT:
+          //ev_timer_stop(loop, w);
+          return;
+        default:
+          s->remove(this);
+          return;
+      }
+    });
   }
 
   int recv_client_initial(const ngtcp2_cid *dcid) {
@@ -410,16 +477,13 @@ class QuicServerHandlerT
   void start_draining_period() {
     draining_ = true;
 
-    // ev_timer_stop(loop_, &rttimer_);
+    auto millis = ngtcp2_conn_get_pto(this->conn_) / NGTCP2_MILLISECONDS * 3;
+    post_timer(millis);
 
-    // timer_.repeat =
-    //     static_cast<ev_tstamp>(ngtcp2_conn_get_pto(conn_)) / NGTCP2_SECONDS * 3;
-    // ev_timer_again(loop_, &timer_);
-
-    // if (!config.quiet) {
-    //   std::cerr << "Draining period has started (" << timer_.repeat
-    //             << " seconds)" << std::endl;
-    // }
+    if (IsDebug()) {
+      std::cerr << "Draining period has started (" << millis / NGTCP2_SECONDS
+                << " seconds)" << std::endl;
+    }
   }
 
   int start_closing_period() {
@@ -427,21 +491,19 @@ class QuicServerHandlerT
       return 0;
     }
 
-    // ev_timer_stop(loop_, &rttimer_);
+    auto millis = ngtcp2_conn_get_pto(this->conn_) / NGTCP2_MILLISECONDS * 3;
+    post_timer(millis);
 
-    // timer_.repeat =
-    //     static_cast<ev_tstamp>(ngtcp2_conn_get_pto(conn_)) / NGTCP2_SECONDS * 3;
-    // ev_timer_again(loop_, &timer_);
+    if (IsDebug()) {
+      std::cerr << "Closing period has started (" << millis / NGTCP2_SECONDS
+                << " seconds)" << std::endl;
+    }
 
-    // if (IsDebug()) {
-    //   std::cerr << "Closing period has started (" << timer_.repeat
-    //             << " seconds)" << std::endl;
-    // }
+    this->sendbuf_.reset();
+    assert(this->sendbuf_.left() >= this->max_pktlen_);
 
-    sendbuf_.reset();
-    assert(sendbuf_.left() >= this->max_pktlen_);
-
-    conn_closebuf_ = std::unique_ptr<Buffer>(new Buffer(NGTCP2_MAX_PKTLEN_IPV4));
+    conn_closebuf_ =
+        std::unique_ptr<Buffer>(new Buffer(NGTCP2_MAX_PKTLEN_IPV4));
 
     PathStorage path;
     if (this->last_error_.type == QUICErrorType::Transport) {
@@ -477,7 +539,7 @@ class QuicServerHandlerT
       return -1;
     }
 
-    auto rv = send_conn_close(); 
+    auto rv = send_conn_close();
     if (rv != NETWORK_ERR_OK) {
       return rv;
     }
@@ -492,14 +554,15 @@ class QuicServerHandlerT
 
     assert(conn_closebuf_ && conn_closebuf_->size());
 
-    if (sendbuf_.size() == 0) {
+    if (this->sendbuf_.size() == 0) {
       std::copy_n(conn_closebuf_->rpos(), conn_closebuf_->size(),
-                  sendbuf_.wpos());
-      sendbuf_.push(conn_closebuf_->size());
+                  this->sendbuf_.wpos());
+      this->sendbuf_.push(conn_closebuf_->size());
     }
 
-    return this->manager_->send_packet(this->GetSocket(), this->remote_addr_, sendbuf_.rpos(),
-                                sendbuf_.size(), 0);
+    return this->manager_->send_packet(this->GetSocket(), this->remote_addr_,
+                                       this->sendbuf_.rpos(),
+                                       this->sendbuf_.size(), 0);
     return 0;
   }
 };
@@ -533,14 +596,6 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandler> {
 
   Address preferred_ipv4_addr;
   Address preferred_ipv6_addr;
-  // htdocs is a root directory to serve documents.
-  std::string docs;
-  // mime_types_file is a path to "MIME media types and the
-  // extensions" file.  Ubuntu mime-support package includes it in
-  // /etc/mime/types.
-  const char *mime_types_file;
-  // mime_types maps file extension to MIME media type.
-  std::map<std::string, std::string> mime_types;
   // server name
   std::string server;
   // port is the port number which server listens on for incoming
@@ -548,20 +603,9 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandler> {
   uint16_t port;
   // validate_addr is true if server requires address validation.
   bool validate_addr;
-  // early_response is true if server starts sending response when it
-  // receives HTTP header fields without waiting for request body.  If
-  // HTTP response data is written before receiving request body,
-  // STOP_SENDING is sent.
-  bool early_response;
   // verify_client is true if server verifies client with X.509
   // certificate based authentication.
   bool verify_client;
-  // no_http_dump is true if hexdump of HTTP response body should be
-  // disabled.
-  bool no_http_dump;
-  // max_dyn_length is the maximum length of dynamically generated
-  // response.
-  uint64_t max_dyn_length;
 
   static uint32_t generate_reserved_version(const sockaddr *sa, socklen_t salen,
                                             uint32_t version) {
@@ -985,7 +1029,7 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandler> {
         }
 
         auto h = std::unique_ptr<Handler>(
-            new Handler(pT, ep, Base::ssl_ctx_, &hd.dcid));
+            new Handler(pT, ep, this->ssl_ctx_, &hd.dcid));
         if (h->init(sa, &hd.scid, &hd.dcid, pocid, hd.token, hd.tokenlen,
                     hd.version) != 0) {
           return SOCKET_PACKET_FLAG_COMPLETE;

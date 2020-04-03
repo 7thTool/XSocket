@@ -712,6 +712,47 @@ public:
     }
 };
 
+/*!
+ *	@brief QuicServerManagerT 定义.
+ *
+ *	封装QuicServerManagerT，实现Quick服务
+ */
+template <class T, class TSocket, class THandler>
+class QuicHttp3ManagerT : public QuicServerManagerT<T, TSocket, THandler> {
+  typedef QuicHttp3ManagerT<T, TSocket, THandler> This;
+  typedef QuicServerManagerT<T, TSocket, THandler> Base;
+
+ public:
+  typedef THandler Handler;
+
+ protected:
+ public:
+  QuicHttp3ManagerT(const char *private_key_file, const char *cert_file)
+      : Base(private_key_file, cert_file) {}
+
+  ~QuicHttp3ManagerT() {}
+
+  // htdocs is a root directory to serve documents.
+  std::string docs;
+  // mime_types_file is a path to "MIME media types and the
+  // extensions" file.  Ubuntu mime-support package includes it in
+  // /etc/mime/types.
+  const char *mime_types_file;
+  // mime_types maps file extension to MIME media type.
+  std::map<std::string, std::string> mime_types;
+  // early_response is true if server starts sending response when it
+  // receives HTTP header fields without waiting for request body.  If
+  // HTTP response data is written before receiving request body,
+  // STOP_SENDING is sent.
+  bool early_response;
+  // no_http_dump is true if hexdump of HTTP response body should be
+  // disabled.
+  bool no_http_dump;
+  // max_dyn_length is the maximum length of dynamically generated
+  // response.
+  uint64_t max_dyn_length;
+};
+
 } // namespace XSocket
 
 #endif //_H_XHTTP3SERVER_IMPL_H_

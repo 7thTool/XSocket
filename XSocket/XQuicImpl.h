@@ -51,6 +51,8 @@
 // Quic 包的大小应该不大于MTU，以避免ip 分片。当前的Quic实现在ipv6环境每个包
 // 最大限制为1350的字节，ipv4环境下为1370，这两个限制都不包含ip 和 udp 头。
 
+//tx是发送(transport),rx是接收(receive)
+
 // inspired by <http://blog.korfuri.fr/post/go-defer-in-cpp/>, but our
 // template can take functions returning other than void.
 template <typename F, typename... T>
@@ -214,8 +216,12 @@ inline QUICError quic_err_tls(int alert) {
           static_cast<uint64_t>(NGTCP2_CRYPTO_ERROR | alert)};
 }
 
-inline ngtcp2_tstamp timestamp() { std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
- 
+inline ngtcp2_tstamp timestamp() {
+  std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
 template <class T, class TManager, class TSocket, class TBase>
 class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   typedef QuicHandlerBaseT<T, TManager, TSocket, TBase> This;
@@ -252,6 +258,8 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   };
   Crypto crypto_[3];
   ngtcp2_conn *conn_;
+  // common buffer used to store packet data before sending
+  Buffer sendbuf_;
   QUICError last_error_;
 
  public:
@@ -262,7 +270,10 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
         ssl_(nullptr),
         max_pktlen_(0),
         crypto_{},
-        conn_(nullptr) {}
+        conn_(nullptr),
+        sendbuf_{NGTCP2_MAX_PKTLEN_IPV4} {
+    
+  }
 
   ~QuicHandlerBaseT() {
     if (IsDebug()) {
@@ -280,11 +291,11 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
     }
   }
 
-  TManager *manager() { return manager_; }
+  TManager *get_manager() { return manager_; }
 
   const Address &remote_addr() const { return remote_addr_; }
 
-  ngtcp2_conn *conn() const { return conn_; }
+  ngtcp2_conn *get_conn() const { return conn_; }
 
   void write_handshake(ngtcp2_crypto_level level, const uint8_t *data,
                        size_t datalen) {
@@ -391,13 +402,13 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
       return NGTCP2_ERR_CALLBACK_FAILURE;
     }
 
-    server()->associate_cid(cid, this);
+    manager_->associate_cid(cid, this);
 
     return 0;
   }
   //,
   int remove_connection_id(ngtcp2_conn *conn, const ngtcp2_cid *cid) {
-    server()->dissociate_cid(cid);
+    manager_->dissociate_cid(cid);
     return 0;
   }
 
@@ -700,9 +711,16 @@ class QuicManagerBaseT {
   // Retry token.
   std::array<uint8_t, 32> static_secret;
 
+  inline void associate_cid(const ngtcp2_cid *cid, Handler *h) {
+    // ctos_.emplace(make_cid_key(cid), make_cid_key(h->scid()));
+  }
 
-  int send_packet(TSocket *ep, const Address &remote_addr,
-                          const uint8_t *data, size_t datalen, size_t gso_size = 0) {
+  inline void dissociate_cid(const ngtcp2_cid *cid) {
+    // tos_.erase(make_cid_key(cid));
+  }
+
+  int send_packet(TSocket *ep, const Address &remote_addr, const uint8_t *data,
+                  size_t datalen, size_t gso_size = 0) {
     if (packet_lost(tx_loss_prob)) {
       if (IsDebug()) {
         std::cerr << "** Simulated outgoing packet loss **" << std::endl;
@@ -710,11 +728,11 @@ class QuicManagerBaseT {
       return NETWORK_ERR_OK;
     }
 
-    ep->SendBuf((const char *)data, datalen, const_cast<sockaddr *>(&remote_addr.su.sa), remote_addr.len);
+    ep->SendBuf((const char *)data, datalen,
+                const_cast<sockaddr *>(&remote_addr.su.sa), remote_addr.len);
 
     return NETWORK_ERR_OK;
   }
-
 };
 
 /*!
@@ -727,10 +745,29 @@ class QuickSocketT : public TaskSocketT<TBase> {
   typedef QuickSocketT<TBase> This;
   typedef TaskSocketT<TBase> Base;
 
+ protected:
+  Address addr_;
+
  public:
   QuickSocketT() {}
 
   ~QuickSocketT() {}
+
+  SOCKET Open(int nSockAf, int nSockType, int nSockProtocol) {
+    SOCKET sock = Open(nSockAf, nSockType, nSockProtocol);
+    if (sock != INVALID_SOCKET) {
+      switch (nSockAf) {
+        case AF_INET6:
+          GetSockName(&addr_.su.in6, &addr_.len);
+          break;
+        case AF_INET:
+        default:
+          GetSockName(&addr_.su.in, &addr_.len);
+          break;
+      }
+    }
+    return sock;
+  }
 };
 
 }  // namespace XSocket
