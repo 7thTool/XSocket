@@ -21,39 +21,11 @@
 #ifndef _H_XHTTP3CLIENT_IMPL_H_
 #define _H_XHTTP3CLIENT_IMPL_H_
 
-#include "XSocketImpl.h"
-#include "XHttp2Impl.h"
-#include "XQuicImpl.h"
-#include <nghttp3/nghttp3.h>
+#include "XQuicClientImpl.h"
+#include "XHttp3Impl.h"
 
 namespace XSocket
 {
-
-namespace
-{
-
-template <typename T, size_t N1, size_t N2>
-constexpr nghttp3_nv make_nv(const T (&name)[N1], const T (&value)[N2])
-{
-    return nghttp3_nv{(uint8_t *)name, (uint8_t *)value, N1 - 1, N2 - 1,
-                      NGHTTP3_NV_FLAG_NONE};
-}
-
-template <typename T, size_t N, typename S>
-constexpr nghttp3_nv make_nv(const T (&name)[N], const S &value)
-{
-    return nghttp3_nv{(uint8_t *)name, (uint8_t *)value.data(), N - 1,
-                      value.size(), NGHTTP3_NV_FLAG_NONE};
-}
-
-template <typename S1, typename S2>
-constexpr nghttp3_nv make_nv(const S1 &name, const S2 &value)
-{
-    return nghttp3_nv{(uint8_t *)name.data(), (uint8_t *)value.data(),
-                      name.size(), value.size(), NGHTTP3_NV_FLAG_NONE};
-}
-
-} // namespace
 
 struct Request {
   std::string scheme;
@@ -563,4 +535,4 @@ int acked_stream_data_offset(int64_t stream_id, size_t datalen) {
 
 } // namespace XSocket
 
-#endif //_H_XHTTP3_IMPL_H_
+#endif //_H_XHTTP3CLIENT_IMPL_H_

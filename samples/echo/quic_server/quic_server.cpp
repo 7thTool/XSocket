@@ -3,7 +3,7 @@
 
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
-#include "../../../XSocket/XQuicImpl.h"
+#include "../../../XSocket/XQuicServerImpl.h"
 #ifdef USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #elif defined(USE_IOCP)
