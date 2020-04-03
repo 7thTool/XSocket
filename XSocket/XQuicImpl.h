@@ -220,10 +220,12 @@ protected:
 
 		if (conn_) {
 			ngtcp2_conn_del(conn_);
+            conn_ = nullptr;
 		}
 
 		if (ssl_) {
 			SSL_free(ssl_);
+            ssl_ = nullptr;
 		}
 	}
 
