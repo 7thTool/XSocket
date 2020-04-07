@@ -593,6 +593,11 @@ protected:
     std::map<int64_t, std::unique_ptr<Stream<T>>> streams_;
 
 public:
+    Http3Handler(TManager *manager, TSocket *ep, SSL_CTX *ssl_ctx, const ngtcp2_cid *rcid): Base(manager, ep, ssl_ctx, rcid)
+    {
+
+    }
+
     int recv_stream_data(int64_t stream_id, uint8_t fin,
                                  const uint8_t *data, size_t datalen)
     { 
@@ -727,8 +732,7 @@ class QuicHttp3ManagerT : public QuicServerManagerT<T, TSocket, THandler> {
 
  protected:
  public:
-  QuicHttp3ManagerT(const char *private_key_file, const char *cert_file)
-      : Base(private_key_file, cert_file) {}
+  QuicHttp3ManagerT(int max_handlerset_count): Base(max_handlerset_count) {}
 
   ~QuicHttp3ManagerT() {}
 

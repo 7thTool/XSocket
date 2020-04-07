@@ -96,7 +96,8 @@ SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 		}
 #endif//
 	}
-	return Attach(Sock, nRole);
+	Attach(Sock, nRole);
+	return Sock;
 }
 
 SOCKET SocketEx::Attach(SOCKET Sock, int Role)

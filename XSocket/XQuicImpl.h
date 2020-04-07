@@ -43,6 +43,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/ssl.h>
+#include <openssl/err.h>
 
 #include <ngtcp2/ngtcp2.h>
 #include <ngtcp2/ngtcp2_crypto.h>
@@ -158,6 +159,33 @@ namespace {
 auto randgen = std::mt19937(/*std::random_device()*/);
 }  // namespace
 
+inline int generate_secret(uint8_t *secret, size_t secretlen) {
+  std::array<uint8_t, 16> rand;
+  std::array<uint8_t, 32> md;
+
+  assert(md.size() == secretlen);
+
+  auto dis = std::uniform_int_distribution<uint8_t>(0, 255);
+  std::generate_n(rand.data(), rand.size(), [&dis]() { return dis(randgen); });
+
+  auto ctx = EVP_MD_CTX_new();
+  if (ctx == nullptr) {
+    return -1;
+  }
+
+  auto ctx_deleter = defer(EVP_MD_CTX_free, ctx);
+
+  unsigned int mdlen = md.size();
+  if (!EVP_DigestInit_ex(ctx, EVP_sha256(), nullptr) ||
+      !EVP_DigestUpdate(ctx, rand.data(), rand.size()) ||
+      !EVP_DigestFinal_ex(ctx, md.data(), &mdlen)) {
+    return -1;
+  }
+
+  std::copy_n(std::begin(md), secretlen, secret);
+  return 0;
+}
+
 enum network_error {
   NETWORK_ERR_OK = 0,
   NETWORK_ERR_FATAL = -10,
@@ -234,20 +262,24 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   SSL *ssl_;
   size_t max_pktlen_;
   struct Buffer {
-    Buffer(const uint8_t *data, size_t datalen);
-    explicit Buffer(size_t datalen);
+    Buffer(const uint8_t *data, size_t datalen): buf{data, data + datalen}, begin(buf.data()), tail(begin + datalen) {}
+    explicit Buffer(size_t datalen): buf(datalen), begin(buf.data()), tail(begin) {}
 
-    size_t size() const { return tail - buf.data(); }
-    size_t left() const { return buf.data() + buf.size() - tail; }
-    uint8_t *const wpos() { return tail; }
-    const uint8_t *rpos() const { return buf.data(); }
-    void push(size_t len) { tail += len; }
-    void reset() { tail = buf.data(); }
+  size_t size() const { return tail - begin; }
+  size_t left() const { return buf.data() + buf.size() - tail; }
+  uint8_t *const wpos() { return tail; }
+  const uint8_t *rpos() const { return begin; }
+  void push(size_t len) { tail += len; }
+  void reset() { tail = begin; }
 
-    std::vector<uint8_t> buf;
-    // tail points to the position of the buffer where write should
-    // occur.
-    uint8_t *tail;
+  std::vector<uint8_t> buf;
+  // begin points to the beginning of the buffer.  This might point to
+  // buf.data() if a buffer space is allocated by this object.  It is
+  // also allowed to point to the external shared buffer.
+  uint8_t *begin;
+  // tail points to the position of the buffer where write should
+  // occur.
+  uint8_t *tail;
   };
   struct Crypto {
     /* data is unacknowledged data. */
@@ -260,7 +292,7 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   ngtcp2_conn *conn_;
   // common buffer used to store packet data before sending
   Buffer sendbuf_;
-  QUICError last_error_;
+  QUICError last_error_ = {QUICErrorType::Transport, 0};
 
  public:
   QuicHandlerBaseT(TManager *manager, TSocket *sock_ptr, SSL_CTX *ssl_ctx)
@@ -271,7 +303,9 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
         max_pktlen_(0),
         crypto_{},
         conn_(nullptr),
-        sendbuf_{NGTCP2_MAX_PKTLEN_IPV4} {
+        sendbuf_{NGTCP2_MAX_PKTLEN_IPV4}
+        //last_error_(QUICErrorType::Transport, 0) 
+  {
     
   }
 
@@ -296,6 +330,10 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   const Address &remote_addr() const { return remote_addr_; }
 
   ngtcp2_conn *get_conn() const { return conn_; }
+
+void set_tls_alert(uint8_t alert) {
+  last_error_ = quic_err_tls(alert);
+}
 
   void write_handshake(ngtcp2_crypto_level level, const uint8_t *data,
                        size_t datalen) {
@@ -414,7 +452,7 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
 
   void signal_write() {}
 
-  int on_read(const sockaddr *sa, socklen_t salen, uint8_t *data,
+  int on_read(TSocket* ep, const sockaddr *sa, socklen_t salen, uint8_t *data,
               size_t datalen) {
     return 0;
   }
@@ -422,51 +460,17 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   int on_write() { return 0; }
 };
 
-template <class T, class TSocket, class THandler>
-class QuicManagerBaseT {
-  typedef THandler Handler;
+template <class T, class TSocket, class THandlerSet>
+class QuicManagerBaseT : public SocketManagerT<THandlerSet> {
+  typedef SocketManagerT<THandlerSet> Base;
+public:
+  typedef THandlerSet HandlerSet;
+	typedef typename Base::Socket Handler;
 
  protected:
   SSL_CTX *ssl_ctx_;
   // session_file is a path to a file to write, and read TLS session.
   // const char *session_file;
-
-  int alpn_select_proto_cb(SSL *ssl, const unsigned char **out,
-                           unsigned char *outlen, const unsigned char *in,
-                           unsigned int inlen, void *arg) {
-    auto h = static_cast<Handler *>(SSL_get_app_data(ssl));
-    const uint8_t *alpn;
-    size_t alpnlen;
-    auto version = ngtcp2_conn_get_negotiated_version(h->conn());
-
-    switch (version) {
-      case NGTCP2_PROTO_VER:
-        alpn = reinterpret_cast<const uint8_t *>(NGTCP2_ALPN_H3);
-        alpnlen = str_size(NGTCP2_ALPN_H3);
-        break;
-      default:
-        if (IsDebug()) {
-          std::cerr << "Unexpected quic protocol version: " << std::hex << "0x"
-                    << version << std::dec << std::endl;
-        }
-        return SSL_TLSEXT_ERR_ALERT_FATAL;
-    }
-
-    for (auto p = in, end = in + inlen; p + alpnlen <= end; p += *p + 1) {
-      if (std::equal(alpn, alpn + alpnlen, p)) {
-        *out = p + 1;
-        *outlen = *p;
-        return SSL_TLSEXT_ERR_OK;
-      }
-    }
-
-    if (IsDebug()) {
-      std::cerr << "Client did not present ALPN " << &NGTCP2_ALPN_H3[1]
-                << std::endl;
-    }
-
-    return SSL_TLSEXT_ERR_ALERT_FATAL;
-  }
 
   SSL_QUIC_METHOD quic_method = SSL_QUIC_METHOD{
       // set_encryption_secrets
@@ -497,170 +501,23 @@ class QuicManagerBaseT {
       },
   };
 
-  SSL_CTX *create_server_ctx(const char *private_key_file,
-                             const char *cert_file) {
-    constexpr static unsigned char sid_ctx[] = "ngtcp2 server";
-
-    auto ssl_ctx = SSL_CTX_new(TLS_server_method());
-
-    constexpr auto ssl_opts =
-        (SSL_OP_ALL & ~SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS) |
-        SSL_OP_SINGLE_ECDH_USE | SSL_OP_CIPHER_SERVER_PREFERENCE |
-        SSL_OP_NO_ANTI_REPLAY;
-
-    SSL_CTX_set_options(ssl_ctx, ssl_opts);
-
-    if (SSL_CTX_set_ciphersuites(ssl_ctx, this->ciphers) != 1) {
-      std::cerr << "SSL_CTX_set_ciphersuites: "
-                << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_set1_groups_list(ssl_ctx, this->groups) != 1) {
-      std::cerr << "SSL_CTX_set1_groups_list failed" << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    SSL_CTX_set_mode(ssl_ctx, SSL_MODE_RELEASE_BUFFERS);
-
-    SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_3_VERSION);
-    SSL_CTX_set_max_proto_version(ssl_ctx, TLS1_3_VERSION);
-
-    SSL_CTX_set_alpn_select_cb(ssl_ctx, alpn_select_proto_cb, nullptr);
-
-    SSL_CTX_set_default_verify_paths(ssl_ctx);
-
-    if (SSL_CTX_use_PrivateKey_file(ssl_ctx, private_key_file,
-                                    SSL_FILETYPE_PEM) != 1) {
-      std::cerr << "SSL_CTX_use_PrivateKey_file: "
-                << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_file) != 1) {
-      std::cerr << "SSL_CTX_use_certificate_file: "
-                << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_check_private_key(ssl_ctx) != 1) {
-      std::cerr << "SSL_CTX_check_private_key: "
-                << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    SSL_CTX_set_session_id_context(ssl_ctx, sid_ctx, sizeof(sid_ctx) - 1);
-
-    if (this->verify_client) {
-      SSL_CTX_set_verify(ssl_ctx,
-                         SSL_VERIFY_PEER | SSL_VERIFY_CLIENT_ONCE |
-                             SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
-                         // int verify_cb
-                         [](int preverify_ok, X509_STORE_CTX *ctx) {
-                           // We don't verify the client certificate.  Just
-                           // request it for the testing purpose.
-                           return 1;
-                         });
-    }
-
-    SSL_CTX_set_max_early_data(ssl_ctx, std::numeric_limits<uint32_t>::max());
-    SSL_CTX_set_quic_method(ssl_ctx, &quic_method);
-    SSL_CTX_set_client_hello_cb(
-        ssl_ctx,
-        // int client_hello_cb
-        [](SSL *ssl, int *al, void *arg) {
-          const uint8_t *tp;
-          size_t tplen;
-
-          if (!SSL_client_hello_get0_ext(
-                  ssl, NGTCP2_TLSEXT_QUIC_TRANSPORT_PARAMETERS, &tp, &tplen)) {
-            *al = SSL_AD_INTERNAL_ERROR;
-            return SSL_CLIENT_HELLO_ERROR;
-          }
-
-          return SSL_CLIENT_HELLO_SUCCESS;
-        },
-        nullptr);
-
-    return ssl_ctx;
-  }
-  SSL_CTX *create_client_ctx(const char *private_key_file,
-                             const char *cert_file) {
-    auto ssl_ctx = SSL_CTX_new(TLS_client_method());
-
-    SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_3_VERSION);
-    SSL_CTX_set_max_proto_version(ssl_ctx, TLS1_3_VERSION);
-
-    SSL_CTX_set_default_verify_paths(ssl_ctx);
-
-    if (SSL_CTX_set_ciphersuites(ssl_ctx, this->ciphers) != 1) {
-      std::cerr << "SSL_CTX_set_ciphersuites: "
-                << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_set1_groups_list(ssl_ctx, this->groups) != 1) {
-      std::cerr << "SSL_CTX_set1_groups_list failed" << std::endl;
-      exit(EXIT_FAILURE);
-    }
-
-    if (private_key_file && cert_file) {
-      if (SSL_CTX_use_PrivateKey_file(ssl_ctx, private_key_file,
-                                      SSL_FILETYPE_PEM) != 1) {
-        std::cerr << "SSL_CTX_use_PrivateKey_file: "
-                  << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-        exit(EXIT_FAILURE);
-      }
-
-      if (SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_file) != 1) {
-        std::cerr << "SSL_CTX_use_certificate_file: "
-                  << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
-        exit(EXIT_FAILURE);
-      }
-    }
-
-    SSL_CTX_set_quic_method(ssl_ctx, &quic_method);
-
-    /*if (this->session_file)
-{
-  SSL_CTX_set_session_cache_mode(
-      ssl_ctx, SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL_STORE);
-  SSL_CTX_sess_set_new_cb(ssl_ctx,
-                          //int new_session_cb
-                          [](SSL *ssl, SSL_SESSION *session) {
-                              if (SSL_SESSION_get_max_early_data(session) !=
-                                  std::numeric_limits<uint32_t>::max())
-                              {
-                                  std::cerr << "max_early_data_size is not
-0xffffffff" << std::endl;
-                              }
-                              auto f = BIO_new_file(config.session_file, "w");
-                              if (f == nullptr)
-                              {
-                                  std::cerr << "Could not write TLS session in "
-<< config.session_file
-                                            << std::endl;
-                                  return 0;
-                              }
-
-                              PEM_write_bio_SSL_SESSION(f, session);
-                              BIO_free(f);
-
-                              return 0;
-                          });
-}*/
-
-    return ssl_ctx;
-  }
-
  public:
-  QuicManagerBaseT(const char *private_key_file, const char *cert_file) {
-    T *pT = static_cast<T *>(this);
-    ssl_ctx_ = pT->IsServer() ? create_server_ctx(private_key_file, cert_file)
-                              : create_client_ctx(private_key_file, cert_file);
+  QuicManagerBaseT(int max_handlerset_count):Base(max_handlerset_count) {
+    
   }
 
   ~QuicManagerBaseT() {
+  }
+
+	bool Start()
+	{
+    return Base::Start();
+  }
+
+  void Stop()
+  {
+    Base::Stop();
+
     if (ssl_ctx_) {
       SSL_CTX_free(ssl_ctx_);
       ssl_ctx_ = nullptr;
@@ -674,11 +531,13 @@ class QuicManagerBaseT {
   // tx_loss_prob is probability of losing outgoing packet.
   double tx_loss_prob;
   // rx_loss_prob is probability of losing incoming packet.
-  double rx_loss_probrx_loss_prob;
+  double rx_loss_prob;
   // ciphers is the list of enabled ciphers.
   const char *ciphers;
   // groups is the list of supported groups.
   const char *groups;
+  // nstreams is the number of streams to open.
+  size_t nstreams;
   // version is a QUIC version to use.
   uint32_t version;
   // timeout is an idle timeout for QUIC connection.
@@ -710,6 +569,11 @@ class QuicManagerBaseT {
   // static_secret is used to derive keying materials for Stateless
   // Retry token.
   std::array<uint8_t, 32> static_secret;
+
+  inline bool packet_lost(double prob) {
+    auto p = std::uniform_real_distribution<>(0, 1)(randgen);
+    return p < prob;
+  }
 
   inline void associate_cid(const ngtcp2_cid *cid, Handler *h) {
     // ctos_.emplace(make_cid_key(cid), make_cid_key(h->scid()));
@@ -745,7 +609,7 @@ class QuickSocketT : public TaskSocketT<TBase> {
   typedef QuickSocketT<TBase> This;
   typedef TaskSocketT<TBase> Base;
 
- protected:
+ public:
   Address addr_;
 
  public:
@@ -754,15 +618,15 @@ class QuickSocketT : public TaskSocketT<TBase> {
   ~QuickSocketT() {}
 
   SOCKET Open(int nSockAf, int nSockType, int nSockProtocol) {
-    SOCKET sock = Open(nSockAf, nSockType, nSockProtocol);
+    SOCKET sock = Base::Open(nSockAf, nSockType, nSockProtocol);
     if (sock != INVALID_SOCKET) {
       switch (nSockAf) {
         case AF_INET6:
-          GetSockName(&addr_.su.in6, &addr_.len);
+          GetSockName((SOCKADDR*)&addr_.su.in6, &addr_.len);
           break;
         case AF_INET:
         default:
-          GetSockName(&addr_.su.in, &addr_.len);
+          GetSockName((SOCKADDR*)&addr_.su.in, &addr_.len);
           break;
       }
     }

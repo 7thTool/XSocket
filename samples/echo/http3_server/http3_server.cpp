@@ -13,42 +13,67 @@
 using namespace XSocket;
 #include <random>
 
-typedef TaskSocketServiceT<ThreadService> udp_socket_service;
-typedef TaskSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
-
 class manager;
 class server;
 
-class handler : public Http3Handler<handler,manager,server,CVSocketT<ThreadCVService,SocketEx>>
-{
-public:
-	//
-};
-
 typedef TaskSocketServiceT<ThreadCVService> handler_service;
+class handler : public Http3Handler<handler,manager,server,CVSocketT<handler_service,SocketEx>>
+{
+	typedef Http3Handler<handler,manager,server,CVSocketT<handler_service,SocketEx>> Base;
+public:
+	handler(manager *mgr, server *ep, SSL_CTX *ssl_ctx, const ngtcp2_cid *rcid):Base(mgr,ep,ssl_ctx,rcid)
+	{
+		
+	}
+};
 class handler_set : public SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE>
 {
 
 };
-typedef SocketManagerT<handler_set> handler_manager;
-
-class manager : public QuicServerManagerT<manager,server,handler>
+class manager : public QuicHttp3ManagerT<manager,server,handler_set>
 {
+	typedef QuicHttp3ManagerT<manager,server,handler_set> Base;
+public:
+	manager(int max_handler_count):Base((max_handler_count+handler_set::GetMaxSocketCount()-1)/handler_set::GetMaxSocketCount())
+	{
+		this->tx_loss_prob = 0.;
+		this->rx_loss_prob = 0.;
+		this->ciphers = "TLS_AES_128_GCM_SHA256:TLS_AES_256_GCM_SHA384:TLS_CHACHA20_"
+						"POLY1305_SHA256:TLS_AES_128_CCM_SHA256";
+		this->groups = "P-256:X25519:P-384:P-521";
+		this->timeout = 30 * NGTCP2_SECONDS;
+		{
+			auto path = realpath(".", nullptr);
+			assert(path);
+			this->docs = path;
+			free(path);
+		}
+		this->mime_types_file = "/etc/mime.types";
+		this->max_data = 1_m;
+		this->max_stream_data_bidi_local = 256_k;
+		this->max_stream_data_bidi_remote = 256_k;
+		this->max_stream_data_uni = 256_k;
+		this->max_streams_bidi = 100;
+		this->max_streams_uni = 3;
+		this->max_dyn_length = 20_m;
 
+		if (generate_secret(this->static_secret.data(),
+									this->static_secret.size()) != 0) {
+			std::cerr << "Unable to generate static secret" << std::endl;
+			exit(EXIT_FAILURE);
+		}
+	}
 };
 
+typedef TaskSocketServiceT<ThreadService> udp_socket_service;
+typedef QuickSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
 class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
 {
 	typedef SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>> Base;
-protected:
-	std::string addr_;
-	u_short port_;
 public:
 
-	bool Start(const char* address, u_short port)
+	bool Start()
 	{
-		addr_ = address;
-		port_ = port;
 		Base::Start();
 		return true;
 	}
@@ -61,20 +86,17 @@ protected:
 		if(!ret) {
 			return false;
 		}
-		if(port_ <= 0) {
-			return false;
-		}
-		Open(AF_INETType,SOCK_DGRAM);
+		Open(AF_INETType,SOCK_DGRAM,0);
 		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
 		SockAddrType stAddr = {0};
 	#ifdef USE_IPV6
 		stAddr.sin6_family = AF_INET6;
-		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
-		stAddr.sin6_port = htons((u_short)port_);
+		IpStr2IpAddr(DEFAULT_IP,AF_INET6,&stAddr.sin6_addr);
+		stAddr.sin6_port = htons((u_short)DEFAULT_PORT);
 	#else
 		stAddr.sin_family = AF_INET;
-		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = htons((u_short)port_);
+		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(DEFAULT_IP));
+		stAddr.sin_port = htons((u_short)DEFAULT_PORT);
 	#endif//
 		Bind((const SOCKADDR*)&stAddr, sizeof(stAddr));
 		Select(FD_READ);
@@ -116,11 +138,11 @@ int main()
 	//worker::Configure(&tls_ctx_config);
 #endif
 
-	handler_manager mgr(DEFAULT_MAX_FD_SETSIZE);
-	mgr.Start();
+	manager mgr(DEFAULT_MAX_FD_SETSIZE);
+	mgr.Start("./ssl/dev_nopass.key","./ssl/dev.crt");
 
 	server *s = new server();
-	s->Start(DEFAULT_IP, DEFAULT_PORT);
+	s->Start();
 
 	getchar();
 

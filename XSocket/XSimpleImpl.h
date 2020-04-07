@@ -358,6 +358,7 @@ class SimpleUdpSocketExT : public UdpSocketEx<TBase>
 {
 	typedef UdpSocketEx<TBase> Base;
 protected:
+	std::array<char,1024*2> _RecvBuf;
 	typedef struct tagSABuf
 	{
 		int nSendBufLen;
@@ -414,8 +415,8 @@ protected:
 	//
 	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SOCKADDR* & lpAddr, int & nAddrLen)
 	{
-		thread_local std::string _RecvBuf(1024*2); //Udp一个包大小一般不会很大，大了就会切片传输
-		lpBuf = (char*)_RecvBuf.c_str();
+		//thread_local auto std::array<char,1024*2> _RecvBuf; //Udp一个包大小一般不会很大，大了就会切片传输
+		lpBuf = _RecvBuf.data();
 		nBufLen = _RecvBuf.size() - sizeof(SOCKADDR_STORAGE);
 		lpAddr = (SOCKADDR*)(lpBuf + nBufLen);
 		nAddrLen = sizeof(SOCKADDR_STORAGE);

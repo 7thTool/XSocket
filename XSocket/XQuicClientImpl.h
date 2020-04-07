@@ -22,6 +22,7 @@
 #define _H_XQUICCLIENT_IMPL_H_
 
 #include "XQuicImpl.h"
+#include <fstream>
 
 namespace XSocket {
 
@@ -43,6 +44,11 @@ namespace XSocket {
   bool early_data_;
 
  public:
+
+    QuicClientHandlerT(TManager *manager, TSocket *sock_ptr, SSL_CTX *ssl_ctx):Base(manager,sock_ptr,ssl_ctx)
+    {
+
+    }
     
 int init(int fd, const Address &local_addr, const Address &remote_addr,
                  const char *addr, const char *port, uint32_t version) {
@@ -587,6 +593,32 @@ int select_preferred_address(Address &selected_addr,
 
   return 0;
 }
+
+int write_transport_params(const char *path,
+                           const ngtcp2_transport_params *params) {
+  // auto f = std::ofstream(path);
+  // if (!f) {
+  //   return -1;
+  // }
+
+  // f << "initial_max_streams_bidi=" << params->initial_max_streams_bidi << '\n'
+  //   << "initial_max_streams_uni=" << params->initial_max_streams_uni << '\n'
+  //   << "initial_max_stream_data_bidi_local="
+  //   << params->initial_max_stream_data_bidi_local << '\n'
+  //   << "initial_max_stream_data_bidi_remote="
+  //   << params->initial_max_stream_data_bidi_remote << '\n'
+  //   << "initial_max_stream_data_uni=" << params->initial_max_stream_data_uni
+  //   << '\n'
+  //   << "initial_max_data=" << params->initial_max_data << '\n';
+
+  // f.close();
+  // if (!f) {
+  //   return -1;
+  // }
+
+  return 0;
+}
+
  };
 
 /*!
@@ -594,14 +626,98 @@ int select_preferred_address(Address &selected_addr,
  *
  *	封装QuicClientManagerT，实现Quick服务
  */
-template<class T, class TSocket, class THandler>
-class QuicClientManagerT : public QuicManagerBaseT<T,THandler>
+template<class T, class TSocket, class THandlerSet>
+class QuicClientManagerT : public QuicManagerBaseT<T,TSocket,THandlerSet>
 {
-	typedef QuicClientManagerT<T,TSocket,THandler> This;
-	typedef QuicManagerBaseT<T,THandler> Base;
-public:
-	typedef THandler Handler;
+	typedef QuicClientManagerT<T,TSocket,THandlerSet> This;
+	typedef QuicManagerBaseT<T,TSocket,THandlerSet> Base;
+ public:
+  typedef typename Base::Handler Handler;
 protected:
+  SSL_CTX *create_client_ctx(const char *private_key_file,
+                             const char *cert_file) {
+    auto ssl_ctx = SSL_CTX_new(TLS_client_method());
+
+    SSL_CTX_set_min_proto_version(ssl_ctx, TLS1_3_VERSION);
+    SSL_CTX_set_max_proto_version(ssl_ctx, TLS1_3_VERSION);
+
+    SSL_CTX_set_default_verify_paths(ssl_ctx);
+
+    if (SSL_CTX_set_ciphersuites(ssl_ctx, this->ciphers) != 1) {
+      std::cerr << "SSL_CTX_set_ciphersuites: "
+                << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
+      exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_set1_groups_list(ssl_ctx, this->groups) != 1) {
+      std::cerr << "SSL_CTX_set1_groups_list failed" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+
+    if (private_key_file && cert_file) {
+      if (SSL_CTX_use_PrivateKey_file(ssl_ctx, private_key_file,
+                                      SSL_FILETYPE_PEM) != 1) {
+        std::cerr << "SSL_CTX_use_PrivateKey_file: "
+                  << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
+        exit(EXIT_FAILURE);
+      }
+
+      if (SSL_CTX_use_certificate_chain_file(ssl_ctx, cert_file) != 1) {
+        std::cerr << "SSL_CTX_use_certificate_file: "
+                  << ERR_error_string(ERR_get_error(), nullptr) << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    }
+
+    SSL_CTX_set_quic_method(ssl_ctx, &this->quic_method);
+
+    /*if (this->session_file)
+{
+  SSL_CTX_set_session_cache_mode(
+      ssl_ctx, SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL_STORE);
+  SSL_CTX_sess_set_new_cb(ssl_ctx,
+                          //int new_session_cb
+                          [](SSL *ssl, SSL_SESSION *session) {
+                              if (SSL_SESSION_get_max_early_data(session) !=
+                                  std::numeric_limits<uint32_t>::max())
+                              {
+                                  std::cerr << "max_early_data_size is not
+0xffffffff" << std::endl;
+                              }
+                              auto f = BIO_new_file(config.session_file, "w");
+                              if (f == nullptr)
+                              {
+                                  std::cerr << "Could not write TLS session in "
+<< config.session_file
+                                            << std::endl;
+                                  return 0;
+                              }
+
+                              PEM_write_bio_SSL_SESSION(f, session);
+                              BIO_free(f);
+
+                              return 0;
+                          });
+}*/
+
+    return ssl_ctx;
+  }
+
+public:
+    QuicClientManagerT(int max_handlerset_count): Base(max_handlerset_count) {
+    }
+
+	bool Start(const char *private_key_file, const char *cert_file)
+	{
+    if(!Base::Start()) {
+      return false;
+    }
+    this->ssl_ctx_ = create_client_ctx(private_key_file, cert_file);
+    return true;
+  }
+
+    inline bool IsServer() { return false; }
+
   // session_file is a path to a file to write, and read TLS session.
   const char *session_file;
   // tp_file is a path to a file to write, and read QUIC transport
@@ -609,8 +725,7 @@ protected:
   const char *tp_file;
   // disable_early_data disables early data.
   bool disable_early_data;
-public:
-    inline bool IsServer() { return false; }
+
 };
 
 }
