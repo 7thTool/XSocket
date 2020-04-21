@@ -16,15 +16,135 @@ using namespace XSocket;
 class manager;
 class server;
 
+typedef TaskSocketServiceT<ThreadService> udp_socket_service;
+typedef QuickSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
+class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
+, public std::enable_shared_from_this<server>
+{
+	typedef SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>> Base;
+public:
+
+	bool Start()
+	{
+		Base::Start();
+		return true;
+	}
+
+	inline void Post(std::function<void()> && task)
+	{
+		udp_socket_service::PostDelay(0, this, std::move(task));
+	}
+
+	template<class F, class... Args>
+	inline auto PostF(F&& f, Args&&... args)
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		return udp_socket_service::PostDelayF(0, this, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+protected:
+	//
+	virtual bool OnInit();
+	virtual void OnTerm();
+	virtual void OnRecvBuf(Buffer&& buf);
+};
+
 typedef TaskSocketServiceT<ThreadCVService> handler_service;
 class handler : public Http3Handler<handler,manager,server,CVSocketT<handler_service,SocketEx>>
 {
 	typedef Http3Handler<handler,manager,server,CVSocketT<handler_service,SocketEx>> Base;
 public:
-	handler(manager *mgr, server *ep, SSL_CTX *ssl_ctx, const ngtcp2_cid *rcid):Base(mgr,ep,ssl_ctx,rcid)
+	handler(manager *mgr, std::shared_ptr<server> ep, SSL_CTX *ssl_ctx, const ngtcp2_cid *rcid):Base(mgr,ep,ssl_ctx,rcid)
 	{
 		
 	}
+
+int write_streams() { 
+  auto ep = this->sock_ptr_;
+  const sockaddr *sa = &this->remote_addr_.su.sa;
+  socklen_t salen = this->remote_addr_.len;
+  std::array<nghttp3_vec, 16> vec;
+  PathStorage path;
+
+  for (;;) {
+    int64_t stream_id = -1;
+    int fin = 0;
+    nghttp3_ssize sveccnt = 0;
+
+    if (httpconn_ && ngtcp2_conn_get_max_data_left(conn_)) {
+      sveccnt = nghttp3_conn_writev_stream(httpconn_, &stream_id, &fin,
+                                           vec.data(), vec.size());
+      if (sveccnt < 0) {
+        std::cerr << "nghttp3_conn_writev_stream: " << nghttp3_strerror(sveccnt)
+                  << std::endl;
+        last_error_ = quic_err_app(sveccnt);
+        return handle_error();
+      }
+    }
+
+    ngtcp2_ssize ndatalen;
+    auto v = vec.data();
+    auto vcnt = static_cast<size_t>(sveccnt);
+
+    auto nwrite = ngtcp2_conn_writev_stream(
+        conn_, &path.path, sendbuf_.wpos(), max_pktlen_, &ndatalen,
+        NGTCP2_WRITE_STREAM_FLAG_MORE, stream_id, fin,
+        reinterpret_cast<const ngtcp2_vec *>(v), vcnt, timestamp());
+    if (nwrite < 0) {
+      switch (nwrite) {
+      case NGTCP2_ERR_STREAM_DATA_BLOCKED:
+      case NGTCP2_ERR_STREAM_SHUT_WR:
+	  {
+        assert(ndatalen == -1);
+        if (nwrite == NGTCP2_ERR_STREAM_DATA_BLOCKED && ngtcp2_conn_get_max_data_left(conn_) == 0) {
+          return 0;
+        }
+
+		auto rv = nghttp3_conn_block_stream(httpconn_, stream_id);  
+        if (rv != 0) {
+          std::cerr << "nghttp3_conn_block_stream: " << nghttp3_strerror(rv)
+                    << std::endl;
+          last_error_ = quic_err_app(rv);
+          return handle_error();
+        }
+        continue;
+	  }
+      case NGTCP2_ERR_WRITE_STREAM_MORE:
+	  {
+        assert(ndatalen > 0);
+		auto rv = nghttp3_conn_add_write_offset(httpconn_, stream_id, ndatalen);
+        if (rv != 0) {
+          std::cerr << "nghttp3_conn_add_write_offset: " << nghttp3_strerror(rv)
+                    << std::endl;
+          last_error_ = quic_err_app(rv);
+          return handle_error();
+        }
+        continue;
+	  }
+      }
+
+      assert(ndatalen == -1);
+
+      std::cerr << "ngtcp2_conn_writev_stream: " << ngtcp2_strerror(nwrite)
+                << std::endl;
+      last_error_ = quic_err_transport(nwrite);
+      return handle_error();
+    }
+
+    if (nwrite == 0) {
+      // We are congestion limited.
+      return 0;
+    }
+
+    sendbuf_.push(nwrite);
+
+    //update_endpoint(&path.path.local);
+    update_remote_addr(&path.path.remote);
+    reset_idle_timer();
+
+    send_packet();
+  }
+}
+
 };
 class handler_set : public SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE>
 {
@@ -65,22 +185,9 @@ public:
 	}
 };
 
-typedef TaskSocketServiceT<ThreadService> udp_socket_service;
-typedef QuickSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
-class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
-{
-	typedef SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>> Base;
-public:
+	manager mgr(DEFAULT_MAX_FD_SETSIZE);
 
-	bool Start()
-	{
-		Base::Start();
-		return true;
-	}
-
-protected:
-	//
-	virtual bool OnInit()
+	bool server::OnInit()
 	{
 		bool ret = Base::OnInit();
 		if(!ret) {
@@ -104,7 +211,7 @@ protected:
 		return true;
 	}
 
-	virtual void OnTerm()
+	void server::OnTerm()
 	{
 		//服务结束运行，释放资源
 		if(Base::IsSocket()) {
@@ -114,7 +221,11 @@ protected:
 			Base::Trigger(FD_CLOSE, 0);
 		}
 	}
-};
+
+	void server::OnRecvBuf(Buffer&& buf)
+	{
+		mgr.OnRecvBuf(shared_from_this(), std::move(buf));
+	}
 
 #ifdef WIN32
 int _tmain(int argc, _TCHAR* argv[])
@@ -122,6 +233,8 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
+	UdpBufferPool::Inst().Init(10240);
+
 	Socket::Init();
 
 #ifdef USE_OPENSSL
@@ -138,10 +251,9 @@ int main()
 	//worker::Configure(&tls_ctx_config);
 #endif
 
-	manager mgr(DEFAULT_MAX_FD_SETSIZE);
 	mgr.Start("./ssl/dev_nopass.key","./ssl/dev.crt");
 
-	server *s = new server();
+	auto s = std::make_shared<server>();
 	s->Start();
 
 	getchar();
@@ -149,7 +261,7 @@ int main()
 	mgr.Stop();
 
 	s->Stop();
-	delete s;
+	s.reset();
 
 	Socket::Term();
 

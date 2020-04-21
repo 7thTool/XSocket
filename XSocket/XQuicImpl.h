@@ -29,30 +29,101 @@
 #include <config.h>
 #endif  // HAVE_CONFIG_H
 
+#include <sys/time.h>
+
 #include <array>
 #include <deque>
 #include <map>
 #include <vector>
 //#include <string_view>
+#include <ngtcp2/ngtcp2.h>
+#include <ngtcp2/ngtcp2_crypto.h>
+#include <openssl/err.h>
+#include <openssl/evp.h>
+#include <openssl/ssl.h>
+
 #include <algorithm>
 #include <iostream>
 #include <limits>
 #include <random>
 #include <sstream>
 #include <strstream>
-
-#include <openssl/evp.h>
-#include <openssl/ssl.h>
-#include <openssl/err.h>
-
-#include <ngtcp2/ngtcp2.h>
-#include <ngtcp2/ngtcp2_crypto.h>
 // using namespace ngtcp2;
+/*      Client                                             Server
 
+       ClientHello
+      (0-RTT Application Data)  -------->
+                                                     ServerHello
+                                            {EncryptedExtensions}
+                                                       {Finished}
+                                <--------      [Application Data]
+      {Finished}                -------->
+
+      [Application Data]        <------->      [Application Data]
+
+       () Indicates messages protected by early data (0-RTT) keys
+       {} Indicates messages protected using handshake keys
+       [] Indicates messages protected using application data
+          (1-RTT) keys
+
+                    Figure 1: TLS Handshake with 0-RTT
+  Data is protected using a number of encryption levels:
+
+   o  Initial Keys
+
+   o  Early Data (0-RTT) Keys
+
+   o  Handshake Keys
+
+   o  Application Data (1-RTT) Keys
+*/
+/*Figure 3 summarizes the exchange between QUIC and TLS for both client
+   and server.  Each arrow is tagged with the encryption level used for
+   that transmission.
+
+   Client                                                    Server
+
+   Get Handshake
+                        Initial ------------->
+                                                 Handshake Received
+   Install tx 0-RTT Keys
+                        0-RTT --------------->
+                                                      Get Handshake
+                        <------------- Initial
+   Handshake Received
+   Install Handshake keys
+                                              Install rx 0-RTT keys
+                                             Install Handshake keys
+                                                      Get Handshake
+                        <----------- Handshake
+   Handshake Received
+                                              Install tx 1-RTT keys
+                        <--------------- 1-RTT
+   Get Handshake
+   Handshake Complete
+                        Handshake ----------->
+                                                 Handshake Received
+                                              Install rx 1-RTT keys
+                                                 Handshake Complete
+   Install 1-RTT keys
+                        1-RTT --------------->
+                                                      Get Handshake
+                        <--------------- 1-RTT
+   Handshake Received
+
+            Figure 3: Interaction Summary between QUIC and TLS
+
+   Figure 3 shows the multiple packets that form a single "flight" of
+   messages being processed individually, to show what incoming messages
+   trigger different actions.  New handshake messages are requested
+   after all incoming packets have been processed.  This process might
+   vary depending on how QUIC implementations and the packets they
+   receive are structured.
+*/
 // Quic 包的大小应该不大于MTU，以避免ip 分片。当前的Quic实现在ipv6环境每个包
 // 最大限制为1350的字节，ipv4环境下为1370，这两个限制都不包含ip 和 udp 头。
 
-//tx是发送(transport),rx是接收(receive)
+// tx是发送(transport),rx是接收(receive)
 
 // inspired by <http://blog.korfuri.fr/post/go-defer-in-cpp/>, but our
 // template can take functions returning other than void.
@@ -95,6 +166,55 @@ constexpr unsigned long long operator"" _m(unsigned long long m) {
 
 constexpr unsigned long long operator"" _g(unsigned long long g) {
   return g * 1024 * 1024 * 1024;
+}
+
+inline char lowcase(char c) {
+  constexpr static unsigned char tbl[] = {
+      0,   1,   2,   3,   4,   5,   6,   7,   8,   9,   10,  11,  12,  13,  14,
+      15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,
+      30,  31,  32,  33,  34,  35,  36,  37,  38,  39,  40,  41,  42,  43,  44,
+      45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,  59,
+      60,  61,  62,  63,  64,  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j',
+      'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
+      'z', 91,  92,  93,  94,  95,  96,  97,  98,  99,  100, 101, 102, 103, 104,
+      105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119,
+      120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134,
+      135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149,
+      150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164,
+      165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179,
+      180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194,
+      195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209,
+      210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224,
+      225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239,
+      240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254,
+      255,
+  };
+  return tbl[static_cast<unsigned char>(c)];
+}
+
+struct CaseCmp {
+  bool operator()(char lhs, char rhs) const {
+    return lowcase(lhs) == lowcase(rhs);
+  }
+};
+
+template <typename InputIterator1, typename InputIterator2>
+bool istarts_with(InputIterator1 first1, InputIterator1 last1,
+                  InputIterator2 first2, InputIterator2 last2) {
+  if (last1 - first1 < last2 - first2) {
+    return false;
+  }
+  return std::equal(first2, last2, first1, CaseCmp());
+}
+
+template <typename S, typename T>
+bool istarts_with(const S &a, const T &b) {
+  return istarts_with(a.begin(), a.end(), b.begin(), b.end());
+}
+
+template <typename T, typename CharT, size_t N>
+bool istarts_with_l(const T &a, const CharT (&b)[N]) {
+  return istarts_with(a.begin(), a.end(), b, b + N - 1);
 }
 
 inline bool numeric_host(const char *hostname, int family) {
@@ -245,41 +365,59 @@ inline QUICError quic_err_tls(int alert) {
 }
 
 inline ngtcp2_tstamp timestamp() {
-  std::chrono::duration_cast<std::chrono::nanoseconds>(
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
       std::chrono::steady_clock::now().time_since_epoch())
       .count();
+// #ifdef WIN32
+// 	return GetTickCount();
+// #else
+// 	struct timespec ts;
+// 	clock_gettime(CLOCK_MONOTONIC, &ts);
+// 	return (ts.tv_sec * NGTCP2_SECONDS + ts.tv_nsec);
+// #endif//
+
+  // struct timeval tv;
+  // gettimeofday (&tv, 0);
+  // return tv.tv_sec * NGTCP2_SECONDS + tv.tv_usec * NGTCP2_MICROSECONDS;
 }
 
 template <class T, class TManager, class TSocket, class TBase>
-class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
+class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>>,
+                         public std::enable_shared_from_this<T> {
   typedef QuicHandlerBaseT<T, TManager, TSocket, TBase> This;
   typedef ConnectionT<TSocket, TaskSocketT<TBase>> Base;
 
  protected:
   TManager *manager_;
+  std::shared_ptr<TSocket> sock_ptr_;
   Address remote_addr_;
+  std::uniform_int_distribution<> dis_;
+  ngtcp2_cid scid_;
+  ngtcp2_cid rcid_;
   SSL_CTX *ssl_ctx_;
   SSL *ssl_;
   size_t max_pktlen_;
   struct Buffer {
-    Buffer(const uint8_t *data, size_t datalen): buf{data, data + datalen}, begin(buf.data()), tail(begin + datalen) {}
-    explicit Buffer(size_t datalen): buf(datalen), begin(buf.data()), tail(begin) {}
+    Buffer(const uint8_t *data, size_t datalen)
+        : buf{data, data + datalen}, begin(buf.data()), tail(begin + datalen) {}
+    explicit Buffer(size_t datalen)
+        : buf(datalen), begin(buf.data()), tail(begin) {}
 
-  size_t size() const { return tail - begin; }
-  size_t left() const { return buf.data() + buf.size() - tail; }
-  uint8_t *const wpos() { return tail; }
-  const uint8_t *rpos() const { return begin; }
-  void push(size_t len) { tail += len; }
-  void reset() { tail = begin; }
+    size_t size() const { return tail - begin; }
+    size_t left() const { return buf.data() + buf.size() - tail; }
+    uint8_t *const wpos() { return tail; }
+    const uint8_t *rpos() const { return begin; }
+    void push(size_t len) { tail += len; }
+    void reset() { tail = begin; }
 
-  std::vector<uint8_t> buf;
-  // begin points to the beginning of the buffer.  This might point to
-  // buf.data() if a buffer space is allocated by this object.  It is
-  // also allowed to point to the external shared buffer.
-  uint8_t *begin;
-  // tail points to the position of the buffer where write should
-  // occur.
-  uint8_t *tail;
+    std::vector<uint8_t> buf;
+    // begin points to the beginning of the buffer.  This might point to
+    // buf.data() if a buffer space is allocated by this object.  It is
+    // also allowed to point to the external shared buffer.
+    uint8_t *begin;
+    // tail points to the position of the buffer where write should
+    // occur.
+    uint8_t *tail;
   };
   struct Crypto {
     /* data is unacknowledged data. */
@@ -290,23 +428,33 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
   };
   Crypto crypto_[3];
   ngtcp2_conn *conn_;
+  // nkey_update_ is the number of key update occurred.
+  size_t nkey_update_;
   // common buffer used to store packet data before sending
   Buffer sendbuf_;
   QUICError last_error_ = {QUICErrorType::Transport, 0};
+  Timer timer_;
+  Timer rttimer_;
 
  public:
-  QuicHandlerBaseT(TManager *manager, TSocket *sock_ptr, SSL_CTX *ssl_ctx)
-      : Base(sock_ptr),
+  QuicHandlerBaseT(TManager *manager, std::shared_ptr<TSocket> sock_ptr,
+                   SSL_CTX *ssl_ctx)
+      : Base(sock_ptr.get()),
+        sock_ptr_(sock_ptr),
         manager_(manager),
+        dis_(0),
+        scid_{},
+        rcid_{},
         ssl_ctx_(ssl_ctx),
         ssl_(nullptr),
         max_pktlen_(0),
         crypto_{},
         conn_(nullptr),
+        nkey_update_(0),
         sendbuf_{NGTCP2_MAX_PKTLEN_IPV4}
-        //last_error_(QUICErrorType::Transport, 0) 
+  // last_error_(QUICErrorType::Transport, 0)
   {
-    
+    Select(FD_IDLE);
   }
 
   ~QuicHandlerBaseT() {
@@ -329,11 +477,50 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>> {
 
   const Address &remote_addr() const { return remote_addr_; }
 
+  const ngtcp2_cid *scid() const { return &scid_; }
+
+  const ngtcp2_cid *rcid() const { return &rcid_; }
+
   ngtcp2_conn *get_conn() const { return conn_; }
 
-void set_tls_alert(uint8_t alert) {
-  last_error_ = quic_err_tls(alert);
-}
+  void update_remote_addr(const ngtcp2_addr *addr) {
+    remote_addr_.len = addr->addrlen;
+    memcpy(&remote_addr_.su, addr->addr, addr->addrlen);
+  }
+
+  void set_tls_alert(uint8_t alert) { last_error_ = quic_err_tls(alert); }
+
+  int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
+                 uint8_t *rx_iv, uint8_t *tx_key, uint8_t *tx_iv,
+                 const uint8_t *current_rx_secret,
+                 const uint8_t *current_tx_secret, size_t secretlen) {
+    if (IsDebug()) {
+      std::cerr << "Updating traffic key" << std::endl;
+    }
+
+    auto crypto_ctx = ngtcp2_conn_get_crypto_ctx(conn_);
+    auto aead = &crypto_ctx->aead;
+    auto keylen = ngtcp2_crypto_aead_keylen(aead);
+    auto ivlen = ngtcp2_crypto_packet_protection_ivlen(aead);
+
+    ++this->nkey_update_;
+
+    if (ngtcp2_crypto_update_key(conn_, rx_secret, tx_secret, rx_key, rx_iv,
+                                 tx_key, tx_iv, current_rx_secret,
+                                 current_tx_secret, secretlen) != 0) {
+      return -1;
+    }
+
+    // if (!config.quiet && config.show_secret) {
+    //   std::cerr << "application_traffic rx secret " << nkey_update_ <<
+    //   std::endl; debug::print_secrets(rx_secret, secretlen, rx_key, keylen,
+    //   rx_iv, ivlen); std::cerr << "application_traffic tx secret " <<
+    //   nkey_update_ << std::endl; debug::print_secrets(tx_secret, secretlen,
+    //   tx_key, keylen, tx_iv, ivlen);
+    // }
+
+    return 0;
+  }
 
   void write_handshake(ngtcp2_crypto_level level, const uint8_t *data,
                        size_t datalen) {
@@ -450,22 +637,116 @@ void set_tls_alert(uint8_t alert) {
     return 0;
   }
 
-  void signal_write() {}
+  void OnIdle()
+  {
+    T* pT = static_cast<T*>(this);
+    if(timer_.IsActive()) {
+      pT->OnTimer();
+    }
+    if(rttimer_.IsActive()) {
+      pT->OnRTTimer();
+    } 
+    if(IsSocket()) {
+      Select(FD_IDLE);
+    }
+  }
 
-  int on_read(TSocket* ep, const sockaddr *sa, socklen_t salen, uint8_t *data,
-              size_t datalen) {
+  void OnTimer()
+  {
+
+  }
+
+  void OnRTTimer()
+  {
+    
+  }
+
+  void SetTimer(size_t millis) {
+    timer_.SetTimer(millis);
+  }
+
+  void KillTimer()
+  {
+    timer_.KillTimer();
+  }
+
+  void SetRTTimer() {
+    auto expiry = ngtcp2_conn_get_expiry(conn_);
+    auto now = timestamp();
+    if(expiry < now) {
+      rttimer_.SetTimer(0);
+    } else {
+      rttimer_.SetTimer((expiry - now) / NGTCP2_MILLISECONDS);
+    }
+  }
+
+  void KillRTTimer()
+  {
+    rttimer_.KillTimer();
+  }
+
+  void reset_idle_timer() {
+    auto now = timestamp();
+    auto idle_expiry = ngtcp2_conn_get_idle_expiry(conn_);
+    ngtcp2_tstamp millis = 0;
+    if(idle_expiry > now) {
+      millis = (idle_expiry - now) / NGTCP2_MILLISECONDS;
+    }
+    SetTimer(millis);
+    if (IsDebug()) {
+        std::cerr << "Set idle timer=" << std::fixed << millis << "ms"
+                  << std::defaultfloat << std::endl;
+    }   
+  }
+
+  int on_read(std::shared_ptr<TSocket> ep, const sockaddr *sa, socklen_t salen,
+              uint8_t *data, size_t datalen) {
+    sock_ptr_ = ep;
+    this->remote_addr_.len = salen;
+    memcpy(&this->remote_addr_.su.sa, sa, salen);
+    auto path = ngtcp2_path{
+        {ep->local_addr_.len, reinterpret_cast<uint8_t *>(&ep->local_addr_.su.sa)},
+        {salen, const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(sa))}};
+    auto rv = ngtcp2_conn_read_pkt(conn_, &path, data, datalen, timestamp());
+    if (rv != 0) {
+      std::cerr << "ngtcp2_conn_read_pkt: " << ngtcp2_strerror(rv) << std::endl;
+      switch (rv) {
+        case NGTCP2_ERR_REQUIRED_TRANSPORT_PARAM:
+        case NGTCP2_ERR_MALFORMED_TRANSPORT_PARAM:
+        case NGTCP2_ERR_TRANSPORT_PARAM:
+          // If rv indicates transport_parameters related error, we should
+          // send TRANSPORT_PARAMETER_ERROR even if last_error_.code is
+          // already set.  This is because OpenSSL might set Alert.
+          last_error_ = quic_err_transport(rv);
+          break;
+        default:
+          if (!last_error_.code) {
+            last_error_ = quic_err_transport(rv);
+          }
+      }
+      return -1;
+    }
     return 0;
   }
 
   int on_write() { return 0; }
+
+  int send_packet() {
+    this->manager_->send_packet(this->sock_ptr_, this->sendbuf_.rpos(), this->sendbuf_.size(),
+                                 &this->remote_addr_.su.sa, this->remote_addr_.len);
+    this->sendbuf_.reset();
+    return NETWORK_ERR_OK;
+  }
 };
 
 template <class T, class TSocket, class THandlerSet>
 class QuicManagerBaseT : public SocketManagerT<THandlerSet> {
   typedef SocketManagerT<THandlerSet> Base;
-public:
+
+ public:
+  using Buffer = typename TSocket::Buffer;
   typedef THandlerSet HandlerSet;
-	typedef typename Base::Socket Handler;
+  typedef typename Base::Socket Handler;
 
  protected:
   SSL_CTX *ssl_ctx_;
@@ -500,22 +781,20 @@ public:
         return 1;
       },
   };
+  //
+  std::map<std::string, std::shared_ptr<Handler>> handlers_;
+  // ctos_ is a mapping between client's initial destination
+  // connection ID, and server source connection ID.
+  std::map<std::string, std::string> ctos_;
 
  public:
-  QuicManagerBaseT(int max_handlerset_count):Base(max_handlerset_count) {
-    
-  }
+  QuicManagerBaseT(int max_handlerset_count) : Base(max_handlerset_count) {}
 
-  ~QuicManagerBaseT() {
-  }
+  ~QuicManagerBaseT() {}
 
-	bool Start()
-	{
-    return Base::Start();
-  }
+  bool Start() { return Base::Start(); }
 
-  void Stop()
-  {
+  void Stop() {
     Base::Stop();
 
     if (ssl_ctx_) {
@@ -575,16 +854,41 @@ public:
     return p < prob;
   }
 
+  static inline std::string make_cid_key(const ngtcp2_cid *cid) {
+    return std::string(cid->data, cid->data + cid->datalen);
+  }
+
+  static inline std::string make_cid_key(const uint8_t *cid, size_t cidlen) {
+    return std::string(cid, cid + cidlen);
+  }
+
   inline void associate_cid(const ngtcp2_cid *cid, Handler *h) {
-    // ctos_.emplace(make_cid_key(cid), make_cid_key(h->scid()));
+    handlers_.emplace(make_cid_key(cid), h->shared_from_this());
+    ctos_.emplace(make_cid_key(cid), make_cid_key(h->scid()));
   }
 
   inline void dissociate_cid(const ngtcp2_cid *cid) {
-    // tos_.erase(make_cid_key(cid));
+    handlers_.erase(make_cid_key(cid));
+    ctos_.erase(make_cid_key(cid));
   }
 
-  int send_packet(TSocket *ep, const Address &remote_addr, const uint8_t *data,
-                  size_t datalen, size_t gso_size = 0) {
+  void remove(const Handler *h) {
+    ctos_.erase(make_cid_key(h->rcid()));
+
+    auto conn = h->get_conn();
+    std::vector<ngtcp2_cid> cids(ngtcp2_conn_get_num_scid(conn));
+    ngtcp2_conn_get_scid(conn, cids.data());
+
+    for (auto &cid : cids) {
+      ctos_.erase(make_cid_key(&cid));
+    }
+
+    this->handlers_.erase(make_cid_key(h->scid()));
+  }
+
+  int send_packet(std::shared_ptr<TSocket> ep, const uint8_t *data,
+                  size_t datalen, const sockaddr *sa, socklen_t salen,
+                  size_t gso_size = 0) {
     if (packet_lost(tx_loss_prob)) {
       if (IsDebug()) {
         std::cerr << "** Simulated outgoing packet loss **" << std::endl;
@@ -592,8 +896,9 @@ public:
       return NETWORK_ERR_OK;
     }
 
-    ep->SendBuf((const char *)data, datalen,
-                const_cast<sockaddr *>(&remote_addr.su.sa), remote_addr.len);
+    typename TSocket::Buffer buf(data, datalen, sa, salen);
+    ep->PostF(
+        [ep, buf = std::move(buf)]() mutable { ep->SendBuf(std::move(buf)); });
 
     return NETWORK_ERR_OK;
   }
@@ -610,7 +915,8 @@ class QuickSocketT : public TaskSocketT<TBase> {
   typedef TaskSocketT<TBase> Base;
 
  public:
-  Address addr_;
+  // using typename TBase::Buffer;
+  Address local_addr_;
 
  public:
   QuickSocketT() {}
@@ -620,15 +926,8 @@ class QuickSocketT : public TaskSocketT<TBase> {
   SOCKET Open(int nSockAf, int nSockType, int nSockProtocol) {
     SOCKET sock = Base::Open(nSockAf, nSockType, nSockProtocol);
     if (sock != INVALID_SOCKET) {
-      switch (nSockAf) {
-        case AF_INET6:
-          GetSockName((SOCKADDR*)&addr_.su.in6, &addr_.len);
-          break;
-        case AF_INET:
-        default:
-          GetSockName((SOCKADDR*)&addr_.su.in, &addr_.len);
-          break;
-      }
+      local_addr_.len = sizeof(local_addr_.su.storage);
+      GetSockName(&local_addr_.su.sa, &local_addr_.len);
     }
     return sock;
   }

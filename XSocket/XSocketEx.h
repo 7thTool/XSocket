@@ -417,6 +417,29 @@ protected:
 	}
 };
 
+class Timer {
+ protected:
+  std::chrono::steady_clock::time_point tp_next_;  //定时时间,0表示没有定时任务
+
+ public:
+  inline void SetTimer(size_t millis) {
+    tp_next_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
+  }
+  inline void KillTimer() {
+    tp_next_ = std::chrono::steady_clock::time_point();
+  }
+  inline bool IsActive(bool reset = true) {
+	  if (tp_next_.time_since_epoch().count()) {
+      if (tp_next_ <= std::chrono::steady_clock::now()) {
+		  if(reset)
+        	tp_next_ = std::chrono::steady_clock::time_point();
+		return true;
+      }
+    }
+	return false;
+  }
+};
+
 /*!
  *	@brief Service 定义.
  *
@@ -618,6 +641,7 @@ class CVSocketT : public TBase
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
+	typedef TSocketSet Service;
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 };
@@ -1389,14 +1413,13 @@ protected:
 	}
 
 	inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
-		if(!sock_ptr) {
-			return false;
-		}
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
-		{
-			if(sock_ptrs_[i].get()==sock_ptr) {
-				return sock_ptrs_[i];
+		if(sock_ptr) {
+			int i;
+			for (i=0;i<uFD_SETSize;i++)
+			{
+				if(sock_ptrs_[i].get()==sock_ptr) {
+					return sock_ptrs_[i];
+				}
 			}
 		}
 		return nullptr;

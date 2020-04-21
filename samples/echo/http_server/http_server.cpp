@@ -108,15 +108,15 @@ public:
 	//
 	inline void PostBuf(const std::string& Buf, int nFlags = 0)
 	{
-		this_service()->Post(std::function<void()>([this,Buf,nFlags](){ SendBuf(Buf, nFlags); }));
-		this_service()->Post(std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags), this, 3000);
+		this_service()->Post(this, std::function<void()>([this,Buf,nFlags](){ SendBuf(Buf, nFlags); }));
+		this_service()->PostDelay(3000, this, std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 		//std::future<int> fu;
 		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 	}
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
-		this_service()->Post(std::function<void()>([this,buf,nFlags](){ SendBuf(buf->c_str(), buf->size(), nFlags); }));
+		this_service()->Post(this, std::function<void()>([this,buf,nFlags](){ SendBuf(buf->c_str(), buf->size(), nFlags); }));
 		/*以下是bind，package、future使用方法
 		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags);
 		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags));

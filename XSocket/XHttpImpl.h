@@ -1250,7 +1250,7 @@ namespace XSocket {
 
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			this_service()->Post(std::bind(&This::SendHttpRequest, this, req), this);
+			this_service()->Post(this, std::bind(&This::SendHttpRequest, this, req));
 		}
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1569,12 +1569,12 @@ namespace XSocket {
 
 		inline void PostHttpResponse(std::shared_ptr<HttpResponse> rsp)
 		{
-			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, this, rsp), this);
+			this_service()->Post(this, std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, this, rsp));
 		}
 
 		inline void PostHttpChunk(std::shared_ptr<std::string> rsp)
 		{
-			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, this, rsp), this);
+			this_service()->Post(this, std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, this, rsp));
 		}
 
 		inline void SendHttpResponse(std::shared_ptr<HttpResponse> rsp)

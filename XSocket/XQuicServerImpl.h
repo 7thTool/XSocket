@@ -33,33 +33,24 @@ class QuicServerHandlerT
   using typename Base::Buffer;
 
  protected:
-  ngtcp2_cid scid_;
   ngtcp2_cid pscid_;
-  ngtcp2_cid rcid_;
   // conn_closebuf_ contains a packet which contains CONNECTION_CLOSE.
   // This packet is repeatedly sent as a response to the incoming
   // packet in draining period.
   std::unique_ptr<Buffer> conn_closebuf_;
-  // nkey_update_ is the number of key update occurred.
-  size_t nkey_update_;
   // draining_ becomes true when draining period starts.
   bool draining_;
 
  public:
-  QuicServerHandlerT(TManager *manager, TSocket *ep, SSL_CTX *ssl_ctx,
+  QuicServerHandlerT(TManager *manager, std::shared_ptr<TSocket> ep, SSL_CTX *ssl_ctx,
                      const ngtcp2_cid *rcid)
       : Base(manager, ep, ssl_ctx),
-        scid_{},
         pscid_{},
-        rcid_(*rcid),
-        nkey_update_(0),
-        draining_(false) {}
-
-  const ngtcp2_cid *scid() const { return &scid_; }
+        draining_(false) {
+          this->rcid_ = *rcid;
+        }
 
   const ngtcp2_cid *pscid() const { return &pscid_; }
-
-  const ngtcp2_cid *rcid() const { return &rcid_; }
 
   bool draining() const { return draining_; }
 
@@ -271,8 +262,8 @@ class QuicServerHandlerT
 
     auto dis = std::uniform_int_distribution<>(0);
 
-    scid_.datalen = NGTCP2_SV_SCIDLEN;
-    std::generate(scid_.data, scid_.data + scid_.datalen,
+    this->scid_.datalen = NGTCP2_SV_SCIDLEN;
+    std::generate(this->scid_.data, this->scid_.data + this->scid_.datalen,
                   [&dis]() { return dis(randgen) % 255; });
 
     ngtcp2_settings settings = {0};
@@ -344,14 +335,12 @@ class QuicServerHandlerT
       params.preferred_address.cid = pscid_;
     }
 
-    auto ep = GetSocket();
     auto path = ngtcp2_path{
-        {ep->addr_.len,
-         const_cast<uint8_t *>(
-             reinterpret_cast<const uint8_t *>(&ep->addr_.su)),
-         ep},
+        {this->sock_ptr_->local_addr_.len,
+         const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(&this->sock_ptr_->local_addr_.su)),
+         this->sock_ptr_.get()},
         {salen, const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(sa))}};
-    auto rv = ngtcp2_conn_server_new(&this->conn_, dcid, &scid_, &path, version,
+    auto rv = ngtcp2_conn_server_new(&this->conn_, dcid, &this->scid_, &path, version,
                                      &callbacks, &settings, nullptr, this);
     if (rv != 0) {
       std::cerr << "ngtcp2_conn_server_new: " << ngtcp2_strerror(rv)
@@ -375,14 +364,12 @@ class QuicServerHandlerT
       return -1;
     }
 
-    post_timer(static_cast<double>(this->manager_->timeout) / NGTCP2_MILLISECONDS);
+    SetTimer(this->manager_->timeout / NGTCP2_MILLISECONDS);
 
     return 0;
   }
 
-  void post_timer(int millis) {
-    Post(
-        [this]() {
+  void OnTimer() {
           auto s = this->manager_;
 
           if (ngtcp2_conn_is_in_closing_period(this->get_conn())) {
@@ -407,11 +394,9 @@ class QuicServerHandlerT
           }
 
           this->start_draining_period();
-        }, millis);
-  }
+        }
 
-  void post_rttimer() {
-    Post([this]() {
+  void OnRTTimer() {
       int rv;
 
       auto s = this->manager_;
@@ -441,8 +426,32 @@ class QuicServerHandlerT
           s->remove(this);
           return;
       }
-    });
+    }
+
+int handle_expiry() {
+  auto now = timestamp();
+  if (ngtcp2_conn_loss_detection_expiry(this->conn_) <= now) {
+    if (IsDebug()) {
+      std::cerr << "Loss detection timer expired" << std::endl;
+    }
   }
+
+  if (ngtcp2_conn_ack_delay_expiry(this->conn_) <= now) {
+    if (IsDebug()) {
+      std::cerr << "Delayed ACK timer expired" << std::endl;
+    }
+  }
+
+  auto rv = ngtcp2_conn_handle_expiry(this->conn_, now);
+  if (rv != 0) {
+    std::cerr << "ngtcp2_conn_handle_expiry: " << ngtcp2_strerror(rv)
+              << std::endl;
+    this->last_error_ = quic_err_transport(rv);
+    return handle_error();
+  }
+
+  return 0;
+}
 
   int on_key(ngtcp2_crypto_level level, const uint8_t *rx_secret,
                       const uint8_t *tx_secret, size_t secretlen) {
@@ -512,7 +521,7 @@ int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
   auto keylen = ngtcp2_crypto_aead_keylen(aead);
   auto ivlen = ngtcp2_crypto_packet_protection_ivlen(aead);
 
-  ++nkey_update_;
+  ++this->nkey_update_;
 
   if (ngtcp2_crypto_update_key(this->conn_, rx_secret, tx_secret, rx_key, rx_iv,
                                tx_key, tx_iv, current_rx_secret,
@@ -567,7 +576,7 @@ int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
     draining_ = true;
 
     auto millis = ngtcp2_conn_get_pto(this->conn_) / NGTCP2_MILLISECONDS * 3;
-    post_timer(millis);
+    SetTimer(millis);
 
     if (IsDebug()) {
       std::cerr << "Draining period has started (" << millis / NGTCP2_SECONDS
@@ -581,7 +590,7 @@ int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
     }
 
     auto millis = ngtcp2_conn_get_pto(this->conn_) / NGTCP2_MILLISECONDS * 3;
-    post_timer(millis);
+    SetTimer(millis);
 
     if (IsDebug()) {
       std::cerr << "Closing period has started (" << millis / NGTCP2_SECONDS
@@ -617,7 +626,7 @@ int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
       conn_closebuf_->push(n);
     }
 
-    update_endpoint(&path.path.local);
+    //update_endpoint(&path.path.local);
     update_remote_addr(&path.path.remote);
 
     return 0;
@@ -649,11 +658,27 @@ int update_key(uint8_t *rx_secret, uint8_t *tx_secret, uint8_t *rx_key,
       this->sendbuf_.push(conn_closebuf_->size());
     }
 
-    return this->manager_->send_packet(this->GetSocket(), this->remote_addr_,
-                                       this->sendbuf_.rpos(),
-                                       this->sendbuf_.size(), 0);
+    return this->manager_->send_packet(this->sock_ptr_, this->sendbuf_.rpos(), this->sendbuf_.size()
+    , &this->remote_addr_.su.sa, this->remote_addr_.len, 0);
     return 0;
   }
+
+int on_write() {
+    T* pT = static_cast<T*>(this);
+  if (ngtcp2_conn_is_in_closing_period(this->conn_) ||
+      ngtcp2_conn_is_in_draining_period(this->conn_)) {
+    return 0;
+  }
+
+  if (auto rv = pT->write_streams(); rv != 0) {
+    return rv;
+  }
+
+  pT->SetRTTimer();
+
+  return 0;
+}
+
 };
 
 /*!
@@ -667,13 +692,10 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
   typedef QuicManagerBaseT<T, TSocket, THandlerSet> Base;
 
  public:
+  using typename Base::Buffer;
   typedef typename Base::Handler Handler;
 
  protected:
-  std::map<std::string, std::unique_ptr<Handler>> handlers_;
-  // ctos_ is a mapping between client's initial destination
-  // connection ID, and server source connection ID.
-  std::map<std::string, std::string> ctos_;
   ngtcp2_crypto_aead token_aead_;
   ngtcp2_crypto_md token_md_;
 
@@ -853,14 +875,6 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
     return h;
   }
 
-  static inline std::string make_cid_key(const ngtcp2_cid *cid) {
-    return std::string(cid->data, cid->data + cid->datalen);
-  }
-
-  static inline std::string make_cid_key(const uint8_t *cid, size_t cidlen) {
-    return std::string(cid, cid + cidlen);
-  }
-
   static inline void generate_rand_data(uint8_t *buf, size_t len) {
     auto dis = std::uniform_int_distribution<>(0);
     std::generate_n(buf, len, [&dis]() { return dis(randgen) % 255; });
@@ -1029,7 +1043,7 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
     return 0;
   }
 
-  int send_version_negotiation(TSocket *ep, uint32_t version,
+  int send_version_negotiation(std::shared_ptr<TSocket> ep, uint32_t version,
                                const uint8_t *dcid, size_t dcidlen,
                                const uint8_t *scid, size_t scidlen,
                                const sockaddr *sa, socklen_t salen) {
@@ -1048,12 +1062,12 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
       return -1;
     }
 
-    ep->SendBuf((const char *)buf, nwrite, sa, salen);
+    send_packet(ep, (const char *)buf, nwrite, sa, salen);
 
     return 0;
   }
 
-  int send_retry(TSocket *ep, const ngtcp2_pkt_hd *chd, const sockaddr *sa,
+  int send_retry(std::shared_ptr<TSocket> ep, const ngtcp2_pkt_hd *chd, const sockaddr *sa,
                  socklen_t salen) {
     std::array<char, NI_MAXHOST> host;
     std::array<char, NI_MAXSERV> port;
@@ -1097,12 +1111,12 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
       return -1;
     }
 
-    ep->SendBuf((const char *)buf, nwrite, sa, salen);
+    send_packet(ep, (const char *)buf, nwrite, sa, salen);
 
     return 0;
   }
 
-  int send_stateless_connection_close(TSocket *ep, const ngtcp2_pkt_hd *chd,
+  int send_stateless_connection_close(std::shared_ptr<TSocket> ep, const ngtcp2_pkt_hd *chd,
                                       const sockaddr *sa, socklen_t salen) {
     uint8_t buf[NGTCP2_MAX_PKTLEN_IPV4] = {0};
 
@@ -1113,40 +1127,28 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
       return -1;
     }
 
-    ep->SendBuf((const char *)buf, nwrite, sa, salen);
+    send_packet(ep, (const char *)buf, nwrite, sa, salen);
 
     return 0;
   }
 
-  inline void associate_cid(const ngtcp2_cid *cid, Handler *h) {
-    ctos_.emplace(make_cid_key(cid), make_cid_key(h->scid()));
-  }
-
-  inline void dissociate_cid(const ngtcp2_cid *cid) {
-    ctos_.erase(make_cid_key(cid));
-  }
-
   void remove(const Handler *h) {
-    ctos_.erase(make_cid_key(h->rcid()));
-    ctos_.erase(make_cid_key(h->pscid()));
-
-    auto conn = h->get_conn();
-    std::vector<ngtcp2_cid> cids(ngtcp2_conn_get_num_scid(conn));
-    ngtcp2_conn_get_scid(conn, cids.data());
-
-    for (auto &cid : cids) {
-      ctos_.erase(make_cid_key(&cid));
-    }
-
-    handlers_.erase(make_cid_key(h->scid()));
+    this->ctos_.erase(make_cid_key(h->pscid()));
+    Base::remove(h);
   }
 
- protected:
+ public:
   //
   //解析数据包
-  virtual int OnRecvBuf(TSocket *ep, const char *buf, int &nread,
-                        const SOCKADDR *sa, int salen) {
+  //virtual int OnRecvBuf(std::shared_ptr<TSocket> ep, const char *buf, int &nread,
+  //                      const SOCKADDR *sa, int salen) {
+  void OnRecvBuf(std::shared_ptr<TSocket> ep, Buffer&& b)
+	{
     T *pT = static_cast<T *>(this);
+    const char *buf = b.data();
+    int nread = b.size();
+    const SOCKADDR *sa = b.addr(); 
+    int salen = b.addrlen();
     // 		sockaddr_union su;
     //   socklen_t addrlen;
     //   std::array<uint8_t, 64_k> buf;
@@ -1179,11 +1181,11 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
       if (IsDebug()) {
         std::cerr << "** Simulated incoming packet loss **" << std::endl;
       }
-      return 0;
+      return;
     }
 
     if (nread == 0) {
-      return 0;
+      return;
     }
 
     uint32_t version;
@@ -1195,26 +1197,28 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
     if (rv != 0) {
       if (rv == 1) {
         send_version_negotiation(ep, version, scid, scidlen, dcid, dcidlen, sa, salen);
-        return SOCKET_PACKET_FLAG_COMPLETE;
+        return;
       }
       std::cerr << "Could not decode version and CID from QUIC packet header: "
                 << ngtcp2_strerror(rv) << std::endl;
-      return SOCKET_PACKET_FLAG_COMPLETE;
+      return;
     }
 
+    
     auto dcid_key = make_cid_key(dcid, dcidlen);
-
-    auto handler_it = handlers_.find(dcid_key);
-    if (handler_it == std::end(handlers_)) {
-      auto ctos_it = ctos_.find(dcid_key);
-      if (ctos_it == std::end(ctos_)) {
+    auto scid_key = make_cid_key(scid, scidlen);
+    std::cerr << " dcid: " << format_hex(dcid_key) << " scid: " << format_hex(scid_key) << std::endl;
+    auto handler_it = this->handlers_.find(dcid_key);
+    if (handler_it == this->handlers_.end()) {
+      auto ctos_it = this->ctos_.find(dcid_key);
+      if (ctos_it == this->ctos_.end()) {
         rv = ngtcp2_accept(&hd, (const uint8_t *)buf, nread);
         if (rv == -1) {
           if (IsDebug()) {
             std::cerr << "Unexpected packet received: length=" << nread
                       << std::endl;
           }
-          return SOCKET_PACKET_FLAG_COMPLETE;
+          return;
         } else if (rv == 1) {
           if (IsDebug()) {
             std::cerr << "Unsupported version: Send Version Negotiation"
@@ -1223,7 +1227,7 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
           send_version_negotiation(ep, hd.version, hd.scid.data,
                                    hd.scid.datalen, hd.dcid.data,
                                    hd.dcid.datalen, sa, salen);
-          return SOCKET_PACKET_FLAG_COMPLETE;
+          return;
         }
 
         ngtcp2_cid ocid;
@@ -1234,92 +1238,93 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
               std::cerr << "Perform stateless address validation" << std::endl;
               if (hd.tokenlen == 0) {
                 send_retry(ep, &hd, sa, salen);
-                return SOCKET_PACKET_FLAG_COMPLETE;
+                return;
               }
               if (verify_token(&ocid, &hd, sa, salen) != 0) {
                 send_stateless_connection_close(ep, &hd, sa, salen);
-                return SOCKET_PACKET_FLAG_COMPLETE;
+                return;
               }
               pocid = &ocid;
             }
             break;
           case NGTCP2_PKT_0RTT:
             send_retry(ep, &hd, sa, salen);
-            return SOCKET_PACKET_FLAG_COMPLETE;
+            return;
         }
 
-        auto h = std::unique_ptr<Handler>(
-            new Handler(pT, ep, this->ssl_ctx_, &hd.dcid));
+        auto h = std::make_shared<Handler>(pT, ep, this->ssl_ctx_, &hd.dcid);
         if (h->init(sa, salen, &hd.scid, &hd.dcid, pocid, hd.token, hd.tokenlen,
                     hd.version) != 0) {
-          return SOCKET_PACKET_FLAG_COMPLETE;
+          return;
         }
-
-        switch (h->on_read(ep, sa, salen, (uint8_t *)buf, nread)) {
+        AddSocket(h);
+        h->PostF([this,hd,h,ep,buf = std::move(b)]()mutable{
+        switch (h->on_read(ep, buf.addr(), buf.addrlen(), (uint8_t *)buf.data(), buf.size())) {
           case 0:
             break;
           case NETWORK_ERR_RETRY:
-            send_retry(ep, &hd, sa, salen);
-            return SOCKET_PACKET_FLAG_COMPLETE;
+            send_retry(ep, &hd, buf.addr(), buf.addrlen());
+            return;
           default:
-            return SOCKET_PACKET_FLAG_COMPLETE;
+            return;
         }
 
         switch (h->on_write()) {
           case 0:
             break;
           default:
-            return SOCKET_PACKET_FLAG_COMPLETE;
+            return;
         }
-
+        });
         auto scid = h->scid();
         auto scid_key = make_cid_key(scid);
-        ctos_.emplace(dcid_key, scid_key);
+        this->ctos_.emplace(dcid_key, scid_key);
 
         auto pscid = h->pscid();
         if (pscid->datalen) {
           auto pscid_key = make_cid_key(pscid);
-          ctos_.emplace(pscid_key, scid_key);
+          this->ctos_.emplace(pscid_key, scid_key);
         }
 
-        handlers_.emplace(scid_key, std::move(h));
-        return SOCKET_PACKET_FLAG_COMPLETE;
+        this->handlers_.emplace(scid_key, h);
+        return;
       }
       if (IsDebug()) {
         std::cerr << "Forward CID=" << format_hex((*ctos_it).first)
                   << " to CID=" << format_hex((*ctos_it).second) << std::endl;
       }
-      handler_it = handlers_.find((*ctos_it).second);
-      assert(handler_it != std::end(handlers_));
+      handler_it = this->handlers_.find((*ctos_it).second);
+      assert(handler_it != this->handlers_.end());
     }
 
     auto h = (*handler_it).second.get();
-    if (ngtcp2_conn_is_in_closing_period(h->get_conn())) {
-      // TODO do exponential backoff.
-      switch (h->send_conn_close()) {
-        case 0:
-          break;
-        default:
-          remove(h);
-      }
-      return SOCKET_PACKET_FLAG_COMPLETE;
-    }
-    if (h->draining()) {
-      return SOCKET_PACKET_FLAG_COMPLETE;
-    }
+    h->PostF([this,h,ep,buf = std::move(b)]()mutable{
+        if (ngtcp2_conn_is_in_closing_period(h->get_conn())) {
+          // TODO do exponential backoff.
+          switch (h->send_conn_close()) {
+            case 0:
+              break;
+            default:
+              remove(h);
+          }
+          return;
+        }
+        if (h->draining()) {
+          return;
+        }
 
-    rv = h->on_read(ep, sa, salen, (uint8_t *)buf, nread);
-    if (rv != 0) {
-      if (rv != NETWORK_ERR_CLOSE_WAIT) {
-        remove(h);
-      }
-      return SOCKET_PACKET_FLAG_COMPLETE;
-    }
+        auto rv = h->on_read(ep, buf.addr(), buf.addrlen(), (uint8_t *)buf.data(), buf.size());
+        if (rv != 0) {
+          if (rv != NETWORK_ERR_CLOSE_WAIT) {
+            remove(h);
+          }
+          return;
+        }
 
-    h->signal_write();
+        h->on_write();
+    });
+
     //   }
-
-    return SOCKET_PACKET_FLAG_COMPLETE;
   }
 };
 

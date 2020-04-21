@@ -216,23 +216,23 @@ typedef unsigned char byte;
 //DATE TIME [日志级别] [标识] 内容
 
 #ifndef XSOCKET_LOGOUT
-#define XSOCKET_LOGOUT(format,...) printf("%s %s "format"\n", __DATE__, __TIME__, ##__VA_ARGS__)
+#define XSOCKET_LOGOUT(format,...) printf("%s %s " format "\n", __DATE__, __TIME__, ##__VA_ARGS__)
 #endif//
 
 #ifndef XSOCKET_LOG4E 
-#define XSOCKET_LOG4E(format,...) XSOCKET_LOGOUT("[ERROR] [%s:%d] "format, __FILE__, __LINE__, ##__VA_ARGS__)
+#define XSOCKET_LOG4E(format,...) XSOCKET_LOGOUT("[ERROR] [%s:%d] " format, __FILE__, __LINE__, ##__VA_ARGS__)
 #endif//
 
 #ifndef XSOCKET_LOG4W 
-#define XSOCKET_LOG4W(format,...) XSOCKET_LOGOUT("[WARN] "format, ##__VA_ARGS__)
+#define XSOCKET_LOG4W(format,...) XSOCKET_LOGOUT("[WARN] " format, ##__VA_ARGS__)
 #endif//
 
 #ifndef XSOCKET_LOG4I 
-#define XSOCKET_LOG4I(format,...) XSOCKET_LOGOUT("[INFO] "format, ##__VA_ARGS__)
+#define XSOCKET_LOG4I(format,...) XSOCKET_LOGOUT("[INFO] " format, ##__VA_ARGS__)
 #endif//
 
 #ifndef XSOCKET_LOG4D 
-#define XSOCKET_LOG4D(format,...) XSOCKET_LOGOUT("[DEBUG] [%s] "format, __FUNCTION__, ##__VA_ARGS__)
+#define XSOCKET_LOG4D(format,...) XSOCKET_LOGOUT("[DEBUG] [%s] " format, __FUNCTION__, ##__VA_ARGS__)
 #endif//
 
 #ifndef PRINTF

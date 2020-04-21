@@ -40,6 +40,8 @@ class manager : public QuicServerManagerT<manager,server,handler>
 class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
 {
 	typedef SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>> Base;
+public:
+	using udp_socket::Buffer;
 protected:
 	std::string addr_;
 	u_short port_;

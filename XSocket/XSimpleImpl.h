@@ -357,21 +357,14 @@ template<class TBase>
 class SimpleUdpSocketExT : public UdpSocketEx<TBase>
 {
 	typedef UdpSocketEx<TBase> Base;
+public:
+	using typename Base::Buffer;
 protected:
-	std::array<char,1024*2> _RecvBuf;
-	typedef struct tagSABuf
-	{
-		int nSendBufLen;
-		int nSendAddrLen;
-		int nSendFlags;
-		//+ SendBuf
-		//+ SendAddr
-	}SABUF,*PSABUF;
-	std::deque<PSABUF> SendBuffers_;
+	std::queue<Buffer> sendbufs_;
 public:
 	SimpleUdpSocketExT()
 	{
-		//SendBuffers_.reserve(256);
+		
 	}
 
 	virtual ~SimpleUdpSocketExT()
@@ -383,65 +376,39 @@ public:
 	{
 		int ret = Base::Close();
 
-		for(auto& buffer : SendBuffers_)
+		while(!sendbufs_.empty())
 		{
-			free(buffer);
+			sendbufs_.pop();
 		}
-		SendBuffers_.clear();
 
 		return ret;
 	}
 
-	int SendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0)
+	int SendBuf(Buffer&& buf)
 	{
 		ASSERT(Base::IsSocket());
-		char* pNewBuf = malloc(sizeof(SABUF) + nBufLen + nAddrLen);
-		PSABUF pSABuf = (PSABUF)pNewBuf;
-		pSABuf->nSendBufLen = nBufLen;
-		pSABuf->nSendAddrLen = nAddrLen;
-		pSABuf->nSendFlags = nFlags;
-		char* pSendBuf = pNewBuf + sizeof(SABUF);
-		memcpy(pSendBuf, lpBuf, nBufLen);
-		SOCKADDR* pSendAddr = (SOCKADDR*)(pSendBuf + nBufLen);
-		memcpy(pSendAddr, lpAddr, nAddrLen);
-		SendBuffers_.push_back(pSABuf);
+		sendbufs_.emplace(std::move(buf));
 		if(!Base::IsSelect(FD_WRITE)) {
 			Base::Select(FD_WRITE);
 		}
-		return nBufLen;
+		return 0;
+	}
+	
+	inline int SendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0)
+	{
+		return SendBuf(Buffer(lpBuf,nBufLen,lpAddr,nAddrLen,nFlags));
 	}
 
 protected:
 	//
-	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SOCKADDR* & lpAddr, int & nAddrLen)
+	virtual bool PrepareSendBuf(Buffer& buf)
 	{
-		//thread_local auto std::array<char,1024*2> _RecvBuf; //Udp一个包大小一般不会很大，大了就会切片传输
-		lpBuf = _RecvBuf.data();
-		nBufLen = _RecvBuf.size() - sizeof(SOCKADDR_STORAGE);
-		lpAddr = (SOCKADDR*)(lpBuf + nBufLen);
-		nAddrLen = sizeof(SOCKADDR_STORAGE);
-		return true;
-	}
-
-	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SOCKADDR* & lpAddr, int & nAddrLen)
-	{
-		if (!SendBuffers_.empty()) {
-			auto& pSABuf = SendBuffers_.front();
-			lpBuf = (const char*)(pSABuf + 1);
-			nBufLen = pSABuf->nSendBufLen;
-			lpAddr = (const SOCKADDR*)(lpBuf + nBufLen);
-			nAddrLen = pSABuf->nSendAddrLen;
+		if (!sendbufs_.empty()) {
+			buf = std::move(sendbufs_.front());
+			sendbufs_.pop();
 			return true;
 		}
 		return false;
-	}
-
-	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen) 
-	{
-		Base::OnSendBuf(lpBuf, nBufLen, lpAddr, nAddrLen);
-		auto& pSABuf = SendBuffers_.front();
-		free(pSABuf);
-		SendBuffers_.pop_front();
 	}
 };
 

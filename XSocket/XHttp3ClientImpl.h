@@ -61,7 +61,7 @@ int open_file(const std::string &path) {
     std::cerr << "No file name found: " << path << std::endl;
     return -1;
   }
-  auto b = std::string{it, static_cast<size_t>(std::end(path) - it)};
+  auto b = std::string{it, path.end()};
   if (b == ".." || b == ".") {
     std::cerr << "Invalid file name: " << b << std::endl;
     return -1;
@@ -93,9 +93,11 @@ public:
 protected:
     nghttp3_conn *httpconn_ = nullptr;
     std::map<int64_t, std::unique_ptr<Stream<T>>> streams_;
+  // nstreams_done_ is the number of streams opened.
+  uint64_t nstreams_done_ = 0;
 
 public:
-    Http3ClientHandler(TManager *manager, TSocket *sock_ptr, SSL_CTX *ssl_ctx):Base(manager,sock_ptr,ssl_ctx)
+    Http3ClientHandler(TManager *manager, std::shared_ptr<TSocket> sock_ptr, SSL_CTX *ssl_ctx):Base(manager,sock_ptr,ssl_ctx)
     {
 
     }
@@ -106,6 +108,39 @@ public:
             httpconn_ = nullptr;
         }
     }
+
+void make_stream_early() {
+  if (nstreams_done_ >= this->manager_->nstreams) {
+    return;
+  }
+
+  int64_t stream_id;
+  auto rv = ngtcp2_conn_open_bidi_stream(this->conn_, &stream_id, nullptr);
+  if (rv != 0) {
+    std::cerr << "ngtcp2_conn_open_bidi_stream: " << ngtcp2_strerror(rv)
+              << std::endl;
+    return;
+  }
+
+  // TODO Handle error
+  if (setup_httpconn() != 0) {
+    return;
+  }
+
+  auto stream = std::unique_ptr<Stream<T>>(new Stream<T>(
+      this->manager_->requests[nstreams_done_ % this->manager_->requests.size()], stream_id));
+
+  if (submit_http_request(stream.get()) != 0) {
+    return;
+  }
+
+  if (!this->manager_->download.empty()) {
+    stream->open_file(stream->req.path);
+  }
+  streams_.emplace(stream_id, std::move(stream));
+
+  ++nstreams_done_;
+}
 
 int on_key(ngtcp2_crypto_level level, const uint8_t *rx_secret,
                    const uint8_t *tx_secret, size_t secretlen) {
@@ -160,14 +195,12 @@ int on_key(ngtcp2_crypto_level level, const uint8_t *rx_secret,
 //   }
 
   if (level == NGTCP2_CRYPTO_LEVEL_APP) {
-    if (this->get_manager()->tp_file) {
+    if (!this->tp_file_.empty()) {
       ngtcp2_transport_params params;
-
       ngtcp2_conn_get_remote_transport_params(this->conn_, &params);
-
-      if (write_transport_params(this->get_manager()->tp_file, &params) != 0) {
+      if (write_transport_params(this->tp_file_.c_str(), &params) != 0) {
         std::cerr << "Could not write transport parameters in "
-                  << this->get_manager()->tp_file << std::endl;
+                  << this->tp_file_ << std::endl;
       }
     }
 
@@ -176,6 +209,35 @@ int on_key(ngtcp2_crypto_level level, const uint8_t *rx_secret,
     }
   }
 
+  return 0;
+}
+
+int on_extend_max_streams() {
+  // int64_t stream_id;
+
+  // if (ev_is_active(&delay_stream_timer_)) {
+  //   return 0;
+  // }
+
+  // for (; nstreams_done_ < this->manager_->nstreams; ++nstreams_done_) {
+  //   auto rv = ngtcp2_conn_open_bidi_stream(this->conn_, &stream_id, nullptr);
+  //   if (rv != 0) {
+  //     assert(NGTCP2_ERR_STREAM_ID_BLOCKED == rv);
+  //     break;
+  //   }
+
+  //   auto stream = std::unique_ptr<Stream<T>>(
+  //       new Stream<T>(this->manager_->requests[nstreams_done_ % this->manager_->requests.size()], stream_id));
+
+  //   if (submit_http_request(stream.get()) != 0) {
+  //     break;
+  //   }
+
+  //   if (!this->manager_->download.empty()) {
+  //     stream->open_file(stream->req.path);
+  //   }
+  //   streams_.emplace(stream_id, std::move(stream));
+  // }
   return 0;
 }
 
@@ -621,10 +683,10 @@ int submit_http_request(const Stream<T> *stream) {
       make_nv("user-agent", "nghttp3/ngtcp2 client"),
   };
   size_t nvlen = 5;
-  if (this->fd != -1) {
+  /*if (this->fd != -1) {
     content_length_str = std::to_string(this->datalen);
     nva[nvlen++] = make_nv("content-length", content_length_str);
-  }
+  }*/
 
 //   if (!config.quiet) {
 //     debug::print_http_request_headers(stream->stream_id, nva.data(), nvlen);

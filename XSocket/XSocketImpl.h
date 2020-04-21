@@ -66,6 +66,83 @@ enum
 };
 
 /*!
+ *	@brief BufferPool 模板定义.
+ *
+ *	封装BufferPool，内存池
+ */
+template<class Buffer>
+class BufferPoolT
+{
+public:
+	typedef BufferPoolT<Buffer> BufferPool;
+	static BufferPool& Inst() {
+		static BufferPool _inst;
+		return _inst;
+	}
+	BufferPoolT()
+	{
+	}
+	BufferPoolT(size_t MaxBuffer)
+	{
+		Init(MaxBuffer);
+	}
+	~BufferPoolT()
+	{
+		
+	}
+
+	void Init(size_t MaxBuffer = 1024)
+	{
+		for(size_t i = 0; i < MaxBuffer; i++)
+		{
+			bufptrs_.emplace(std::unique_ptr<Buffer>(new Buffer()));
+		}
+	}
+
+	template<typename _Rep, typename _Period>
+	std::unique_ptr<Buffer>&& Alloc(const chrono::duration<_Rep, _Period>& __rtime)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		cv_.wait_for(lock,__rtime,[this] { return !bufptrs_.empty(); });
+		if (bufptrs_.empty())
+			return nullptr;
+		auto&& bufptr = std::move(bufptrs_.front());
+		bufptrs_.pop();
+		return bufptr;
+	}
+
+	bool Alloc(std::unique_ptr<Buffer>& bufptr)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		if(bufptrs_.empty()) {
+			cv_.wait(lock);
+			if(bufptrs_.empty()) {
+				return false;
+			}
+		}
+		bufptr = std::move(bufptrs_.front());
+		bufptrs_.pop();
+		return true;
+	}
+
+	void Free(std::unique_ptr<Buffer>&& bufptr)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		bufptrs_.emplace(std::move(bufptr));
+		cv_.notify_all();
+	}
+
+private:
+	std::queue<std::unique_ptr<Buffer>> bufptrs_;
+	std::mutex mutex_;
+	std::condition_variable cv_;
+};
+
+typedef BufferPoolT<std::string> BufferPool;
+typedef std::array<char,2048> UdpBuffer;
+typedef BufferPoolT<UdpBuffer> UdpBufferPool;
+
+/*!
  *	@brief TcpSocket 定义.
  *
  *	封装SocketEx，定义对称的发送/接收（写入/读取）网络架构
@@ -465,20 +542,88 @@ template<class TBase = SocketEx>
 class UdpSocketEx : public TBase
 {
 	typedef TBase Base;
-protected:
-	int m_nSendLen;
-	const char* m_pSendBuf;
-	int m_nSendBufLen;
-	const SOCKADDR* m_pSendAddr;
-	int m_nSendAddrLen;
 public:
-	UdpSocketEx()
-		:Base()
-		,m_nSendLen(0)
-		,m_pSendBuf(nullptr)
-		,m_nSendBufLen(0)
-		,m_pSendAddr(nullptr)
-		,m_nSendAddrLen(0)
+	struct Buffer
+	{
+	protected:
+		typedef struct tagUdpBuf
+		{
+			int nBufLen = 0;
+			int nAddrLen = 0;
+			int nFlags = 0;
+			//+ lpAddr fix capacity is sizeof SOCKADDR_STORAGE
+			//+ lpBuf
+		}UDPBUF,*PUDPBUF;
+		std::unique_ptr<UdpBuffer> bufptr_;
+		inline PUDPBUF ptr() { return (PUDPBUF)bufptr_->data(); }
+		inline char *begin() { return (char*)ptr() + sizeof(UDPBUF) + sizeof(SOCKADDR_STORAGE); } 
+		inline char *tail() { return begin() + ptr()->nBufLen; };
+	public:
+		Buffer(){}
+		Buffer(std::unique_ptr<UdpBuffer>&& bufptr):bufptr_(std::move(bufptr)) {}
+		Buffer(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0) { 
+			UdpBufferPool::Inst().Alloc(bufptr_);
+#ifdef _DEBUG
+			PUDPBUF p = ptr();
+			char* str = data();
+			size_t l = left();
+#endif
+			flag(nFlags);
+			addr(lpAddr,nAddrLen);
+			write(lpBuf,nBufLen);
+		}
+		Buffer(Buffer&& rhs):Buffer(std::move(rhs.bufptr_)) {}
+		~Buffer() { reset(); }
+		Buffer& operator=(Buffer&& rhs) {
+			if(this == &rhs) {
+				return *this;
+			}
+			reset();
+			bufptr_ = std::move(rhs.bufptr_);
+			return *this;
+		}
+
+		inline bool valid() const { return bufptr_?true:false; }
+		inline void reset() { 
+			if(bufptr_) {
+				UdpBufferPool::Inst().Free(std::move(bufptr_));
+				ASSERT(!valid());
+			}
+		}
+
+		inline int flag() { return ptr()->nFlags; }
+		inline void flag(int f) { ptr()->nFlags = f; }
+
+		inline SOCKADDR* addr() { return (SOCKADDR*)((char*)ptr() + sizeof(UDPBUF)); } 
+		inline int addrlen() { return ptr()->nAddrLen; }
+		inline void addr(const SOCKADDR* sa, int salen) { 
+			if(sa) {
+				std::copy_n((char*)sa, salen, (char*)addr()); 
+			}
+			ptr()->nAddrLen = salen; 
+		}
+		inline void addrlen(int len) { ptr()->nAddrLen = len; }
+
+		inline char* data() { return begin(); }
+		inline size_t size() const { return ptr()->nBufLen; }
+		inline size_t left() const { return bufptr_->size() - size() - sizeof(SOCKADDR_STORAGE) - sizeof(UDPBUF); }
+		inline size_t resize(size_t len) { 
+			ptr()->nBufLen = len; 
+			return ptr()->nBufLen; 
+		}
+		inline bool empty() { return size() == 0; }
+		inline void clear() { ptr()->nBufLen = 0; }
+		inline void write(const char* buf, size_t len) { 
+			if(buf && len > 0) {
+				std::copy_n(buf, len, tail()); 
+				ptr()->nBufLen += len;
+			}
+		}
+	};
+protected:
+	Buffer sendbuf_;
+public:
+	UdpSocketEx():Base()
 	{
 
 	}
@@ -491,41 +636,34 @@ public:
 	inline int Close()
 	{
 		int ret = Base::Close();
-		m_nSendLen = 0;
-		m_pSendBuf = nullptr;
-		m_nSendBufLen = 0;
-		m_pSendAddr = nullptr;
-		m_nSendAddrLen = 0;
+		sendbuf_.reset();
 		return ret;
 	}
 
 protected:
 	//
-	//解析数据包
-	virtual int ParseBuf(const char* lpBuf, int & nBufLen, const SOCKADDR* lpAddr, int nAddrLen) { return SOCKET_PACKET_FLAG_COMPLETE; }
-
-	//准备接收缓存
-	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen, SOCKADDR* & lpAddr, int & nAddrLen)
-	{
-		return false;
-	}
-
 	//接收完整一个包
-	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen)
+	virtual void OnRecvBuf(Buffer&& buf)
 	{
-
+		if(IsDebug()) {
+			char str[64] = {0};
+			PRINTF("(%p %p %u)::OnRecvBuf(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
+		}
 	}
 
 	//准备发送数据包
-	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen, const SOCKADDR* & lpAddr, int & nAddrLen)
+	virtual bool PrepareSendBuf(Buffer& buf)
 	{
 		return false;
 	}
 
 	//发送完整一个包
-	virtual void OnSendBuf(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen)
+	virtual void OnSendBuf(Buffer&& buf)
 	{
-
+		if(IsDebug()) {
+			char str[64] = {0};
+			PRINTF("(%p %p %u)::OnSendBuf(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
+		}
 	}
 
 protected:
@@ -540,43 +678,24 @@ protected:
 		bool bConitnue = false;
 		do {
 			bConitnue = false;
-			char* lpBuf = nullptr;
-			int nBufLen = 0;
-			SOCKADDR* lpAddr = nullptr;
-			int nAddrLen = 0;
-			if(!PrepareRecvBuf(lpBuf, nBufLen, lpAddr, nAddrLen)) {
-				//说明没有可接收缓存
-				return;
-			}
+			Buffer buf(nullptr,0,nullptr,sizeof(SOCKADDR_STORAGE));
+			char* lpBuf = buf.data();
+			int nBufLen = buf.left();
+			SOCKADDR* lpAddr = buf.addr();
+			int nAddrLen = sizeof(SOCKADDR_STORAGE);
 			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,lpAddr, &nAddrLen);
 			if (nBufLen<0) {
 				Base::OnReceive(XSocket::Socket::GetLastError());
 			} else if(nBufLen == 0) {
 				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
-				Base::Trigger(FD_READ, lpBuf, nBufLen, lpAddr, nAddrLen, 0);
+				//Base::Trigger(FD_READ, lpBuf, nBufLen, lpAddr, nAddrLen, 0);
+				buf.addrlen(nAddrLen);
+				buf.resize(nBufLen); 
+				OnRecvBuf(std::move(buf));
 				bConitnue = Base::IsSocket();
 			}
 		} while(bConitnue);
-	}
-
-	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags)
-	{
-		Base::OnReceiveFrom(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags); 
-		const char* lpParseBuf = lpBuf;
-		int nParseBufLen = nBufLen; //还剩多少数据长度需要解析
-		do {
-			int nPacketBufLen = nParseBufLen;
-			int nParseFlags = ParseBuf(lpParseBuf, nPacketBufLen, lpAddr, nAddrLen);
-			if(!(nParseFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
-				//UDP不允许存在解包不完整，不完整就丢弃
-				//Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
-				break;
-			}
-			OnRecvBuf(lpParseBuf, nPacketBufLen, lpAddr, nAddrLen);
-			lpParseBuf += nPacketBufLen;
-			nParseBufLen -= nPacketBufLen;
-		} while (nParseBufLen > 0);
 	}
 
 	virtual void OnSend(int nErrorCode)
@@ -592,22 +711,17 @@ protected:
 			int nBufLen = 0;
 			const SOCKADDR* lpAddr = nullptr;
 			int nAddrLen = 0;
-			if (!m_pSendBuf) {
-				if(!PrepareSendBuf(lpBuf,nBufLen,lpAddr,nAddrLen)) {
+			if (!sendbuf_.valid()) {
+				if(!PrepareSendBuf(sendbuf_)) {
 					//说明没有可发送数据
 					return;
 				}
-				m_nSendLen = 0;
-				m_pSendBuf = lpBuf;
-				m_nSendBufLen = nBufLen;
-				m_pSendAddr = lpAddr;
-				m_nSendAddrLen = nAddrLen;
 			}
-			ASSERT(m_nSendLen == 0);
-			lpBuf = m_pSendBuf+m_nSendLen;
-			nBufLen = (int)(m_nSendBufLen-m_nSendLen);
-			lpAddr = m_pSendAddr;
-			nAddrLen = m_nSendAddrLen;
+			ASSERT(sendbuf_.valid());
+			lpBuf = sendbuf_.data();
+			nBufLen = sendbuf_.size();
+			lpAddr = sendbuf_.addr();
+			nAddrLen = sendbuf_.addrlen();
 			ASSERT(lpBuf && nBufLen>0);
 			nBufLen = Base::SendTo(lpBuf,nBufLen,(const SOCKADDR*)lpAddr,nAddrLen);
 			if (nBufLen<0) {
@@ -615,26 +729,13 @@ protected:
 			} else if(nBufLen == 0) {
 				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
-				Base::Trigger(FD_WRITE, lpBuf, nBufLen, (const SOCKADDR*)lpAddr, nAddrLen, 0);
+				//Base::Trigger(FD_WRITE, lpBuf, nBufLen, (const SOCKADDR*)lpAddr, nAddrLen, 0);
+				OnSendBuf(std::move(sendbuf_)); sendbuf_.reset();
 				bConitnue = Base::IsSocket(); //继续发送
 			}
 		} while(bConitnue);
 	}
 	
-	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags)
-	{
-		Base::OnSendTo(lpBuf, nBufLen, lpAddr, nAddrLen, nFlags);
-		m_nSendLen += nBufLen;
-		if (m_nSendLen >= m_nSendBufLen) {
-			OnSendBuf(m_pSendBuf, m_nSendLen, lpAddr, nAddrLen);
-			m_nSendLen = 0;
-			m_pSendBuf = nullptr;
-			m_nSendBufLen = 0;
-			m_pSendAddr = nullptr;
-		} else {
-			ASSERT(0); //UDP 不应该发送太大的包导致发不完，建议1024字节包
-		}
-	}
 };
 
 /*!
@@ -752,16 +853,14 @@ public:
 	inline TSocket* Attach(TSocket* Sock) { Base::sock_ = (SOCKET)Sock; }
 	inline TSocket* Detach() {
 		TSocket* sock = (TSocket*)Base::sock_; 
-		Base::sock_ = nullptr; 
+		Base::sock_ = 0; 
 		return sock;
 	}
 
 	inline bool IsSocket() {  return Base::sock_ != 0; }
-	inline TSocket* GetSocket() { return (TSocket*)Base::sock_; }
 	inline void Close() { 
 		if(Base::sock_) { 
 			TSocket* sock = (TSocket*)Base::sock_; 
-			sock->Close(this); //通知最新套接字关闭连接
 			Detach();
 		} 
 	}
@@ -810,11 +909,33 @@ public:
 	typedef typename Base::SocketSet TaskSocketSet;
 public:
 	
-	inline void Post(std::function<void()> && task, size_t delay = 0)
+	inline void Post(std::function<void()> && task)
 	{
-		Base::this_service()->Post(std::move(task), this, delay);
+		PostDelay(0, std::move(task));
 	}
-	
+
+	inline void PostDelay(size_t delay, std::function<void()> && task)
+	{
+		Base::this_service()->PostDelay(delay, this, std::move(task));
+	}
+
+	template<class F, class... Args>
+	inline auto PostF(F&& f, Args&&... args)
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		return PostDelayF(0, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+
+	template<class F, class... Args>
+	auto PostDelayF(size_t delay, F&& f, Args&&... args)
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+		std::future<return_type> res;
+		PostDelay(delay, Base::Service::Package(res, std::forward<F>(f), std::forward<Args>(args)...));
+		return res;
+	}
+
 	inline /*std::future<struct addrinfo*>*/void Resolve(const char *hostname, const char *service, const struct addrinfo *hints)
 	{
 		auto result = std::async(//std::launch::async|std::launch::deferred,
@@ -934,7 +1055,12 @@ public:
 		queue_.reserve(1024);
 	}
 
-	inline void Post(std::function<void()> && task, void* ptr = nullptr, size_t delay = 0)
+	inline void Post(void* ptr, std::function<void()> && task)
+	{
+		PostDelay(0, ptr, std::move(task));
+	}
+
+	inline void PostDelay(size_t delay, void* ptr, std::function<void()> && task)
 	{
 		ASSERT(task);
 		Event evt(std::move(task), ptr, delay);
@@ -950,6 +1076,27 @@ public:
 		} else {
 			Base::PostNotify();	
 		}
+	}
+
+	template<class F, class... Args>
+	inline auto PostF(void* ptr, F&& f, Args&&... args)
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		return PostDelayF(0, ptr, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+
+	template<class F, class... Args>
+	auto PostDelayF(size_t delay, void* ptr, F&& f, Args&&... args)
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+
+		PostDelay(delay, ptr, [task](){ (*task)(); });
+		return task->get_future();
 	}
 
 	template<class F, class... Args>
