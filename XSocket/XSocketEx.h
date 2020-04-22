@@ -617,13 +617,13 @@ public:
 		// }
 		//inline bool IsExecuted() { return !task; }
 
-		inline bool IsActive(size_t* millis = nullptr) const {
-			int64_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();
-			if(diff <= 0) {
-				return true;
-			}
+		inline bool IsActive(ssize_t* millis = nullptr) const {
+			ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();
 			if(millis) {
 				*millis = diff;
+			}
+			if(diff <= 0) {
+				return true;
 			}
 			return false;
 		}
@@ -655,8 +655,17 @@ public:
 		}
 		std::lock_guard<std::mutex> lock(mutex_);
 		tasks_.emplace(t);
-		size_t delay = 0;
-		if (t->IsActive(&delay)) {
+#ifdef _DEBUG
+		printf("task delay queue:");
+		for(auto& tt : tasks_) {
+			ssize_t delay = 0;
+			tt->IsActive(&delay);
+			printf("%d ", (int)delay);
+		}
+		printf("\n");
+#endif//
+		ssize_t delay = 0;
+		if (!t->IsActive(&delay)) {
 			Base::PostTimer(delay);
 		} else {
 			Base::PostNotify();	
@@ -722,7 +731,7 @@ protected:
 		{
 			auto it = tasks_.begin();
 			auto t = *it;
-			size_t delay = 0;
+			ssize_t delay = 0;
 			if (t->IsActive(&delay)) {
 				auto task(std::move(t->task));
 				tasks_.erase(it);
