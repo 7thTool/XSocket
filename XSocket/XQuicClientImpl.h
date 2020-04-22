@@ -882,7 +882,7 @@ class QuicClientManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
   // disable_early_data disables early data.
   bool disable_early_data;
 
-  void OnRecvBuf(std::shared_ptr<TSocket> ep, Buffer&& buf)
+  void OnRecvBuf(std::shared_ptr<TSocket> ep, Buffer& buf)
 	{
     T *pT = static_cast<T *>(this);
     if (packet_lost(this->rx_loss_prob)) {
@@ -943,7 +943,7 @@ class QuicClientManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
     //     std::cout << *capturedStr.get() << std::endl;
     // };
     // lambda();
-    h->PostF([h,ep,buf = std::move(buf)]()mutable{
+    h->Post([h,ep,buf]()mutable{
         h->on_read(ep, buf.addr(), buf.addrlen(), (uint8_t *)buf.data(), buf.size());
         h->on_write();
     });

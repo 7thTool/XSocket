@@ -554,15 +554,37 @@ public:
 			//+ lpAddr fix capacity is sizeof SOCKADDR_STORAGE
 			//+ lpBuf
 		}UDPBUF,*PUDPBUF;
-		std::unique_ptr<UdpBuffer> bufptr_;
+		std::shared_ptr<UdpBuffer> bufptr_;
 		inline PUDPBUF ptr() { return (PUDPBUF)bufptr_->data(); }
 		inline char *begin() { return (char*)ptr() + sizeof(UDPBUF) + sizeof(SOCKADDR_STORAGE); } 
 		inline char *tail() { return begin() + ptr()->nBufLen; };
 	public:
 		Buffer(){}
-		Buffer(std::unique_ptr<UdpBuffer>&& bufptr):bufptr_(std::move(bufptr)) {}
+		Buffer(std::shared_ptr<UdpBuffer> bufptr):bufptr_(bufptr) {}
 		Buffer(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0) { 
-			UdpBufferPool::Inst().Alloc(bufptr_);
+			reinit(lpBuf,nBufLen,lpAddr,nAddrLen,nFlags);
+		}
+		Buffer(const Buffer& rhs):Buffer(rhs.bufptr_) {}
+		Buffer(Buffer&& rhs):Buffer(rhs.bufptr_) {}
+		~Buffer() { reset(); }
+		Buffer& operator=(const Buffer& rhs) {
+			if(this == &rhs) {
+				return *this;
+			}
+			bufptr_ = rhs.bufptr_;
+			return *this;
+		}
+		Buffer& operator=(Buffer&& rhs) {
+			if(this == &rhs) {
+				return *this;
+			}
+			bufptr_ = rhs.bufptr_;
+			return *this;
+		}
+
+		inline bool valid() const { return bufptr_?true:false; }
+		inline bool reinit(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0) {
+			bufptr_ = std::make_shared<UdpBuffer>();
 #ifdef _DEBUG
 			PUDPBUF p = ptr();
 			char* str = data();
@@ -572,29 +594,13 @@ public:
 			addr(lpAddr,nAddrLen);
 			write(lpBuf,nBufLen);
 		}
-		Buffer(Buffer&& rhs):Buffer(std::move(rhs.bufptr_)) {}
-		~Buffer() { reset(); }
-		Buffer& operator=(Buffer&& rhs) {
-			if(this == &rhs) {
-				return *this;
-			}
-			reset();
-			bufptr_ = std::move(rhs.bufptr_);
-			return *this;
-		}
-
-		inline bool valid() const { return bufptr_?true:false; }
-		inline void reset() { 
-			if(bufptr_) {
-				UdpBufferPool::Inst().Free(std::move(bufptr_));
-				ASSERT(!valid());
-			}
-		}
+		inline void reset() { bufptr_.reset(); }
 
 		inline int flag() { return ptr()->nFlags; }
 		inline void flag(int f) { ptr()->nFlags = f; }
 
 		inline SOCKADDR* addr() { return (SOCKADDR*)((char*)ptr() + sizeof(UDPBUF)); } 
+		//inline const SOCKADDR* const addr() const { return (SOCKADDR*)((char*)ptr() + sizeof(UDPBUF)); }
 		inline int addrlen() { return ptr()->nAddrLen; }
 		inline void addr(const SOCKADDR* sa, int salen) { 
 			if(sa) {
@@ -621,6 +627,7 @@ public:
 		}
 	};
 protected:
+	Buffer recvbuf_;
 	Buffer sendbuf_;
 public:
 	UdpSocketEx():Base()
@@ -633,9 +640,16 @@ public:
 
 	}
 
+	// inline SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0)
+	// {
+	// 	auto ret = Base::Open(nSockAf, nSockType, nSockProtocol);
+	// 	recvbuf_.reinit(nullptr,0,nullptr,sizeof(SOCKADDR_STORAGE));
+	// }
+
 	inline int Close()
 	{
 		int ret = Base::Close();
+		recvbuf_.reset();
 		sendbuf_.reset();
 		return ret;
 	}
@@ -643,7 +657,7 @@ public:
 protected:
 	//
 	//接收完整一个包
-	virtual void OnRecvBuf(Buffer&& buf)
+	virtual void OnRecvBuf(Buffer& buf)
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
@@ -658,7 +672,7 @@ protected:
 	}
 
 	//发送完整一个包
-	virtual void OnSendBuf(Buffer&& buf)
+	virtual void OnSendBuf(Buffer& buf)
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
@@ -678,10 +692,12 @@ protected:
 		bool bConitnue = false;
 		do {
 			bConitnue = false;
-			Buffer buf(nullptr,0,nullptr,sizeof(SOCKADDR_STORAGE));
-			char* lpBuf = buf.data();
-			int nBufLen = buf.left();
-			SOCKADDR* lpAddr = buf.addr();
+			if(!recvbuf_.valid()) {
+				recvbuf_.reinit(nullptr,0,nullptr,0);
+			}
+			char* lpBuf = recvbuf_.data();
+			int nBufLen = recvbuf_.left();
+			SOCKADDR* lpAddr = recvbuf_.addr();
 			int nAddrLen = sizeof(SOCKADDR_STORAGE);
 			nBufLen = Base::ReceiveFrom(lpBuf,nBufLen,lpAddr, &nAddrLen);
 			if (nBufLen<0) {
@@ -690,9 +706,10 @@ protected:
 				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
 				//Base::Trigger(FD_READ, lpBuf, nBufLen, lpAddr, nAddrLen, 0);
-				buf.addrlen(nAddrLen);
-				buf.resize(nBufLen); 
-				OnRecvBuf(std::move(buf));
+				recvbuf_.addrlen(nAddrLen);
+				recvbuf_.resize(nBufLen); 
+				OnRecvBuf(recvbuf_);
+				recvbuf_.reset();
 				bConitnue = Base::IsSocket();
 			}
 		} while(bConitnue);
@@ -730,7 +747,8 @@ protected:
 				Base::Trigger(FD_CLOSE, XSocket::Socket::GetLastError());
 			} else {
 				//Base::Trigger(FD_WRITE, lpBuf, nBufLen, (const SOCKADDR*)lpAddr, nAddrLen, 0);
-				OnSendBuf(std::move(sendbuf_)); sendbuf_.reset();
+				OnSendBuf(sendbuf_);
+				sendbuf_.reset();
 				bConitnue = Base::IsSocket(); //继续发送
 			}
 		} while(bConitnue);
@@ -904,7 +922,7 @@ protected:
 template<class TBase>
 class TaskSocketT : public BasicSocketT<TBase>
 {
-	typedef TaskSocketT<TBase> Base;
+	typedef BasicSocketT<TBase> Base;
 public:
 	typedef typename Base::SocketSet TaskSocketSet;
 	typedef typename TaskSocketSet::TaskInfo TaskInfo;
@@ -920,7 +938,7 @@ public:
 		return Base::this_service()->Post(delay, this, std::move(task));
 	}
 
-	inline void Cancel(std::shared_ptr<TaskInfo> t)
+	inline void Cancel(const std::shared_ptr<TaskInfo>& t)
 	{
 		Base::this_service()->Cancel(t);
 	}

@@ -16,7 +16,7 @@ using namespace XSocket;
 class manager;
 class server;
 
-typedef TaskSocketServiceT<ThreadService> udp_socket_service;
+typedef TaskServiceT<ThreadService> udp_socket_service;
 typedef QuickSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
 class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
 , public std::enable_shared_from_this<server>
@@ -32,23 +32,23 @@ public:
 
 	inline void Post(std::function<void()> && task)
 	{
-		udp_socket_service::PostDelay(0, this, std::move(task));
+		udp_socket_service::Post(0, this, std::move(task));
 	}
 
-	template<class F, class... Args>
-	inline auto PostF(F&& f, Args&&... args)
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		return udp_socket_service::PostDelayF(0, this, std::forward<F>(f), std::forward<Args>(args)...);
-	}
+	// template<class F, class... Args>
+	// inline auto PostF(F&& f, Args&&... args)
+	// 	-> std::future<typename std::result_of<F(Args...)>::type>
+	// {
+	// 	return udp_socket_service::PostDelayF(0, this, std::forward<F>(f), std::forward<Args>(args)...);
+	// }
 protected:
 	//
 	virtual bool OnInit();
 	virtual void OnTerm();
-	virtual void OnRecvBuf(Buffer&& buf);
+	virtual void OnRecvBuf(Buffer& buf);
 };
 
-typedef TaskSocketServiceT<ThreadCVService> handler_service;
+typedef TaskServiceT<ThreadCVService> handler_service;
 class handler : public Http3Handler<handler,manager,server,CVSocketT<handler_service,SocketEx>>
 {
 	typedef Http3Handler<handler,manager,server,CVSocketT<handler_service,SocketEx>> Base;
@@ -222,9 +222,9 @@ public:
 		}
 	}
 
-	void server::OnRecvBuf(Buffer&& buf)
+	void server::OnRecvBuf(Buffer& buf)
 	{
-		mgr.OnRecvBuf(shared_from_this(), std::move(buf));
+		mgr.OnRecvBuf(shared_from_this(), buf);
 	}
 
 #ifdef WIN32

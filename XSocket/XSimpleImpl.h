@@ -384,10 +384,10 @@ public:
 		return ret;
 	}
 
-	int SendBuf(Buffer&& buf)
+	int SendBuf(const Buffer& buf)
 	{
 		ASSERT(Base::IsSocket());
-		sendbufs_.emplace(std::move(buf));
+		sendbufs_.emplace(buf);
 		if(!Base::IsSelect(FD_WRITE)) {
 			Base::Select(FD_WRITE);
 		}
@@ -404,7 +404,7 @@ protected:
 	virtual bool PrepareSendBuf(Buffer& buf)
 	{
 		if (!sendbufs_.empty()) {
-			buf = std::move(sendbufs_.front());
+			buf = sendbufs_.front();
 			sendbufs_.pop();
 			return true;
 		}

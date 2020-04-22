@@ -417,29 +417,6 @@ protected:
 	}
 };
 
-class Timer {
- protected:
-  std::chrono::steady_clock::time_point tp_next_;  //定时时间,0表示没有定时任务
-
- public:
-  inline void SetTimer(size_t millis) {
-    tp_next_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
-  }
-  inline void KillTimer() {
-    tp_next_ = std::chrono::steady_clock::time_point();
-  }
-  inline bool IsActive(bool reset = true) {
-	  if (tp_next_.time_since_epoch().count()) {
-      if (tp_next_ <= std::chrono::steady_clock::now()) {
-		  if(reset)
-        	tp_next_ = std::chrono::steady_clock::time_point();
-		return true;
-      }
-    }
-	return false;
-  }
-};
-
 /*!
  *	@brief Service 定义.
  *
@@ -635,6 +612,10 @@ public:
 			return time < o.time;
 		}
 
+		// inline void SetDelay(size_t millis) {
+		// 	time = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
+		// }
+
 		inline bool IsActive(size_t* millis = nullptr) const {
 			int64_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();
 			if(diff <= 0) {
@@ -666,7 +647,7 @@ protected:
 	std::mutex mutex_;
 public:
 	
-	inline std::shared_ptr<TaskInfo> Post(std::shared_ptr<TaskInfo> t)
+	inline std::shared_ptr<TaskInfo> Post(const std::shared_ptr<TaskInfo>& t)
 	{
 		if(!t) {
 			return t;
@@ -682,7 +663,7 @@ public:
 		return t;
 	}
 
-	inline void Cancel(std::shared_ptr<TaskInfo> t)
+	inline void Cancel(const std::shared_ptr<TaskInfo>& t)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		tasks_.erase(t);

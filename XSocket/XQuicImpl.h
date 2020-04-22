@@ -386,7 +386,8 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>>,
                          public std::enable_shared_from_this<T> {
   typedef QuicHandlerBaseT<T, TManager, TSocket, TBase> This;
   typedef ConnectionT<TSocket, TaskSocketT<TBase>> Base;
-
+public:
+  typedef typename Base::TaskInfo TaskInfo;
  protected:
   TManager *manager_;
   std::shared_ptr<TSocket> sock_ptr_;
@@ -433,8 +434,8 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>>,
   // common buffer used to store packet data before sending
   Buffer sendbuf_;
   QUICError last_error_ = {QUICErrorType::Transport, 0};
-  Timer timer_;
-  Timer rttimer_;
+  std::shared_ptr<TaskInfo> timer_;
+  std::shared_ptr<TaskInfo> rttimer_;
 
  public:
   QuicHandlerBaseT(TManager *manager, std::shared_ptr<TSocket> sock_ptr,
@@ -454,7 +455,6 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>>,
         sendbuf_{NGTCP2_MAX_PKTLEN_IPV4}
   // last_error_(QUICErrorType::Transport, 0)
   {
-    Select(FD_IDLE);
   }
 
   ~QuicHandlerBaseT() {
@@ -637,20 +637,6 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>>,
     return 0;
   }
 
-  void OnIdle()
-  {
-    T* pT = static_cast<T*>(this);
-    if(timer_.IsActive()) {
-      pT->OnTimer();
-    }
-    if(rttimer_.IsActive()) {
-      pT->OnRTTimer();
-    } 
-    if(IsSocket()) {
-      Select(FD_IDLE);
-    }
-  }
-
   void OnTimer()
   {
 
@@ -662,27 +648,39 @@ class QuicHandlerBaseT : public ConnectionT<TSocket, TaskSocketT<TBase>>,
   }
 
   void SetTimer(size_t millis) {
-    timer_.SetTimer(millis);
+    T* pT = static_cast<T*>(this);
+    if(timer_) {
+      Cancel(timer_);
+    }
+    timer_ = Post(millis, std::bind(&T::OnTimer,pT));
   }
 
   void KillTimer()
   {
-    timer_.KillTimer();
+    if(timer_) {
+      Cancel(timer_);
+    }
   }
 
   void SetRTTimer() {
+    T* pT = static_cast<T*>(this);
+    if(rttimer_) {
+      Cancel(rttimer_);
+    }
     auto expiry = ngtcp2_conn_get_expiry(conn_);
     auto now = timestamp();
-    if(expiry < now) {
-      rttimer_.SetTimer(0);
-    } else {
-      rttimer_.SetTimer((expiry - now) / NGTCP2_MILLISECONDS);
+    size_t millis = 0;
+    if(expiry > now) {
+      millis = (expiry - now) / NGTCP2_MILLISECONDS;
     }
+    rttimer_ = Post(millis, std::bind(&T::OnRTTimer,pT));
   }
 
   void KillRTTimer()
   {
-    rttimer_.KillTimer();
+    if(rttimer_) {
+      Cancel(rttimer_);
+    }
   }
 
   void reset_idle_timer() {
@@ -897,8 +895,8 @@ class QuicManagerBaseT : public SocketManagerT<THandlerSet> {
     }
 
     typename TSocket::Buffer buf(data, datalen, sa, salen);
-    ep->PostF(
-        [ep, buf = std::move(buf)]() mutable { ep->SendBuf(std::move(buf)); });
+    ep->Post(
+        [ep, buf]() { ep->SendBuf(buf); });
 
     return NETWORK_ERR_OK;
   }

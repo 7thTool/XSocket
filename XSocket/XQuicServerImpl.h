@@ -1142,7 +1142,7 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
   //解析数据包
   //virtual int OnRecvBuf(std::shared_ptr<TSocket> ep, const char *buf, int &nread,
   //                      const SOCKADDR *sa, int salen) {
-  void OnRecvBuf(std::shared_ptr<TSocket> ep, Buffer&& b)
+  void OnRecvBuf(std::shared_ptr<TSocket> ep, Buffer& b)
 	{
     T *pT = static_cast<T *>(this);
     const char *buf = b.data();
@@ -1258,7 +1258,7 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
           return;
         }
         AddSocket(h);
-        h->PostF([this,hd,h,ep,buf = std::move(b)]()mutable{
+        h->Post([this,hd,h,ep,buf = b](){
         switch (h->on_read(ep, buf.addr(), buf.addrlen(), (uint8_t *)buf.data(), buf.size())) {
           case 0:
             break;
@@ -1298,7 +1298,7 @@ class QuicServerManagerT : public QuicManagerBaseT<T, TSocket, THandlerSet> {
     }
 
     auto h = (*handler_it).second.get();
-    h->PostF([this,h,ep,buf = std::move(b)]()mutable{
+    h->Post([this,h,ep,buf = b](){
         if (ngtcp2_conn_is_in_closing_period(h->get_conn())) {
           // TODO do exponential backoff.
           switch (h->send_conn_close()) {
