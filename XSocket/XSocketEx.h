@@ -615,6 +615,7 @@ public:
 		// inline void SetDelay(size_t millis) {
 		// 	time = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
 		// }
+		//inline bool IsExecuted() { return !task; }
 
 		inline bool IsActive(size_t* millis = nullptr) const {
 			int64_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();

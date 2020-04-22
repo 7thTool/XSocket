@@ -659,6 +659,7 @@ public:
   {
     if(timer_) {
       Cancel(timer_);
+      timer_.reset();
     }
   }
 
@@ -680,6 +681,7 @@ public:
   {
     if(rttimer_) {
       Cancel(rttimer_);
+      rttimer_.reset();
     }
   }
 
