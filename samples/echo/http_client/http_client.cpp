@@ -58,7 +58,7 @@ const std::string http_trunk_part_2 = "6\r\n world\r\n"
 
 class client;
 
-typedef TaskSocketServiceT<SelectService> ClientService;
+typedef TaskServiceT<SelectService> ClientService;
 
 #ifdef USE_OPENSSL
 typedef TaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;

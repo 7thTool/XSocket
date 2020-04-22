@@ -15,6 +15,7 @@
 #include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 #include <random>
+#include <iostream>
 
 
 #ifdef _WIN32
@@ -179,6 +180,23 @@ public:
 
 protected:
 	//
+	bool OnInit() override
+	{
+		bool ret = Base::OnInit();
+		auto t = Post(3000, nullptr, []{
+			std::cout << "dealy test" << std::endl;
+		});
+		auto t2 = Post(5000, nullptr, [this,t]{
+			std::cout << "cancel test" << std::endl;
+			Cancel(t);
+		});
+		auto t3 = Post(2000, nullptr, [this,t2]{
+			Cancel(t2);
+			std::cout << "cancel cancel test" << std::endl;
+		});
+		return ret;
+	}
+
 	void OnMessage(std::shared_ptr<worker> http, std::shared_ptr<HttpRequest> req)
 	{
 		//std::async(//std::launch::async|std::launch::deferred,

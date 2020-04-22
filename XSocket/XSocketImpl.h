@@ -907,34 +907,40 @@ class TaskSocketT : public BasicSocketT<TBase>
 	typedef TaskSocketT<TBase> Base;
 public:
 	typedef typename Base::SocketSet TaskSocketSet;
+	typedef typename TaskSocketSet::TaskInfo TaskInfo;
 public:
 	
-	inline void Post(std::function<void()> && task)
+	inline std::shared_ptr<TaskInfo> Post(std::function<void()> && task)
 	{
-		PostDelay(0, std::move(task));
+		return Post(0, std::move(task));
 	}
 
-	inline void PostDelay(size_t delay, std::function<void()> && task)
+	inline std::shared_ptr<TaskInfo> Post(size_t delay, std::function<void()> && task)
 	{
-		Base::this_service()->PostDelay(delay, this, std::move(task));
+		return Base::this_service()->Post(delay, this, std::move(task));
 	}
 
-	template<class F, class... Args>
+	inline void Cancel(std::shared_ptr<TaskInfo> t)
+	{
+		Base::this_service()->Cancel(t);
+	}
+
+	/*template<class F, class... Args>
 	inline auto PostF(F&& f, Args&&... args)
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		return PostDelayF(0, std::forward<F>(f), std::forward<Args>(args)...);
+		return Post(0, std::forward<F>(f), std::forward<Args>(args)...);
 	}
 
 	template<class F, class... Args>
-	auto PostDelayF(size_t delay, F&& f, Args&&... args)
+	auto PostF(size_t delay, F&& f, Args&&... args)
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
 		std::future<return_type> res;
 		PostDelay(delay, Base::Service::Package(res, std::forward<F>(f), std::forward<Args>(args)...));
 		return res;
-	}
+	}*/
 
 	inline /*std::future<struct addrinfo*>*/void Resolve(const char *hostname, const char *service, const struct addrinfo *hints)
 	{

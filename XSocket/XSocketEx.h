@@ -699,7 +699,7 @@ public:
 	}
 
 	template<class F, class... Args>
-	inline std::shared_ptr<TaskInfo> Post(std::future<typename std::result_of<F(Args...)>::type>& res, size_t delay, void* ptr, F&& f, Args&&... args)
+	static inline std::function<void()> Package(std::future<typename std::result_of<F(Args...)>::type>& res, F&& f, Args&&... args)
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
 
@@ -709,23 +709,18 @@ public:
 
 		res = task->get_future();
 
-		return Post(delay, ptr, [task](){ (*task)(); });
-	}
-
-	template<class F, class... Args>
-	inline std::shared_ptr<TaskInfo> Post(size_t delay, void* ptr, F&& f, Args&&... args)
-	{
-		std::future<typename std::result_of<F(Args...)>::type> res;
-		return Post(res, delay, ptr, std::forward<F>(f), std::forward<Args>(args)...);
+		return [task](){ (*task)(); };
 	}
 
 	inline void Cancel(void* ptr) {
 		std::unique_lock<std::mutex> lock(mutex_);
-		for(int i = tasks_.size() - 1; i >= 0; i--)
+		for(auto it = tasks_.begin(); it != tasks_.end(); )
 		{
-			const TaskInfo& evt = tasks_[i];
-			if (evt.ptr == ptr) {
-				tasks_.erase(tasks_.begin() + i);
+			const auto& t = *it;
+			if (t->ptr == ptr) {
+				it = tasks_.erase(it);
+			} else {
+				++it;
 			}
 		}
 	}
@@ -743,11 +738,12 @@ protected:
 		size_t i = 0, j = tasks_.size();
 		for(; i < j; i++)
 		{
-			auto& t = tasks_.front();
+			auto it = tasks_.begin();
+			auto t = *it;
 			size_t delay = 0;
 			if (t->IsActive(&delay)) {
 				auto task(std::move(t->task));
-				tasks_.erase(tasks_.begin());
+				tasks_.erase(it);
 				lock.unlock();
 				task();
 				lock.lock();
