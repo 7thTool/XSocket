@@ -52,6 +52,8 @@
 #define MSG_NOSIGNAL 0
 #endif//MSG_NOSIGNAL
 
+typedef intptr_t ssize_t;
+
 #else //LINUX
 
 #include <sys/types.h> 
