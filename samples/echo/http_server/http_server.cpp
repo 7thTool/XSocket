@@ -60,11 +60,11 @@ class worker;
 
 class WorkService : public
 #ifdef USE_EPOLL
-TaskSocketServiceT<EPollService>
+TaskServiceT<EPollService>
 #elif defined(USE_IOCP)
-TaskSocketServiceT<CompletionPortService>
+TaskServiceT<CompletionPortService>
 #else
-TaskSocketServiceT<SelectService>
+TaskServiceT<SelectService>
 #endif//
 {
 public:
@@ -109,7 +109,7 @@ public:
 	inline void PostBuf(const std::string& Buf, int nFlags = 0)
 	{
 		this_service()->Post(this, std::function<void()>([this,Buf,nFlags](){ SendBuf(Buf, nFlags); }));
-		this_service()->PostDelay(3000, this, std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
+		this_service()->Post(3000, this, std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 		//std::future<int> fu;
 		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 	}
@@ -163,9 +163,9 @@ protected:
 #endif
 };
 
-class HttpHandler : public TaskSocketServiceT<ThreadCVService>
+class HttpHandler : public TaskServiceT<ThreadCVService>
 {
-	typedef TaskSocketServiceT<ThreadCVService> Base;
+	typedef TaskServiceT<ThreadCVService> Base;
 public:
 	HttpHandler():Base()
 	{

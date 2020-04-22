@@ -454,7 +454,6 @@ protected:
 	uint32_t notify_flag_:1; //通知处理标志,0表示没有通知任务，1表示有通知任务
 	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
 	std::chrono::steady_clock::time_point timer_time_; //最短定时任务时间,0表示没有定时任务，非0表示最短定时任务
-
 public:
 	static Service* service();
 
@@ -592,6 +591,193 @@ protected:
 };
 
 /*!
+ *	@brief TaskService 定义.
+ *
+ *	封装TaskService，实现简单事件服务
+ */
+template<class TBase/* = Service*/>
+class TaskServiceT : public TBase
+{
+	typedef TBase Base;
+public:
+	struct TaskInfo
+	{
+		TaskInfo(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0)
+		:task(std::move(_task)), ptr(_ptr), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {
+			//PRINTF("Task");
+		}
+		TaskInfo(const TaskInfo& o):task(o.task),ptr(o.ptr),time(o.time) {
+			//PRINTF("ltask");
+		}
+		TaskInfo(TaskInfo&& o):task(std::move(o.task)),ptr(o.ptr),time(o.time) {
+			//PRINTF("rtask");
+		}
+		~TaskInfo() {
+		}
+
+		TaskInfo& operator = (const TaskInfo& rhs) {
+			if(this == &rhs) return *this;
+			ptr = rhs.ptr;
+			task = rhs.task;
+			time = rhs.time;
+        	return *this;
+    	}
+		TaskInfo& operator = (TaskInfo&& rhs) {
+			if(this == &rhs) return *this;
+			ptr = rhs.ptr;
+			task = std::move(rhs.task);
+			time = rhs.time;
+        	return *this;
+    	}
+
+		inline bool operator<(const TaskInfo& o) const
+		{
+			return time < o.time;
+		}
+
+		inline bool IsActive(size_t* millis = nullptr) const {
+			int64_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();
+			if(diff <= 0) {
+				return true;
+			}
+			if(millis) {
+				*millis = diff;
+			}
+			return false;
+		}
+		void* ptr = nullptr;
+		std::function<void()> task;
+		std::chrono::steady_clock::time_point time;
+	};
+protected:
+	struct TaskInfoPtrLess
+	{
+		bool operator()(const std::shared_ptr<TaskInfo>& x, const std::shared_ptr<TaskInfo>& y) const
+		{
+			if(*x < *y) {
+				return true;
+			} else if(*y < *x) {
+				return false;
+			}
+			return x < y;
+		}
+	};
+	std::set<std::shared_ptr<TaskInfo>,TaskInfoPtrLess> tasks_;
+	std::mutex mutex_;
+public:
+	
+	inline std::shared_ptr<TaskInfo> Post(std::shared_ptr<TaskInfo> t)
+	{
+		if(!t) {
+			return t;
+		}
+		std::lock_guard<std::mutex> lock(mutex_);
+		tasks_.emplace(t);
+		size_t delay = 0;
+		if (t->IsActive(&delay)) {
+			Base::PostTimer(delay);
+		} else {
+			Base::PostNotify();	
+		}
+		return t;
+	}
+
+	inline void Cancel(std::shared_ptr<TaskInfo> t)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		tasks_.erase(t);
+	}
+
+	inline std::shared_ptr<TaskInfo> Post(size_t delay, void* ptr, std::function<void()> && task)
+	{
+		return Post(std::make_shared<TaskInfo>(std::move(task), ptr, delay));
+	}
+
+	inline std::shared_ptr<TaskInfo> Post(void* ptr, std::function<void()> && task)
+	{
+		return Post(0, ptr, std::move(task));
+	}
+
+	template<class F, class... Args>
+	inline std::shared_ptr<TaskInfo> Post(std::future<typename std::result_of<F(Args...)>::type>& res, size_t delay, void* ptr, F&& f, Args&&... args)
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+
+		res = task->get_future();
+
+		return Post(delay, ptr, [task](){ (*task)(); });
+	}
+
+	template<class F, class... Args>
+	inline std::shared_ptr<TaskInfo> Post(size_t delay, void* ptr, F&& f, Args&&... args)
+	{
+		std::future<typename std::result_of<F(Args...)>::type> res;
+		return Post(res, delay, ptr, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+
+	inline void Cancel(void* ptr) {
+		std::unique_lock<std::mutex> lock(mutex_);
+		for(int i = tasks_.size() - 1; i >= 0; i--)
+		{
+			const TaskInfo& evt = tasks_[i];
+			if (evt.ptr == ptr) {
+				tasks_.erase(tasks_.begin() + i);
+			}
+		}
+	}
+
+protected:
+	//
+	inline void RemoveSocket(SocketEx* sock_ptr) {
+		Cancel(sock_ptr);
+	}
+
+	void DoTask()
+	{
+		//从头开始消费
+		std::unique_lock<std::mutex> lock(mutex_);
+		size_t i = 0, j = tasks_.size();
+		for(; i < j; i++)
+		{
+			auto& t = tasks_.front();
+			size_t delay = 0;
+			if (t->IsActive(&delay)) {
+				auto task(std::move(t->task));
+				tasks_.erase(tasks_.begin());
+				lock.unlock();
+				task();
+				lock.lock();
+			} else {
+				Base::PostTimer(delay);
+				break;
+			}
+			if (tasks_.empty()) {
+				break;
+			}
+		}
+	}
+	
+	// virtual void OnIdle()
+	// {
+	// 	DoTask();
+	// }
+	
+	virtual void OnNotify()
+	{
+		DoTask();
+	}
+	
+	virtual void OnTimer()
+	{
+		DoTask();
+	}
+};
+
+/*!
  *	@brief CVServiceT 模板定义.
  *
  *	封装CVServiceT，线程池
@@ -681,57 +867,6 @@ protected:
 		}
 		Service::OnIdle();
 	}
-};
-
-/*!
- *	@brief TaskServiceT 模板定义.
- *
- *	封装TaskServiceT，线程池
- */
-template<class TBase = Service>
-class TaskServiceT : public TBase
-{
-	typedef TBase Base;
-public:
-
-	template<class F, class... Args>
-	auto Post(F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
-
-		Post([task](){ (*task)(); });
-
-		return res;
-	}
-
-protected:
-	//
-	virtual void OnNotify()
-	{
-		for(size_t i = 0, j = tasks_.size(); i < j; i++) 
-		{
-			std::function<void()> task;
-			{
-				std::unique_lock<std::mutex> lock(mutex_);
-				if (tasks_.empty())
-					return;
-				task = std::move(tasks_.front());
-				tasks_.pop();
-			}
-			task();
-		}
-	}
-
-protected:
-	std::queue<std::function<void()>> tasks_;
-	std::mutex mutex_;
 };
 
 /*!
