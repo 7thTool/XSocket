@@ -272,6 +272,19 @@ void test_right(int&& i)
 	//File: ..\samples\echo\http_server\http_server.cpp, Line: 189: test(int && i)
 }
 
+void test_rbtree()
+{
+	std::set<int> intset = { 1,2,3,4,5,6,7,8,9};
+	auto it = intset.find(3);
+	//intset.erase(it);//删除后it无效，会抛出异常
+	it = intset.erase(it); //指向下一个有效it
+	if(it != intset.end()) {
+		PRINTF("test_rbtree %d", *it);
+	} else {
+		PRINTF("test_rbtree end");
+	}
+}
+
 void test()
 {
 	std::string str("abc");
@@ -281,6 +294,7 @@ void test()
 	int i = 10000;
 	test_right(std::move(i));
 	test(-i);
+	test_rbtree();
 }
 
 #ifdef WIN32

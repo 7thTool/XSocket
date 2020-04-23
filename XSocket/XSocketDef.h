@@ -168,6 +168,14 @@ typedef struct timeval FAR *LPTIMEVAL;
 
 #define FD_IDLE			0x80
 
+#if __cpp_inline_variables >= 201606L
+#define INLINE_GLOBAL inline // C++17
+#elif defined(_MSC_VER)
+#define INLINE_GLOBAL __declspec(selectany) // Visual C++
+#else
+#define INLINE_GLOBAL __attribute__((weak)) // GCC/Clang
+#endif
+
 #ifndef byte
 typedef unsigned char byte;
 #endif//
