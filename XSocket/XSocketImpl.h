@@ -66,83 +66,6 @@ enum
 };
 
 /*!
- *	@brief BufferPool 模板定义.
- *
- *	封装BufferPool，内存池
- */
-template<class Buffer>
-class BufferPoolT
-{
-public:
-	typedef BufferPoolT<Buffer> BufferPool;
-	static BufferPool& Inst() {
-		static BufferPool _inst;
-		return _inst;
-	}
-	BufferPoolT()
-	{
-	}
-	BufferPoolT(size_t MaxBuffer)
-	{
-		Init(MaxBuffer);
-	}
-	~BufferPoolT()
-	{
-		
-	}
-
-	void Init(size_t MaxBuffer = 1024)
-	{
-		for(size_t i = 0; i < MaxBuffer; i++)
-		{
-			bufptrs_.emplace(std::unique_ptr<Buffer>(new Buffer()));
-		}
-	}
-
-	template<typename _Rep, typename _Period>
-	std::unique_ptr<Buffer>&& Alloc(const chrono::duration<_Rep, _Period>& __rtime)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		cv_.wait_for(lock,__rtime,[this] { return !bufptrs_.empty(); });
-		if (bufptrs_.empty())
-			return nullptr;
-		auto&& bufptr = std::move(bufptrs_.front());
-		bufptrs_.pop();
-		return bufptr;
-	}
-
-	bool Alloc(std::unique_ptr<Buffer>& bufptr)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		if(bufptrs_.empty()) {
-			cv_.wait(lock);
-			if(bufptrs_.empty()) {
-				return false;
-			}
-		}
-		bufptr = std::move(bufptrs_.front());
-		bufptrs_.pop();
-		return true;
-	}
-
-	void Free(std::unique_ptr<Buffer>&& bufptr)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		bufptrs_.emplace(std::move(bufptr));
-		cv_.notify_all();
-	}
-
-private:
-	std::queue<std::unique_ptr<Buffer>> bufptrs_;
-	std::mutex mutex_;
-	std::condition_variable cv_;
-};
-
-typedef BufferPoolT<std::string> BufferPool;
-typedef std::array<char,2048> UdpBuffer;
-typedef BufferPoolT<UdpBuffer> UdpBufferPool;
-
-/*!
  *	@brief TcpSocket 定义.
  *
  *	封装SocketEx，定义对称的发送/接收（写入/读取）网络架构
@@ -584,7 +507,7 @@ public:
 
 		inline bool valid() const { return bufptr_?true:false; }
 		inline bool reinit(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0) {
-			bufptr_ = std::make_shared<UdpBuffer>();
+			bufptr_ = UdpBufferPool::Inst().Alloc();
 #ifdef _DEBUG
 			PUDPBUF p = ptr();
 			char* str = data();

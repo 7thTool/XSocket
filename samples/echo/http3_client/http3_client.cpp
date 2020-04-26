@@ -251,7 +251,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	UdpBufferPool::Inst().Init();
+	UdpBufferPool::Inst().Init(1024);
 
 	Socket::Init();
 

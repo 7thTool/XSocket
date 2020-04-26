@@ -422,6 +422,95 @@ protected:
 };
 
 /*!
+ *	@brief ObjectPoolT 模板定义.
+ *
+ *	封装ObjectPoolT，对象池
+ */
+template<class _Ty>
+class ObjectPoolT
+{
+public:
+	static ObjectPoolT<_Ty>& Inst() {
+		static ObjectPoolT<_Ty> _inst;
+		return _inst;
+	}
+	
+	ObjectPoolT()
+	{
+	}
+	ObjectPoolT(size_t MaxObject)
+	{
+		Init(MaxObject);
+	}
+	~ObjectPoolT()
+	{
+		Release();
+	}
+
+	void Init(size_t MaxObject = 1024)
+	{
+		max_count_ = MaxObject;
+		for(size_t i = 0; i < max_count_; i++)
+		{
+			objptrs_.emplace(new _Ty());
+		}
+	}
+
+	void Release()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		while(!cv_.wait(lock,[this] { return max_count_ == objptrs_.size(); })) {
+			;
+		}
+		while(!objptrs_.empty()) {
+			auto objptr = objptrs_.front();
+			delete objptr;
+			objptrs_.pop();
+		}
+	}
+
+	template<typename _Rep, typename _Period>
+	std::shared_ptr<_Ty> Alloc(const std::chrono::duration<_Rep, _Period>& timeout)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if(!cv_.wait_for(lock,timeout,[this] { return !objptrs_.empty(); })) {
+			return nullptr;
+		}
+		auto objptr = std::shared_ptr<_Ty>(objptrs_.front(),[this](_Ty* objptr){ 
+			std::lock_guard<std::mutex> lock(mutex_);
+			objptrs_.emplace(objptr);
+			cv_.notify_all();
+		});
+		objptrs_.pop();
+		return objptr;
+	}
+
+	std::shared_ptr<_Ty> Alloc()
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		if(!cv_.wait(lock,[this] { return !objptrs_.empty(); })) {
+			return nullptr;
+		}
+		auto objptr = std::shared_ptr<_Ty>(objptrs_.front(),[this](_Ty* objptr){ 
+			std::lock_guard<std::mutex> lock(mutex_);
+			objptrs_.emplace(objptr);
+			cv_.notify_all();
+		});
+		objptrs_.pop();
+		return objptr;
+	}
+
+private:
+	size_t max_count_ = 0;
+	std::queue<_Ty*> objptrs_;
+	std::mutex mutex_;
+	std::condition_variable cv_;
+};
+typedef ObjectPoolT<std::string> BufferPool;
+typedef std::array<char,2048> UdpBuffer;
+typedef ObjectPoolT<UdpBuffer> UdpBufferPool;
+
+/*!
  *	@brief IDGenerator 定义.
  *
  *	封装IDGenerator，实现基本服务框架
