@@ -125,14 +125,11 @@ public:
 	static int GetLastError();
 	static void SetLastError(int nError);
 
-	static int GetErrorMessage(int nError, char* lpszMessage, int nMessageLen);
-	static int GetErrorMessage(int nError, wchar_t* lpszMessage, int nMessageLen);
+	static const char* GetErrorMessage(int nError);
 
 	static inline void PrintLastError(const char* prefix = "") {
 		int nErrorCode = GetLastError();
-		char szError[1024] = {0};
-		GetErrorMessage(nErrorCode,szError,1023);
-		PRINTF("%s Error=%d:%s", prefix, nErrorCode, szError);
+		PRINTF("%s Error=%d:%s", prefix, nErrorCode, GetErrorMessage(nErrorCode));
 	}
 protected:
 	SOCKET sock_;

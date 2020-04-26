@@ -479,7 +479,7 @@ public:
 		auto objptr = std::shared_ptr<_Ty>(objptrs_.front(),[this](_Ty* objptr){ 
 			std::lock_guard<std::mutex> lock(mutex_);
 			objptrs_.emplace(objptr);
-			cv_.notify_all();
+			cv_.notify_one();
 		});
 		objptrs_.pop();
 		return objptr;
@@ -494,7 +494,7 @@ public:
 		auto objptr = std::shared_ptr<_Ty>(objptrs_.front(),[this](_Ty* objptr){ 
 			std::lock_guard<std::mutex> lock(mutex_);
 			objptrs_.emplace(objptr);
-			cv_.notify_all();
+			cv_.notify_one();
 		});
 		objptrs_.pop();
 		return objptr;

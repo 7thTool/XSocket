@@ -25,6 +25,7 @@
 #else
 #include <netdb.h>
 #endif//
+#include <array>
 
 namespace XSocket {
 
@@ -707,9 +708,11 @@ void Socket::SetLastError(int nError)
 #endif//
 }
 
-int Socket::GetErrorMessage(int nError, char* lpszMessage, int nMessageLen)
+const char* Socket::GetErrorMessage(int nError)
 {
 #ifdef WIN32
+	thread_local std::array<char,1024> error;
+	int len = ([](int nError, char* lpszMessage, int nMessageLen){
 	DWORD dwError = nError;
 	if (lpszMessage == NULL || nMessageLen == 0) {
 		return SOCKET_ERROR;
@@ -730,40 +733,41 @@ int Socket::GetErrorMessage(int nError, char* lpszMessage, int nMessageLen)
 		::LocalFree(hLocal);
 		return nMessageLen;
 	}
+	})(nError,error.data(),error.size());
+	return error.data();
 #else
-	snprintf(lpszMessage, nMessageLen, "%s",strerror(nError));
+	return strerror(nError);
 #endif//
-	return SOCKET_ERROR;
 }
 
-int Socket::GetErrorMessage(int nError, wchar_t* lpszMessage, int nMessageLen)
-{
-#ifdef WIN32
-	DWORD dwError = nError;
-	if (lpszMessage == NULL || nMessageLen == 0) {
-		return SOCKET_ERROR;
-	}
-	HLOCAL hLocal = NULL;
-	if (!::FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_ALLOCATE_BUFFER,
-		NULL, dwError, LANG_NEUTRAL, (LPWSTR)&hLocal, 0, NULL)) {
-			HMODULE hDll = ::LoadLibraryExW(L"netmsg.dll", NULL, DONT_RESOLVE_DLL_REFERENCES);
-			if (hDll != NULL) {
-				::FormatMessageW(FORMAT_MESSAGE_FROM_HMODULE|FORMAT_MESSAGE_FROM_SYSTEM,
-					hDll, dwError, LANG_NEUTRAL, (LPWSTR)&hLocal, 0, NULL);
-				::FreeLibrary(hDll);
-			}
-	}
-	if (hLocal) {
-		wcsncpy(lpszMessage, (LPWSTR)::LocalLock(hLocal), nMessageLen-1);
-		lpszMessage[nMessageLen-1] = 0;
-		::LocalFree(hLocal);
-		return nMessageLen;
-	}
-#else
-	char* str = strerror(nError);
-	mbstowcs(lpszMessage, str, strlen(str)+1);
-#endif//
-	return SOCKET_ERROR;
-}
+// const wchar_t* Socket::GetErrorMessage(int nError, wchar_t* lpszMessage, int nMessageLen)
+// {
+// #ifdef WIN32
+// 	DWORD dwError = nError;
+// 	if (lpszMessage == NULL || nMessageLen == 0) {
+// 		return SOCKET_ERROR;
+// 	}
+// 	HLOCAL hLocal = NULL;
+// 	if (!::FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM|FORMAT_MESSAGE_ALLOCATE_BUFFER,
+// 		NULL, dwError, LANG_NEUTRAL, (LPWSTR)&hLocal, 0, NULL)) {
+// 			HMODULE hDll = ::LoadLibraryExW(L"netmsg.dll", NULL, DONT_RESOLVE_DLL_REFERENCES);
+// 			if (hDll != NULL) {
+// 				::FormatMessageW(FORMAT_MESSAGE_FROM_HMODULE|FORMAT_MESSAGE_FROM_SYSTEM,
+// 					hDll, dwError, LANG_NEUTRAL, (LPWSTR)&hLocal, 0, NULL);
+// 				::FreeLibrary(hDll);
+// 			}
+// 	}
+// 	if (hLocal) {
+// 		wcsncpy(lpszMessage, (LPWSTR)::LocalLock(hLocal), nMessageLen-1);
+// 		lpszMessage[nMessageLen-1] = 0;
+// 		::LocalFree(hLocal);
+// 		return nMessageLen;
+// 	}
+// #else
+// 	char* str = strerror(nError);
+// 	mbstowcs(lpszMessage, str, strlen(str)+1);
+// #endif//
+// 	return SOCKET_ERROR;
+// }
 
 }

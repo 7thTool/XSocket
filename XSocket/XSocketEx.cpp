@@ -386,9 +386,7 @@ void SocketEx::OnConnect(int nErrorCode)
 void SocketEx::OnClose(int nErrorCode)
 {
 	if(IsDebug()) {
-		char szError[1024] = {0};
-		GetErrorMessage(nErrorCode,szError,1023);
-		PRINTF("(%p %p %u)::OnClose:%d %s", Service::service(), this, (SOCKET)*this, nErrorCode, szError);
+		PRINTF("(%p %p %u)::OnClose:%d %s", Service::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
 	}
 }
 
