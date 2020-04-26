@@ -35,13 +35,36 @@ namespace XSocket {
 
 std::future<struct addrinfo*> SocketEx::AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints)
 {
-	return std::async(//std::launch::async|std::launch::deferred,
+	return std::async( //std::launch::async|std::launch::deferred,
 	//return ThreadPool::Inst().Post(
-		[hostname,service,hints] {
-		struct addrinfo* res = nullptr;
-		GetAddrInfo(hostname,service,hints,&res);
-		return res;
-	});
+		[hostname, service, hints] {
+			struct addrinfo *res = nullptr;
+			GetAddrInfo(hostname, service, hints, &res);
+			return res;
+		});
+#if 0
+		std::future_status status;
+		do {
+			status = result.wait_for(std::chrono::milliseconds(10));
+			switch (status)
+			{
+			case std::future_status::ready:
+				PRINTF("AsyncGetAddrInfo Ready...");
+				break;
+			case std::future_status::timeout:
+				PRINTF("AsyncGetAddrInfo Wait...");
+				break;
+			case std::future_status::deferred:
+				PRINTF("AsyncGetAddrInfo Deferred...");
+				break;
+			default:
+				break;
+			}
+
+		} while (status != std::future_status::ready);
+		struct addrinfo *ai_result = result.get();
+#endif //
+	   //return result;
 }
 
 SocketEx::SocketEx()

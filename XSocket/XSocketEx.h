@@ -23,6 +23,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <shared_mutex>
 #ifndef WIN32
 #include <condition_variable>
 #endif
@@ -32,7 +33,10 @@
 #include <algorithm>
 #include <vector>
 #include <queue>
+#include <map>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <chrono>
 #include <iomanip>
 #include <sstream>
@@ -418,6 +422,113 @@ protected:
 };
 
 /*!
+ *	@brief IDGenerator 定义.
+ *
+ *	封装IDGenerator，实现基本服务框架
+ */
+template<typename _Ty>
+class IDGenerator 
+{
+public:
+	static IDGenerator<_Ty>& Inst() {
+		static IDGenerator<_Ty> _inst;
+		return _inst;
+	}
+	IDGenerator():id_(0) {}
+	_Ty get() {
+		return ++id_;
+	}
+private:
+	std::atomic<_Ty> id_;
+};
+// template<typename _Ty>
+// INLINE_GLOBAL IDGenerator<_Ty>::id_;
+
+/*!
+ *	@brief IDManager 定义.
+ *
+ *	封装IDManager，实现ID管理，判断ID是否存在
+ */
+template<typename _Kty, typename _Ty>
+class IDManager
+{
+public:
+	static IDManager<_Kty, _Ty>& Inst() {
+		static IDManager<_Kty, _Ty> _inst;
+		return _inst;
+	}
+
+	inline void Add(const _Kty& id, const _Ty& val) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::shared_mutex> lock(mutex_);
+		map_id2vs_.emplace(id,val);
+	}
+	inline bool AddBidi(const _Kty& id, const _Ty& val) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::shared_mutex> lock(mutex_);
+		map_id2vs_.emplace(id,val);
+		map_v2id_.emplace(val,id);
+		return true;
+	}
+	inline void Remove(const _Kty& id) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::shared_mutex> lock(mutex_);
+		map_id2vs_.erase(id);
+	}
+	inline void RemoveBidi(const _Kty& id) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::shared_mutex> lock(mutex_);
+		auto pr = map_id2vs_.equal_range(id);
+		if(pr.first != map_id2vs_.end()) {
+			for(auto it = pr.first; it != pr.second; ++it)
+			{
+				map_v2id_.erase(it->second);
+			}
+			map_id2vs_.erase(pr.first,pr.second);
+		}
+	}
+	inline void RemoveByVal(const _Ty& val) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::shared_mutex> lock(mutex_);
+		auto it = map_v2id_.find(val);
+		if(it != map_v2id_.end()) {
+			auto itt = map_id2vs_.find(it->second);
+			while(itt != map_id2vs_.end()) {
+				if(itt->second == val) {
+					map_id2vs_.erase(itt);
+					break;
+				}
+				++itt;
+			}
+			map_v2id_.erase(it);
+		}
+	}
+	inline bool Find(const _Kty& id) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::shared_lock<std::shared_mutex> lock(mutex_);
+		auto it = map_id2vs_.find(id);
+		if(it != map_id2vs_.end()) {
+			return true;
+		}
+		return false;
+	}
+	inline bool FindByVal(const _Ty& val) {
+		//std::lock_guard<std::mutex> lock(mutex_);
+		std::shared_lock<std::shared_mutex> lock(mutex_);
+		auto it = map_v2id_.find(val);
+		if(it != map_v2id_.end()) {
+			return true;
+		}
+		return false;
+	}
+private:
+	//std::mutex mutex_;
+	std::shared_mutex mutex_;
+	std::multimap<_Kty,_Ty> map_id2vs_;
+	std::unordered_map<_Ty,_Kty> map_v2id_;
+};
+
+/*!
  *	@brief Service 定义.
  *
  *	封装Service，实现基本服务框架
@@ -469,10 +580,6 @@ public:
 		} 
 	}
 	
-	//inline void SelectSocket(SocketEx* sock_ptr, int evt) {}
-
-	inline void RemoveSocket(SocketEx* sock_ptr) {}
-
 protected:
 	//
 	inline size_t GetWaitingTimeOut()
@@ -568,6 +675,29 @@ protected:
 };
 
 /*!
+ *	@brief TaskID 定义.
+ *
+ *	封装TaskID，实现Task唯一表示，和比较大小
+ */
+struct TaskID
+{
+	TaskID(size_t _delay = 0) : id(IDGenerator<size_t>::Inst().get()), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {}
+
+	inline bool operator<(const TaskID &o) const
+	{
+		if (time < o.time) {
+			return true;
+		} else if (time > o.time) {
+			return false;
+		}
+		return id < o.id;
+	}
+
+	const size_t id;
+	const std::chrono::steady_clock::time_point time;
+};
+
+/*!
  *	@brief TaskService 定义.
  *
  *	封装TaskService，实现简单事件服务
@@ -577,151 +707,80 @@ class TaskServiceT : public TBase
 {
 	typedef TBase Base;
 public:
-	struct TaskInfo
+	inline void Post(const TaskID& key, std::function<void()> && task)
 	{
-		TaskInfo(std::function<void()> &&_task, void* _ptr = nullptr, size_t _delay = 0)
-		:task(std::move(_task)), ptr(_ptr), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {
-			//PRINTF("Task");
-		}
-		TaskInfo(const TaskInfo& o):task(o.task),ptr(o.ptr),time(o.time) {
-			//PRINTF("ltask");
-		}
-		TaskInfo(TaskInfo&& o):task(std::move(o.task)),ptr(o.ptr),time(o.time) {
-			//PRINTF("rtask");
-		}
-		~TaskInfo() {
-		}
-
-		TaskInfo& operator = (const TaskInfo& rhs) {
-			if(this == &rhs) return *this;
-			ptr = rhs.ptr;
-			task = rhs.task;
-			time = rhs.time;
-        	return *this;
-    	}
-		TaskInfo& operator = (TaskInfo&& rhs) {
-			if(this == &rhs) return *this;
-			ptr = rhs.ptr;
-			task = std::move(rhs.task);
-			time = rhs.time;
-        	return *this;
-    	}
-
-		inline bool operator<(const TaskInfo& o) const
-		{
-			return time < o.time;
-		}
-
-		// inline void SetDelay(size_t millis) {
-		// 	time = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
-		// }
-		//inline bool IsExecuted() { return !task; }
-
-		inline bool IsActive(ssize_t* millis = nullptr) const {
-			ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(time-std::chrono::steady_clock::now()).count();
-			if(millis) {
-				*millis = diff;
-			}
-			if(diff <= 0) {
-				return true;
-			}
-			return false;
-		}
-		void* ptr = nullptr;
-		std::function<void()> task;
-		std::chrono::steady_clock::time_point time;
-	};
-protected:
-	struct TaskInfoPtrLess
-	{
-		bool operator()(const std::shared_ptr<TaskInfo>& x, const std::shared_ptr<TaskInfo>& y) const
-		{
-			if(*x < *y) {
-				return true;
-			} else if(*y < *x) {
-				return false;
-			}
-			return x < y;
-		}
-	};
-	std::set<std::shared_ptr<TaskInfo>,TaskInfoPtrLess> tasks_;
-	std::mutex mutex_;
-public:
-	
-	inline std::shared_ptr<TaskInfo> Post(const std::shared_ptr<TaskInfo>& t)
-	{
-		if(!t) {
-			return t;
-		}
 		std::lock_guard<std::mutex> lock(mutex_);
-		tasks_.emplace(t);
+		auto it = tasks_.emplace(key,std::move(task));
+		ASSERT(it.second);
 #ifdef _DEBUG
 		printf("task delay queue:");
-		for(auto& tt : tasks_) {
+		for(auto& pr : tasks_) {
 			ssize_t delay = 0;
-			tt->IsActive(&delay);
+			IsActive(pr.first,&delay);
 			printf("%d ", (int)delay);
 		}
 		printf("\n");
 #endif//
 		ssize_t delay = 0;
-		if (!t->IsActive(&delay)) {
+		if (IsActive(it.first->first,&delay)) {
 			Base::PostTimer(delay);
 		} else {
 			Base::PostNotify();	
 		}
-		return t;
 	}
 
-	inline void Cancel(const std::shared_ptr<TaskInfo>& t)
+	inline void Post(std::function<void()> && task)
 	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		tasks_.erase(t);
-	}
-
-	inline std::shared_ptr<TaskInfo> Post(size_t delay, void* ptr, std::function<void()> && task)
-	{
-		return Post(std::make_shared<TaskInfo>(std::move(task), ptr, delay));
-	}
-
-	inline std::shared_ptr<TaskInfo> Post(void* ptr, std::function<void()> && task)
-	{
-		return Post(0, ptr, std::move(task));
+		TaskID key;
+		Post(key, std::move(task));
 	}
 
 	template<class F, class... Args>
-	static inline std::function<void()> Package(std::future<typename std::result_of<F(Args...)>::type>& res, F&& f, Args&&... args)
+	auto Send(const TaskID& key, F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
 
 		auto task = std::make_shared< std::packaged_task<return_type()> >(
 				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
 			);
-
-		res = task->get_future();
-
-		return [task](){ (*task)(); };
+			
+		std::future<return_type> res = task->get_future();
+		{
+			Post(key, [task](){ (*task)(); });
+		}
+		return res;
 	}
 
-	inline void Cancel(void* ptr) {
+	template<class F, class... Args>
+	inline auto Send(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		TaskID key;
+		return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+
+	inline void Cancel(const TaskID& key)
+	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		for(auto it = tasks_.begin(); it != tasks_.end(); )
-		{
-			const auto& t = *it;
-			if (t->ptr == ptr) {
-				it = tasks_.erase(it);
-			} else {
-				++it;
-			}
-		}
+		tasks_.erase(key);
+	}
+
+	inline void AsyncGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(const struct addrinfo*)>&& cb)
+	{
+		//auto result = std::async(//std::launch::async|std::launch::deferred,
+		return ThreadPool::Inst().Post(
+			[this,hostname,service,hints,cb] {
+			struct addrinfo* res = nullptr;
+			GetAddrInfo(hostname,service,hints,&res);
+			Post([res,cb](){
+				cb(res);
+			});
+		});
 	}
 
 protected:
 	//
-	inline void RemoveSocket(SocketEx* sock_ptr) {
-		Cancel(sock_ptr);
-	}
-
 	void DoTask()
 	{
 		//从头开始消费
@@ -730,10 +789,9 @@ protected:
 		for(; i < j; i++)
 		{
 			auto it = tasks_.begin();
-			auto t = *it;
 			ssize_t delay = 0;
-			if (t->IsActive(&delay)) {
-				auto task(std::move(t->task));
+			if (IsActive(it->first,&delay)) {
+				auto task(std::move(it->second));
 				tasks_.erase(it);
 				lock.unlock();
 				task();
@@ -762,6 +820,17 @@ protected:
 	{
 		DoTask();
 	}
+
+private:
+	inline bool IsActive(const TaskID& t, ssize_t* delay) {
+		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
+		if(delay) {
+			*delay = diff;
+		}
+		return diff <= 0;
+	}
+	std::map<TaskID,std::function<void()>> tasks_;
+	std::mutex mutex_;
 };
 
 /*!
@@ -1046,16 +1115,30 @@ public:
 		for (size_t i = 0; i < threads; ++i) {
 			workers_.emplace_back(
 				[this] {
+					std::chrono::milliseconds timeout(3000);
 					for (;;)
 					{
 						std::function<void()> task;
 						{
 							std::unique_lock<std::mutex> lock(mutex_);
-							cv_.wait(lock,[this] { return stop_flag_ || !tasks_.empty(); });
-							if (stop_flag_ && tasks_.empty())
-								return;
-							task = std::move(tasks_.front());
-							tasks_.pop();
+							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !tasks_.empty(); })) {
+								continue;
+							}
+							if (stop_flag_)
+								break;
+
+							auto it = tasks_.begin();
+							std::chrono::steady_clock::time_point tp_now = std::chrono::steady_clock::now();
+							if(it->first.time > tp_now) {
+								timeout = std::chrono::duration_cast<std::chrono::milliseconds>(it->first.time - tp_now);
+								continue;
+							} else {
+								timeout = std::chrono::milliseconds(3000);
+							}
+							task = std::move(it->second);
+							tasks_.erase(it);
+							//task = std::move(tasks_.front());
+							//tasks_.pop();
 						}
 						task();
 					}
@@ -1076,8 +1159,30 @@ public:
 		}
 	}
 
+	void Post(const TaskID& key, std::function<void()> && task)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		auto it = tasks_.emplace(key,std::move(task));
+		ASSERT(it.second);
+#ifdef _DEBUG
+		printf("thread pool task delay queue:");
+		for(auto& pr : tasks_) {
+			ssize_t delay = std::chrono::duration_cast<std::chrono::milliseconds>(pr.first.time-std::chrono::steady_clock::now()).count();
+			printf("%d ", (int)delay);
+		}
+		printf("\n");
+#endif//
+		cv_.notify_one();
+	}
+
+	inline void Post(std::function<void()> && task)
+	{
+		TaskID key;
+		Post(key, std::move(task));
+	}
+
 	template<class F, class... Args>
-	auto Post(F&& f, Args&&... args) 
+	auto Send(const TaskID& key, F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
@@ -1088,18 +1193,30 @@ public:
 			
 		std::future<return_type> res = task->get_future();
 		{
-			std::unique_lock<std::mutex> lock(mutex_);
-
-			tasks_.emplace([task](){ (*task)(); });
+			Post(key, [task](){ (*task)(); });
 		}
-		cv_.notify_one();
 		return res;
+	}
+
+	template<class F, class... Args>
+	inline auto Send(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		TaskID key;
+		return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+
+	inline void Cancel(const TaskID& t)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		tasks_.erase(t);
 	}
 
 private:
 	std::atomic<bool> stop_flag_;
 	std::vector<std::thread> workers_;
-	std::queue<std::function<void()>> tasks_;
+	std::map<TaskID,std::function<void()>> tasks_;
+	//std::queue<std::function<void()>> tasks_;
 	std::mutex mutex_;
 	std::condition_variable cv_;
 };
@@ -1284,7 +1401,7 @@ class HostSocketExT : public TBase
 {
 	typedef TBase Base;
 protected:
-	addrinfo* ai_current_ = nullptr;
+	struct addrinfo* ai_current_ = nullptr;
 public:
 	HostSocketExT()
 	{
@@ -1296,15 +1413,22 @@ public:
 
 	inline SOCKET Open(const char* lpszHostAddress, int nSockAf = AF_UNSPEC, int nSockType = SOCK_STREAM)
 	{
-		struct addrinfo ai = {0};
-		ai.ai_family = nSockAf;
-		ai.ai_socktype = nSockType;
-		ai.ai_flags = AI_PASSIVE;
-		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &ai, &ai_current_);
+		struct addrinfo hints = {0};
+		hints.ai_family = nSockAf;
+		hints.ai_socktype = nSockType;
+		hints.ai_flags = AI_PASSIVE;
+		struct addrinfo* result = nullptr;
+		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &hints, &result);
 		if(ret) {
 			PRINTLASTERROR("GetAddrInfo");
 			return INVALID_SOCKET;
 		}
+		return Open(result);
+	}
+
+	inline SOCKET Open(const struct addrinfo* result)
+	{
+		ai_current_ = result;
 		if(ai_current_) {
 #ifdef _DEBUG
 			for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
@@ -1484,7 +1608,6 @@ public:
 						sock_count_--;
 						sock_ptr = t_sock_ptr;
 						sock_ptr->DetachService(this);
-						Service::RemoveSocket(sock_ptr);
 						return i;
 						break;
 					}
@@ -1505,7 +1628,6 @@ protected:
 				sock_count_--;
 				lock.unlock();
 				sock_ptr->DetachService(this);
-				Service::RemoveSocket(sock_ptr.get());
 				return i;
 			} else {
 				return i;
@@ -1528,7 +1650,6 @@ protected:
 					}
 				}
 				sock_ptr->DetachService(this);
-				Service::RemoveSocket(sock_ptr.get());
 			}
 		}
 		sock_count_ = 0;
@@ -1922,17 +2043,6 @@ public:
 	{
     	
 	}
-
-	// inline void Select(int lEvent) {  
-	// 	int lAsyncEvent = 0;
-	// 	if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
-	// 		lAsyncEvent |= FD_IDLE;
-	// 	}
-	// 	Base::Select(lEvent);
-	// 	if(lAsyncEvent) {
-	// 		service()->SelectSocket(this,lAsyncEvent);
-	// 	}
-	// }
 };
 
 /*!

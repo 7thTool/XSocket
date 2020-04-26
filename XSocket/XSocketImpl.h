@@ -928,78 +928,33 @@ public:
 	typedef typename TaskSocketSet::TaskInfo TaskInfo;
 public:
 	
-	inline std::shared_ptr<TaskInfo> Post(std::function<void()> && task)
+	inline void Post(const TaskID& key, std::function<void()> && task)
 	{
-		return Post(0, std::move(task));
+		Base::this_service()->Post(key, std::move(task));
 	}
 
-	inline std::shared_ptr<TaskInfo> Post(size_t delay, std::function<void()> && task)
+	inline void Post(std::function<void()> && task)
 	{
-		return Base::this_service()->Post(delay, this, std::move(task));
-	}
-
-	inline void Cancel(const std::shared_ptr<TaskInfo>& t)
-	{
-		Base::this_service()->Cancel(t);
-	}
-
-	/*template<class F, class... Args>
-	inline auto PostF(F&& f, Args&&... args)
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		return Post(0, std::forward<F>(f), std::forward<Args>(args)...);
+		Base::this_service()->Post(std::move(task));
 	}
 
 	template<class F, class... Args>
-	auto PostF(size_t delay, F&& f, Args&&... args)
+	auto Send(const TaskID& key, F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		using return_type = typename std::result_of<F(Args...)>::type;
-		std::future<return_type> res;
-		PostDelay(delay, Base::Service::Package(res, std::forward<F>(f), std::forward<Args>(args)...));
-		return res;
-	}*/
-
-	inline /*std::future<struct addrinfo*>*/void Resolve(const char *hostname, const char *service, const struct addrinfo *hints)
+		return Base::this_service()->PostF(key, std::forward<F>(f), std::forward<Args>(args)...);
+	}
+	
+	template<class F, class... Args>
+	inline auto Send(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		auto result = std::async(//std::launch::async|std::launch::deferred,
-		//return ThreadPool::Inst().Post(
-			[this,hostname,service,hints] {
-			struct addrinfo* res = nullptr;
-			GetAddrInfo(hostname,service,hints,&res);
-			this_service()->Post(std::bind(this, &OnResolve, res));
-			return res;
-		});
-	#if 0
-		std::future_status status;
-		do {
-			status = result.wait_for(std::chrono::milliseconds(10));
-			switch (status)
-			{
-			case std::future_status::ready:
-				PRINTF("AsyncGetAddrInfo Ready...");
-				break;
-			case std::future_status::timeout:
-				PRINTF("AsyncGetAddrInfo Wait...");
-				break;
-			case std::future_status::deferred:
-				PRINTF("AsyncGetAddrInfo Deferred...");
-				break;
-			default:
-				break;
-			}
-
-		} while (status != std::future_status::ready);
-		struct addrinfo *ai_result = result.get();
-	#endif//
-		//return result;
+		return Base::this_service()->PostF(std::forward<F>(f), std::forward<Args>(args)...);
 	}
 
-protected:
-	//
-	virtual void OnResolve(struct addrinfo *res)
+	inline void Cancel(const TaskID& key)
 	{
-
+		Base::this_service()->Cancel(key);
 	}
 };
 

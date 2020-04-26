@@ -1223,7 +1223,7 @@ namespace XSocket {
 	};
 
 	template<class T, class TBase>
-	class HttpReqSocketImpl : public SocketExImpl<T,TBase>
+	class HttpReqSocketImpl : public SocketExImpl<T,TBase>, public std::enable_shared_from_this<T>
 	{
 	public:
 		typedef HttpReqSocketImpl<T, TBase> This;
@@ -1250,7 +1250,7 @@ namespace XSocket {
 
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			this_service()->Post(this, std::bind(&This::SendHttpRequest, this, req));
+			this_service()->Post(this, std::bind(&This::SendHttpRequest, shared_from_this(), req));
 		}
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1569,12 +1569,12 @@ namespace XSocket {
 
 		inline void PostHttpResponse(std::shared_ptr<HttpResponse> rsp)
 		{
-			this_service()->Post(this, std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, this, rsp));
+			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, shared_from_this(), rsp));
 		}
 
 		inline void PostHttpChunk(std::shared_ptr<std::string> rsp)
 		{
-			this_service()->Post(this, std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, this, rsp));
+			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, shared_from_this(), rsp));
 		}
 
 		inline void SendHttpResponse(std::shared_ptr<HttpResponse> rsp)

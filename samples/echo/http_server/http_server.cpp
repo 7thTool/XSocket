@@ -109,15 +109,15 @@ public:
 	//
 	inline void PostBuf(const std::string& Buf, int nFlags = 0)
 	{
-		this_service()->Post(this, std::function<void()>([this,Buf,nFlags](){ SendBuf(Buf, nFlags); }));
-		this_service()->Post(3000, this, std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
+		this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf,nFlags](){ spWorker->SendBuf(Buf, nFlags); }));
+		this_service()->Post(3000, std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 		//std::future<int> fu;
 		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
 	}
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
 		auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
-		this_service()->Post(this, std::function<void()>([this,buf,nFlags](){ SendBuf(buf->c_str(), buf->size(), nFlags); }));
+		this_service()->Post(std::function<void()>([this,buf,nFlags](){ SendBuf(buf->c_str(), buf->size(), nFlags); }));
 		/*以下是bind，package、future使用方法
 		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags);
 		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags));
@@ -183,14 +183,17 @@ protected:
 	bool OnInit() override
 	{
 		bool ret = Base::OnInit();
-		auto t = Post(3000, nullptr, []{
+		TaskID t(3000);
+		Post(t, []{
 			std::cout << "dealy test" << std::endl;
 		});
-		auto t2 = Post(5000, nullptr, [this,t]{
+		TaskID t2(5000);
+		Post(t2, [this,t]{
 			std::cout << "cancel test" << std::endl;
 			Cancel(t);
 		});
-		auto t3 = Post(2000, nullptr, [this,t2]{
+		TaskID t3(2000);
+		Post(t3, [this,t2]{
 			Cancel(t2);
 			std::cout << "cancel cancel test" << std::endl;
 		});
@@ -295,6 +298,9 @@ void test()
 	test_right(std::move(i));
 	test(-i);
 	test_rbtree();
+	ThreadPool::Inst().Post([]{
+		PRINTF("ThreadPool test");
+	});
 }
 
 #ifdef WIN32
