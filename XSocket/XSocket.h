@@ -126,11 +126,7 @@ public:
 	static void SetLastError(int nError);
 
 	static const char* GetErrorMessage(int nError);
-
-	static inline void PrintLastError(const char* prefix = "") {
-		int nErrorCode = GetLastError();
-		PRINTF("%s Error=%d:%s", prefix, nErrorCode, GetErrorMessage(nErrorCode));
-	}
+	
 protected:
 	SOCKET sock_;
 public:

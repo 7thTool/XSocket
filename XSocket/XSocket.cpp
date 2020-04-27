@@ -341,7 +341,8 @@ SOCKET Socket::Create(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM
 #if 1
 	SOCKET Sock = socket(nSockAf, nSockType, nSockProtocol);
 	if(!IsSocket(Sock)) {
-		PrintLastError("socket ");
+			int nErrorCode = GetLastError();
+			PRINTF("%s Error=%d:%s", "socket", nErrorCode, GetErrorMessage(nErrorCode));
 	}
 	return Sock;
 #else

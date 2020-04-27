@@ -1509,7 +1509,8 @@ public:
 		struct addrinfo* result = nullptr;
 		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &hints, &result);
 		if(ret) {
-			PRINTLASTERROR("GetAddrInfo");
+			int nErrorCode = GetLastError();
+			PRINTF("%s Error=%d:%s", "GetAddrInfo", nErrorCode, GetErrorMessage(nErrorCode));
 			return INVALID_SOCKET;
 		}
 		return Open(result);
