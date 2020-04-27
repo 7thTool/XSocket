@@ -61,9 +61,9 @@ class client;
 typedef TaskServiceT<SelectService> ClientService;
 
 #ifdef USE_OPENSSL
-typedef TaskSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
+typedef BasicSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
 #else 
-typedef TaskSocketT<SimpleSocketT<ConnectSocketT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
+typedef BasicSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
 #endif
 class client
 #ifdef USE_OPENSSL
@@ -103,13 +103,11 @@ protected:
 		if(!Base::OnInit()) {
 			return false;
 		}
-		Open();
-		SOCKADDR_IN stAddr = {0};
-		stAddr.sin_family = AF_INET;
-		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = htons((u_short)port_);
-		Connect((SOCKADDR*)&stAddr, sizeof(stAddr));
-
+		struct addrinfo hints = {0};
+		hints.ai_family = AF_INET;
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_flags = AI_PASSIVE;
+		PostGetAddrInfo(addr_,"",hints,std::bind(&client::OnResolve,shared_from_this(),std::placeholders::_1));
 		return true;
 	}
 
@@ -120,6 +118,17 @@ protected:
 			Close();
 		}
 		Base::OnTerm();
+	}
+
+	void OnResolve(struct addrinfo* result)
+	{
+		if(IsStopFlag()) {
+			return;
+		}
+		if(INVALID_SOCKET == Open(result)) {
+			return;
+		}
+		Connect(port_);
 	}
 
 protected:
@@ -188,7 +197,7 @@ protected:
 class manager : public ThreadService
 {
 protected:
-	client *c;
+	std::vector<std::shared_ptr<client>> c;
 public:
 	manager(int nMaxSocketCount)
 	{
@@ -208,16 +217,17 @@ public:
 		PRINTF("%s",strgmt.c_str());
 		PRINTF("%s",HttpMessage::localtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT").c_str()); //8时区
 		PRINTF("%s",HttpMessage::httptime2str(HttpMessage::str2httptime(strgmt.c_str())).c_str());
-		c = new client[DEFAULT_CLIENT_COUNT];
+		c.resize(DEFAULT_CLIENT_COUNT);
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
+			c[i] = std::make_shared<client>();
 // 			c[i].Start("www.baidu.com",
 // #ifdef USE_OPENSSL
 // 			443);
 // #else
 // 			80);
 // #endif
-			c[i].Start(DEFAULT_IP,DEFAULT_PORT);
+			c[i]->Start(DEFAULT_IP,DEFAULT_PORT);
 #ifndef USE_WEBSOCKET
 			std::shared_ptr<client::RequestInfo> req_info = std::make_shared<client::RequestInfo>();
 			req_info->req_.set_method(HTTP_GET);
@@ -227,7 +237,7 @@ public:
 				std::string buf;
 				PRINTF("%s",rsp->to_string(buf).c_str());
 			};
-			c->PostHttpRequest(req_info);
+			c[i]->PostHttpRequest(req_info);
 #endif
 		}
 		return true;
@@ -237,9 +247,9 @@ public:
 	{
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
-			c[i].Stop();
+			c[i]->Stop();
 		}
-		delete []c;
+		c.clear();
 	}
 };
 
@@ -256,7 +266,11 @@ int main()
 	
 	manager m(DEFAULT_CLIENT_COUNT);
 	m.Start();
+
 	getchar();
+
+	ThreadPool::Inst().Stop();
+	
 	m.Stop();
 
 	client::Term();

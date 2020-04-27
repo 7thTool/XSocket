@@ -848,7 +848,6 @@ class TaskSocketT : public BasicSocketT<TBase>
 	typedef BasicSocketT<TBase> Base;
 public:
 	typedef typename Base::SocketSet TaskSocketSet;
-	typedef typename TaskSocketSet::TaskInfo TaskInfo;
 public:
 	
 	inline void Post(const TaskID& key, std::function<void()> && task)
@@ -878,6 +877,11 @@ public:
 	inline void Cancel(const TaskID& key)
 	{
 		Base::this_service()->Cancel(key);
+	}
+
+	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
+	{
+		Base::this_service()->PostGetAddrInfo(hostname, service, hints, std::move(cb));
 	}
 };
 

@@ -1250,7 +1250,7 @@ namespace XSocket {
 
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			this_service()->Post(this, std::bind(&This::SendHttpRequest, shared_from_this(), req));
+			this_service()->Post(std::bind(&This::SendHttpRequest, shared_from_this(), req));
 		}
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1338,9 +1338,7 @@ namespace XSocket {
 #endif
 				}
 				rsp->set_code(nErrorCode);
-				char szErrorMessage[1024] = {0};
-				GetErrorMessage(nErrorCode, szErrorMessage, 1024);
-				rsp->set_reason(szErrorMessage);
+				rsp->set_reason(GetErrorMessage(nErrorCode));
 				for(size_t i = 0; i < req_list_.size(); i++)
 				{
 					auto req_info = req_list_[i];

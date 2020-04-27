@@ -855,14 +855,14 @@ public:
 		tasks_.erase(key);
 	}
 
-	inline void AsyncGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(const struct addrinfo*)>&& cb)
+	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
 	{
 		//auto result = std::async(//std::launch::async|std::launch::deferred,
 		return ThreadPool::Inst().Post(
-			[this,hostname,service,hints,cb] {
+			[this,hostname,service,hints,cb = std::move(cb)]() mutable {
 			struct addrinfo* res = nullptr;
-			GetAddrInfo(hostname,service,hints,&res);
-			Post([res,cb](){
+			GetAddrInfo(hostname.c_str(),service.c_str(),&hints,&res);
+			Post([res,cb = std::move(cb)]() mutable {
 				cb(res);
 			});
 		});
@@ -1515,7 +1515,7 @@ public:
 		return Open(result);
 	}
 
-	inline SOCKET Open(const struct addrinfo* result)
+	inline SOCKET Open(struct addrinfo* result)
 	{
 		ai_current_ = result;
 		if(ai_current_) {
