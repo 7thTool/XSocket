@@ -40,6 +40,9 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#if USE_BOOST
+#include <boost/lockfree/queue.hpp>
+#endif
 #include "XSocket.h"
 
 namespace XSocket {
@@ -438,28 +441,42 @@ public:
 	ObjectPoolT()
 	{
 	}
-	ObjectPoolT(size_t MaxObject)
+	ObjectPoolT(size_t count, size_t max_count = 0)
 	{
-		Init(MaxObject);
+		Init(count, max_count);
 	}
 	~ObjectPoolT()
 	{
 		Release();
 	}
 
-	void Init(size_t MaxObject = 1024)
+	void Init(size_t count, size_t max_count = 0)
 	{
-		max_count_ = MaxObject;
-		for(size_t i = 0; i < max_count_; i++)
+		count_ = count;
+		max_count_ = max_count;
+		for(size_t i = 0; i < count_; i++)
 		{
+#if USE_BOOST
+			objptrs_.push(new _Ty());
+#else
 			objptrs_.emplace(new _Ty());
+#endif
 		}
 	}
 
 	void Release()
 	{
+#if USE_BOOST
+		while(count_ != objptrs_.size())) {
+			std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+		}
+		auto objptr = nullptr;
+		while(!objptrs_.pop(objptr)) {
+			delete objptr;
+		}
+#else
 		std::lock_guard<std::mutex> lock(mutex_);
-		while(!cv_.wait(lock,[this] { return max_count_ == objptrs_.size(); })) {
+		while(!cv_.wait(lock,[this] { return count_ == objptrs_.size(); })) {
 			;
 		}
 		while(!objptrs_.empty()) {
@@ -467,9 +484,10 @@ public:
 			delete objptr;
 			objptrs_.pop();
 		}
+#endif
 	}
 
-	template<typename _Rep, typename _Period>
+	/*template<typename _Rep, typename _Period>
 	std::shared_ptr<_Ty> Alloc(const std::chrono::duration<_Rep, _Period>& timeout)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
@@ -483,28 +501,59 @@ public:
 		});
 		objptrs_.pop();
 		return objptr;
-	}
+	}*/
 
 	std::shared_ptr<_Ty> Alloc()
 	{
+		_Ty* objptr = nullptr;
+#if USE_BOOST
+		if(!objptrs_.pop(objptr)) {
+			if(max_count_ && count_ > max_count_) {
+				do {
+					std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
+				} while(!objptrs_.pop(objptr));
+			} else {
+				objptr = new _Ty();
+				count_++;
+			}
+		} 
+		auto sp_objptr = std::shared_ptr<_Ty>(objptr,[this](_Ty* objptr) { 
+			objptrs_.push(objptr);
+		});
+		return sp_objptr;
+#else
 		std::lock_guard<std::mutex> lock(mutex_);
-		if(!cv_.wait(lock,[this] { return !objptrs_.empty(); })) {
-			return nullptr;
+		if(objptrs_.empty()) {
+			if(max_count_ && count_ > max_count_) {
+				if(!cv_.wait(lock,[this] { return !objptrs_.empty(); })) {
+					return nullptr;
+				}
+			} else {
+				objptr = new _Ty();
+				count_++;
+			}
 		}
-		auto objptr = std::shared_ptr<_Ty>(objptrs_.front(),[this](_Ty* objptr){ 
+		objptr = objptrs_.front();
+		objptrs_.pop();
+		auto sp_objptr = std::shared_ptr<_Ty>(objptr,[this](_Ty* objptr) { 
 			std::lock_guard<std::mutex> lock(mutex_);
 			objptrs_.emplace(objptr);
 			cv_.notify_one();
 		});
-		objptrs_.pop();
-		return objptr;
+		return sp_objptr;
+#endif
 	}
 
 private:
-	size_t max_count_ = 0;
+	size_t max_count_ = 0; //0表示不限制
+	std::atomic<size_t> count_ = 0;
+#if USE_BOOST
+	boost::lockfree::queue<_Ty > objptrs_;
+#else
 	std::queue<_Ty*> objptrs_;
 	std::mutex mutex_;
 	std::condition_variable cv_;
+#endif
 };
 typedef ObjectPoolT<std::string> BufferPool;
 typedef std::array<char,2048> UdpBuffer;

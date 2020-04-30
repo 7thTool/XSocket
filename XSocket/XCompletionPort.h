@@ -468,9 +468,9 @@ protected:
 public:
 	CompletionPortServiceT()
 	{
-		SYSTEM_INFO SystemInfo = {0};
-		GetSystemInfo(&SystemInfo);
-		hIocp_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, SystemInfo.dwNumberOfProcessors);
+		//SYSTEM_INFO SystemInfo = {0};
+		//GetSystemInfo(&SystemInfo);
+		hIocp_ = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 1/*SystemInfo.dwNumberOfProcessors*/);
 		ASSERT(hIocp_!=INVALID_HANDLE_VALUE);
 	}
 
