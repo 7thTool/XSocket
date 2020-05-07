@@ -84,7 +84,7 @@ SocketEx::SocketEx()
 
 SocketEx::~SocketEx()
 {
-	ASSERT(!IsSocket());
+	//ASSERT(!IsSocket());
 #ifdef _DEBUG
 	PRINTF("delete Socket %p %u", this, sock_);
 	role_ = SOCKET_ROLE_NONE;

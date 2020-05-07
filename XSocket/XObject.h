@@ -78,6 +78,46 @@ enum
 	SOCKET_ROLE_USER4 = 0x10, //用户自定义标志4
 };
 
+/*!
+ *	@brief 可伸缩的IO对象封装.
+ *
+ *	IOObject定义了可伸缩IO对象的接口和基本实现
+ */
+class XSOCKET_API IOObject
+{
+public:
+	IOObject() {}
+	virtual ~IOObject() {}
+
+	inline bool IsOpen() { return false; }
+	//int ShutDown(int nHow = Both);
+	//int Close();
+
+	inline void SetFlags(int flags) { flags_ = flags; }
+	inline int Flags() { return flags_; }
+	inline bool IsDebug() { return flags_ & SOCKET_FLAG_DEBUG; }
+
+	inline void AttachService(Service* svr) { OnAttachService(svr); }
+	inline void DetachService(Service* svr) { OnDetachService(svr); }
+
+protected:
+	/*!
+	 *	@brief 通知套接字绑定/解除绑定服务对象.
+	 *
+	 *	收到这个回调，说明Socket加入/离开了服务管理，接下来开始进入/退出Select事件通知处理了
+	 *	@param pSvr 服务对象指针
+	 */
+	virtual void OnAttachService(Service* pSvr) {}
+	virtual void OnDetachService(Service* pSvr) {}
+
+protected:
+	uint8_t role_:3;
+	uint8_t flags_:5;
+
+private:
+	IOObject(const IOObject& o) {};
+	void operator=(const IOObject& o) {};
+};
 
 /*!
  *	@brief 可伸缩的Socket封装.
@@ -97,7 +137,7 @@ public:
 	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
 	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
 	SOCKET Detach();
-	inline bool IsOpen() { return IsSocket(); }
+
 	int ShutDown(int nHow = Both);
 	int Close();
 
@@ -1665,6 +1705,119 @@ public:
 //DECLARE_HANDLE(HSOCKEX);		// An HSOCK	Handle
 
 //////////////////////////////////////////////////////////////////////////
+
+/*!
+ *	@brief IOObjectSetT 模板定义.
+ *
+ *	封装SocketSet，实现最多管理uFD_SETSize数Socket
+ */
+template<class TService = ThreadService, class TIOObject = IOObject, u_short uFD_SETSize = FD_SETSIZE>
+class IOObjectSetT : public TService
+{
+	typedef TService Base;
+public:
+	typedef TService Service;
+	typedef TIOObject IOObject;
+	//static const u_short SOCKET_SETSIZE = uFD_SETSize;
+protected:
+	u_short sock_count_ = 0;
+	std::shared_ptr<IOObject> sock_ptrs_[uFD_SETSize];
+	//u_short sock_idle_next_ = 0;
+	std::mutex mutex_;
+public:
+	IOObjectSetT()
+	{
+	}
+
+	inline static const size_t GetMaxObjectCount() { return uFD_SETSize; }
+	inline size_t GetObjectCount() { return sock_count_; }
+
+	int AddObject(std::shared_ptr<IOObject> sock_ptr)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(sock_ptrs_[i]==NULL) {
+				if (sock_ptr) {
+					sock_count_++;
+					sock_ptr->AttachService(this);
+					sock_ptrs_[i] = sock_ptr;
+					return i;
+				} else {
+					//测试可不可以增加Socket，返回true表示可以增加
+					return i;
+				}
+				break;
+			}
+		}
+		return -1;
+	}
+
+	int RemoveSocket(std::shared_ptr<IOObject> sock_ptr)
+	{
+		ASSERT(sock_ptr);
+		//std::unique_lock<std::mutex> lock(mutex_);
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if(sock_ptrs_[i]==sock_ptr) {
+				return RemoveSocketByPos(i);
+			}
+		}
+		return -1;
+	}
+	
+protected:
+	//
+	inline int RemoveSocketByPos(int i)
+	{
+		if (i>=0 && i<uFD_SETSize) {
+			std::unique_lock<std::mutex> lock(mutex_);
+			std::shared_ptr<IOObject> sock_ptr = sock_ptrs_[i];
+			if (sock_ptr) {
+				sock_ptrs_[i].reset();
+				sock_count_--;
+				lock.unlock();
+				sock_ptr->DetachService(this);
+				return i;
+			} else {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	inline std::shared_ptr<IOObject> FindSocket(IOObject* sock_ptr) {
+		if(sock_ptr) {
+			int i;
+			for (i=0;i<uFD_SETSize;i++)
+			{
+				if(sock_ptrs_[i].get()==sock_ptr) {
+					return sock_ptrs_[i];
+				}
+			}
+		}
+		return nullptr;
+	}
+
+protected:
+	//
+	virtual void OnTerm()
+	{
+		//Service::OnTerm();
+		int i;
+		for (i=0;i<uFD_SETSize;i++)
+		{
+			if (sock_ptrs_[i]) {
+				std::shared_ptr<IOObject> sock_ptr = sock_ptrs_[i];
+				sock_ptrs_[i].reset();
+				sock_ptr->DetachService(this);
+			}
+		}
+		sock_count_ = 0;
+	}
+};
 
 /*!
  *	@brief SocketSetT 模板定义.

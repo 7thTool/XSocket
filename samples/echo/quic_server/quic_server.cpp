@@ -3,96 +3,30 @@
 
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
-#include "../../../XSocket/XQuicServerImpl.h"
-#ifdef USE_EPOLL
-#include "../../../XSocket/XEPoll.h"
-#elif defined(USE_IOCP)
-#include "../../../XSocket/XCompletionPort.h"
-#endif//
+#include "../../../XSocket/XMSQuicImpl.h"
 #include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 #include <random>
 
-typedef TaskSocketServiceT<ThreadService> udp_socket_service;
-typedef TaskSocketT<SimpleUdpSocketExT<SelectSocketT<udp_socket_service,SocketEx>>> udp_socket;
-
-class manager;
 class server;
 
-class handler : public QuicServerHandlerT<handler,manager,server,CVSocketT<ThreadCVService,SocketEx>>
+typedef TaskServiceT<ThreadCVService> handler_service;
+class handler : public msquic::Connection<handler,server,CVSocketT<handler_service,SocketEx>>
 {
+	typedef msquic::Connection<handler,server,CVSocketT<handler_service,SocketEx>> Base;
 public:
-	//
 };
-
-typedef TaskSocketServiceT<ThreadCVService> handler_service;
 class handler_set : public SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE>
 {
-
+	typedef SocketSetT<handler_service,handler,DEFAULT_FD_SETSIZE> Base;
 };
-typedef SocketManagerT<handler_set> handler_manager;
-
-class manager : public QuicServerManagerT<manager,server,handler>
+class server : public msquic::Server<server,handler_set>
 {
-
-};
-
-class server : public SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>>
-{
-	typedef SocketExImpl<server,SelectUdpServerT<udp_socket_service,udp_socket>> Base;
+	typedef msquic::Server<server,handler_set> Base;
 public:
-	using udp_socket::Buffer;
-protected:
-	std::string addr_;
-	u_short port_;
-public:
-
-	bool Start(const char* address, u_short port)
+	server(int max_handler_count):Base((max_handler_count+handler_set::GetMaxSocketCount()-1)/handler_set::GetMaxSocketCount())
 	{
-		addr_ = address;
-		port_ = port;
-		Base::Start();
-		return true;
-	}
-
-protected:
-	//
-	virtual bool OnInit()
-	{
-		bool ret = Base::OnInit();
-		if(!ret) {
-			return false;
-		}
-		if(port_ <= 0) {
-			return false;
-		}
-		Open(AF_INETType,SOCK_DGRAM);
-		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-		SockAddrType stAddr = {0};
-	#ifdef USE_IPV6
-		stAddr.sin6_family = AF_INET6;
-		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
-		stAddr.sin6_port = htons((u_short)port_);
-	#else
-		stAddr.sin_family = AF_INET;
-		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = htons((u_short)port_);
-	#endif//
-		Bind((const SOCKADDR*)&stAddr, sizeof(stAddr));
-		Select(FD_READ);
-		SetNonBlock();//设为非阻塞模式
-		return true;
-	}
-
-	virtual void OnTerm()
-	{
-		//服务结束运行，释放资源
-		if(Base::IsSocket()) {
-#ifndef WIN32
-			Base::ShutDown();
-#endif
-			Base::Trigger(FD_CLOSE, 0);
-		}
+		
 	}
 };
 
@@ -102,7 +36,7 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-	Socket::Init();
+	server::Init();
 
 #ifdef USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
@@ -118,20 +52,19 @@ int main()
 	//worker::Configure(&tls_ctx_config);
 #endif
 
-	handler_manager mgr(DEFAULT_MAX_FD_SETSIZE);
-	mgr.Start();
+	//mgr.Start("./ssl/dev_nopass.key","./ssl/dev.crt");
 
-	server *s = new server();
-	s->Start(DEFAULT_IP, DEFAULT_PORT);
+	auto s = std::make_shared<server>();
+	s->Start();
 
 	getchar();
 
-	mgr.Stop();
+	//mgr.Stop();
 
 	s->Stop();
-	delete s;
+	s.reset();
 
-	Socket::Term();
+	server::Term();
 
 	return 0;
 }
