@@ -3,18 +3,87 @@
 
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
-#ifdef USE_EPOLL
+#if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 #include "../../../XSocket/XSSLImpl.h"
 #endif
 #include "../../../XSocket/XSimpleImpl.h"
 using namespace XSocket;
 
-#ifndef USE_UDP
+#if USE_UDP
+
+class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>>>
+{
+	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>>> Base;
+protected:
+	std::string addr_;
+	u_short port_;
+public:
+
+	bool Start(const char* address, u_short port)
+	{
+		addr_ = address;
+		port_ = port;
+		Base::Start();
+		return true;
+	}
+
+protected:
+	//
+	virtual bool OnInit()
+	{
+		bool ret = Base::OnInit();
+		if(!ret) {
+			return false;
+		}
+		if(port_ <= 0) {
+			return false;
+		}
+		Open(AF_INETType,SOCK_DGRAM);
+		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
+		SockAddrType stAddr = {0};
+	#if USE_IPV6
+		stAddr.sin6_family = AF_INET6;
+		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
+		stAddr.sin6_port = htons((u_short)port_);
+	#else
+		stAddr.sin_family = AF_INET;
+		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
+		stAddr.sin_port = htons((u_short)port_);
+	#endif//
+		Bind((const SOCKADDR*)&stAddr, sizeof(stAddr));
+		Select(FD_READ);
+		SetNonBlock();//设为非阻塞模式
+		return true;
+	}
+
+	virtual void OnTerm()
+	{
+		//服务结束运行，释放资源
+		if(Base::IsSocket()) {
+#ifndef WIN32
+			Base::ShutDown();
+#endif
+			Base::Trigger(FD_CLOSE, 0);
+		}
+	}
+
+	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
+	{
+		char str[64] = {0};
+		XSocket::Socket::SockAddr2Str((const SOCKADDR*)&SockAddr, sizeof(SockAddr), str, 64);
+		PRINTF("recv[%s]:%.*s", str, nBufLen, lpBuf);
+		PRINTF("echo[%s]:%.*s", str, nBufLen, lpBuf);
+		SendBuf(lpBuf,nBufLen,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
+		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
+	}
+};
+
+#else
 
 class worker;
 
@@ -24,16 +93,16 @@ public:
 	worker* dst = nullptr;
 	int id;
 	std::string buf;
-#ifdef USE_UDP
+#if USE_UDP
 	SockAddrType addr;
 #endif
 	int flags;
 
 	WorkEvent() {}
-#ifndef USE_UDP
-	WorkEvent(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
-#else
+#if USE_UDP
 	WorkEvent(worker* d, int id, const char* buf, int len, const SockAddrType& addr, int flag):dst(d),id(id),buf(buf,len),addr(addr),flags(flag){}
+#else
+	WorkEvent(worker* d, int id, const char* buf, int len, int flag):dst(d),id(id),buf(buf,len),flags(flag){}
 #endif
 
 	// inline int get_id() { return evt; }
@@ -42,7 +111,7 @@ public:
 	// inline int get_flags() { return flags; }
 };
 class WorkEventService : public
-#ifdef USE_EPOLL
+#if USE_EPOLL
 EventServiceT<WorkEvent,EPollService>
 #elif defined(USE_IOCP)
 EventServiceT<WorkEvent,CompletionPortService>
@@ -67,7 +136,7 @@ class WorkSocket;
 class WorkSocketSet;
 
 class WorkSocketSet : public
-#ifdef USE_EPOLL
+#if USE_EPOLL
 EPollSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 #elif defined(USE_IOCP)
 CompletionPortSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
@@ -79,7 +148,7 @@ SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 };
 
 class WorkSocket : public
-#ifdef USE_EPOLL
+#if USE_EPOLL
 EPollSocketT<WorkSocketSet,SocketEx>
 #elif defined(USE_IOCP)
 CompletionPortSocketT<WorkSocketSet,SocketEx>
@@ -91,14 +160,14 @@ SelectSocketT<WorkSocketSet,SocketEx>
 };
 
 class worker : public 
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 SocketExImpl<worker,SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>
 #else 
 SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>
 #endif
 {
 	typedef 
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 SocketExImpl<worker,SimpleEvtSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>
 #else
 SocketExImpl<worker,SimpleEvtSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>> 
@@ -259,75 +328,6 @@ protected:
 #endif//
 };
 
-#else
-
-class server : public SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>>>
-{
-	typedef SocketExImpl<server,SelectUdpServerT<ThreadService,SimpleUdpSocketT<WorkSocketT<SelectSocketT<ThreadService,SocketEx>>,SockAddrType>>> Base;
-protected:
-	std::string addr_;
-	u_short port_;
-public:
-
-	bool Start(const char* address, u_short port)
-	{
-		addr_ = address;
-		port_ = port;
-		Base::Start();
-		return true;
-	}
-
-protected:
-	//
-	virtual bool OnInit()
-	{
-		bool ret = Base::OnInit();
-		if(!ret) {
-			return false;
-		}
-		if(port_ <= 0) {
-			return false;
-		}
-		Open(AF_INETType,SOCK_DGRAM);
-		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
-		SockAddrType stAddr = {0};
-	#ifdef USE_IPV6
-		stAddr.sin6_family = AF_INET6;
-		IpStr2IpAddr(addr_.c_str(),AF_INET6,&stAddr.sin6_addr);
-		stAddr.sin6_port = htons((u_short)port_);
-	#else
-		stAddr.sin_family = AF_INET;
-		stAddr.sin_addr.s_addr = Ip2N(Url2Ip(addr_.c_str()));
-		stAddr.sin_port = htons((u_short)port_);
-	#endif//
-		Bind((const SOCKADDR*)&stAddr, sizeof(stAddr));
-		Select(FD_READ);
-		SetNonBlock();//设为非阻塞模式
-		return true;
-	}
-
-	virtual void OnTerm()
-	{
-		//服务结束运行，释放资源
-		if(Base::IsSocket()) {
-#ifndef WIN32
-			Base::ShutDown();
-#endif
-			Base::Trigger(FD_CLOSE, 0);
-		}
-	}
-
-	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
-	{
-		char str[64] = {0};
-		XSocket::Socket::SockAddr2Str((const SOCKADDR*)&SockAddr, sizeof(SockAddr), str, 64);
-		PRINTF("recv[%s]:%.*s", str, nBufLen, lpBuf);
-		PRINTF("echo[%s]:%.*s", str, nBufLen, lpBuf);
-		SendBuf(lpBuf,nBufLen,SockAddr,SOCKET_PACKET_FLAG_TEMPBUF);
-		Base::OnRecvBuf(lpBuf, nBufLen, SockAddr);
-	}
-};
-
 #endif//USE_UDP
 
 #ifdef WIN32
@@ -336,9 +336,11 @@ int _tmain(int argc, _TCHAR* argv[])
 int main()
 #endif//
 {
-#ifndef USE_UDP
+#if USE_UDP
+	Socket::Init();
+#else
 	worker::Init();
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
 	tls_ctx_config.cert_file = "./ssl/dev.crt";
     tls_ctx_config.key_file = "./ssl/dev_nopass.key";
@@ -351,8 +353,6 @@ int main()
     tls_ctx_config.prefer_server_ciphers;
 	worker::Configure(&tls_ctx_config);
 #endif
-#else
-	Socket::Init();
 #endif
 	server *s = new server();
 	s->Start(DEFAULT_IP, DEFAULT_PORT);
@@ -360,10 +360,10 @@ int main()
 	s->Stop();
 	delete s;
 
-#ifndef USE_UDP
-	worker::Term();
-#else
+#if USE_UDP
 	Socket::Term();
+#else
+	worker::Term();
 #endif
 	return 0;
 }

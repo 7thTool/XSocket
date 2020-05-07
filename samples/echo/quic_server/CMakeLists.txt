@@ -22,18 +22,32 @@ IF(CMAKE_BUILD_TYPE STREQUAL Debug)
 add_definitions(-D_DEBUG)
 ENDIF()
 
-FIND_PACKAGE(ZLIB REQUIRED)
-IF(ZLIB_FOUND)
-	MESSAGE(STATUS "zlib library status:")
-	MESSAGE(STATUS "     version: ${ZLIB_VERSION}")
-	MESSAGE(STATUS "     include path: ${ZLIB_INCLUDE_DIR}")
-	MESSAGE(STATUS "     library path: ${ZLIB_LIBRARIES}")
-	INCLUDE_DIRECTORIES(${ZLIB_INCLUDE_DIR})
-  LINK_DIRECTORIES(${ZLIB_INCLUDE_DIR}/../${CMAKE_BUILD_TYPE}/lib)
-	SET(EXTRA_LIBS ${EXTRA_LIBS} ${ZLIB_LIBRARIES})
-ELSE()
-	MESSAGE(FATAL_ERROR "zlib library not found")
-ENDIF()
+# if (MSVC)
+#     set(CompilerFlags
+#         CMAKE_CXX_FLAGS
+#         CMAKE_CXX_FLAGS_DEBUG
+#         CMAKE_CXX_FLAGS_RELEASE
+#         CMAKE_C_FLAGS
+#         CMAKE_C_FLAGS_DEBUG
+#         CMAKE_C_FLAGS_RELEASE
+#         )
+#     foreach(CompilerFlag ${CompilerFlags})
+#         string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
+#     endforeach()
+# endif(MSVC)
+
+# FIND_PACKAGE(ZLIB REQUIRED)
+# IF(ZLIB_FOUND)
+# 	MESSAGE(STATUS "zlib library status:")
+# 	MESSAGE(STATUS "     version: ${ZLIB_VERSION}")
+# 	MESSAGE(STATUS "     include path: ${ZLIB_INCLUDE_DIR}")
+# 	MESSAGE(STATUS "     library path: ${ZLIB_LIBRARIES}")
+# 	INCLUDE_DIRECTORIES(${ZLIB_INCLUDE_DIR})
+#   LINK_DIRECTORIES(${ZLIB_INCLUDE_DIR}/../${CMAKE_BUILD_TYPE}/lib)
+# 	SET(EXTRA_LIBS ${EXTRA_LIBS} ${ZLIB_LIBRARIES})
+# ELSE()
+# 	MESSAGE(FATAL_ERROR "zlib library not found")
+# ENDIF()
 
 # FIND_PACKAGE(OpenSSL REQUIRED)
 # IF(OpenSSL_FOUND)
@@ -52,20 +66,20 @@ ENDIF()
 
 IF(WIN32)
 #添加头文件搜索路径
-INCLUDE_DIRECTORIES(../../../XSocket ../../../../ngtcp2/lib/includes ../../../../ngtcp2/build/lib/includes ../../../../ngtcp2/crypto/includes ../../../../openssl/lib/x86/include)
+INCLUDE_DIRECTORIES(../../../XSocket ../../../../msquic/src/inc)
 #添加库文件搜索路径
-LINK_DIRECTORIES(../../../../ngtcp2/build/lib/Debug ../../../../ngtcp2/build/crypto/openssl/Debug ../../../../openssl/lib/x86/lib)
+LINK_DIRECTORIES(../../../../msquic/artifacts/windows/x64_Debug_schannel ../../../../msquic/bld/windows/x64_schannel/obj/Debug)
 ELSE()
 #添加头文件搜索路径
-INCLUDE_DIRECTORIES(../../../XSocket ../../../../ngtcp2/lib/includes ../../../../ngtcp2/crypto/includes ../../../../openssl/build/include)
+INCLUDE_DIRECTORIES(../../../XSocket ../../../../msquic/src/inc ../../../../openssl/build/include)
 #添加库文件搜索路径
-LINK_DIRECTORIES(../../../../ngtcp2/build/lib ../../../../ngtcp2/build/crypto/openssl ../../../../openssl/build/lib)
+LINK_DIRECTORIES(../../../../msquic/artifacts/linux/x64_Debug_schannel ../../../../openssl/build/lib)
 ENDIF()
 
 IF(WIN32)
-	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket ngtcp2 ngtcp2_crypto_openssl libcrypto libssl)
+	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket core msquic platform ws2_32 schannel ntdll bcrypt ncrypt crypt32 iphlpapi advapi32)
 ELSE()
-	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket ngtcp2 ngtcp2_crypto_openssl crypto ssl pthread)
+	SET (EXTRA_LIBS ${EXTRA_LIBS} XSocket msquic crypto ssl pthread)
 ENDIF()
 
 # 添加可执行文件
@@ -74,7 +88,7 @@ ADD_EXECUTABLE(quic_server
     ../../../XSocket/XCodec.cpp
     ../../../XSocket/XSocket.cpp
     ../../../XSocket/XSocketEx.cpp
-    ../../../XSocket/XQuicImpl.cpp
+    ../../../XSocket/XMSQuicImpl.cpp
 )
 TARGET_LINK_LIBRARIES(quic_server ${EXTRA_LIBS})
 SET(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin/${CMAKE_SYSTEM_NAME}/${PLATFORM})

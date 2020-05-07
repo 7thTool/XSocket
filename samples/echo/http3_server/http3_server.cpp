@@ -4,7 +4,7 @@
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
 #include "../../../XSocket/XHttp3ServerImpl.h"
-#ifdef USE_EPOLL
+#if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
@@ -196,7 +196,7 @@ public:
 		Open(AF_INETType,SOCK_DGRAM,0);
 		SetSockOpt(SOL_SOCKET, SO_REUSEADDR, 1);
 		SockAddrType stAddr = {0};
-	#ifdef USE_IPV6
+	#if USE_IPV6
 		stAddr.sin6_family = AF_INET6;
 		IpStr2IpAddr(DEFAULT_IP,AF_INET6,&stAddr.sin6_addr);
 		stAddr.sin6_port = htons((u_short)DEFAULT_PORT);
@@ -237,7 +237,7 @@ int main()
 
 	Socket::Init();
 
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
 	tls_ctx_config.cert_file = "./ssl/dev.crt";
     tls_ctx_config.key_file = "./ssl/dev_nopass.key";

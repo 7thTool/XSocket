@@ -76,8 +76,7 @@ public:
     }
 
     inline QUIC_API_TABLE* api() { return conn_->api(); }
-    inline TService* srv() { return conn_->srv(); }
-    inline TConnection* conn() { return conn_; }
+    inline Connection* conn() { return conn_; }
 
 protected:
     static QUIC_STATUS Callback(HQUIC Stream, void* Context, QUIC_STREAM_EVENT* Event)
@@ -120,8 +119,8 @@ public:
         QuicPlatformUninitialize();
         QuicPlatformSystemUnload();
     }
-
-    ServerClientBase(){}
+    
+    ServerClientBase(int nMaxConnectionSetCount):Base(nMaxConnectionSetCount) {}
 
     inline QUIC_API_TABLE* api() { return api_; }
 
@@ -174,8 +173,10 @@ private:
 template<class T, class TConnection>
 class Server : public ServerClientBase<T,TConnection>
 {
-    typedef ServerClientBase<T> Base;
+    typedef ServerClientBase<T,TConnection> Base;
 public:
+    using Base::Base;
+    
     bool Open(const QUIC_REGISTRATION_CONFIG& RegConfig, const QUIC_BUFFER& Alpn, const u_short UdpPort, const char* Cert, const char* KeyFile)
     {
         if(!Base::Open(RegConfig,Alpn)) {

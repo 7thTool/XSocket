@@ -14,19 +14,19 @@
 
 
 class peer
-#ifndef USE_MANAGER
-	: public SocketExImpl<peer,SelectUdpClient<SampleUdpSocketArchitectureImpl<SampleUdpSocketArchitecture<ConnectSocket<SocketEx>,SockAddrType >,SockAddrType > > >
-#else
+#if USE_MANAGER
 	: public SocketExImpl<peer,SampleUdpSocketArchitectureImpl<SampleUdpSocketArchitecture<ConnectSocket<SocketEx>,SockAddrType >,SockAddrType > >
+#else
+	: public SocketExImpl<peer,SelectUdpClient<SampleUdpSocketArchitectureImpl<SampleUdpSocketArchitecture<ConnectSocket<SocketEx>,SockAddrType >,SockAddrType > > >
 #endif//USE_MANAGER
 {
-#ifndef USE_MANAGER
-	typedef SocketExImpl<peer,SelectUdpClient<SampleUdpSocketArchitectureImpl<SampleUdpSocketArchitecture<ConnectSocket<SocketEx>,SOCKADDR_IN6 >,SOCKADDR_IN6 > > > Base;
-#else
+#if USE_MANAGER
 	typedef SocketExImpl<peer,SampleUdpSocketArchitectureImpl<SampleUdpSocketArchitecture<ConnectSocket<SocketEx>,SockAddrType >,SockAddrType > > Base;
+#else
+	typedef SocketExImpl<peer,SelectUdpClient<SampleUdpSocketArchitectureImpl<SampleUdpSocketArchitecture<ConnectSocket<SocketEx>,SOCKADDR_IN6 >,SOCKADDR_IN6 > > > Base;
 #endif//USE_MANAGER
 
-#ifdef USE_MANAGER
+#if USE_MANAGER
 	friend class SelectSet<peer,DEFAULT_FD_SETSIZE>;
 	friend class SelectManager<peer,DEFAULT_FD_SETSIZE>;
 #endif//USE_MANAGER
@@ -63,7 +63,7 @@ protected:
 			int nBufLen = 0;
 			nBufLen = sprintf(lpBuf,"%d", ++m_incr);
 			SockAddrType SockAddr = {0};
-#ifdef USE_IPV6
+#if USE_IPV6
 			ADDRINFO hints = {0};
 			hints.ai_family = PF_INET6;
 			hints.ai_socktype = SOCK_DGRAM;
@@ -134,7 +134,7 @@ protected:
 
 void run()
 {
-#ifdef USE_MANAGER
+#if USE_MANAGER
 	SelectManager<peer,DEFAULT_FD_SETSIZE> m(DEFAULT_CLIENT_COUNT);
 #endif//
 
@@ -144,7 +144,7 @@ void run()
 	{
 		int err = 0;
 		char buf[DEFAULT_BUFSIZE] = {0};
-#ifdef USE_IPV6
+#if USE_IPV6
 		c[i].Create(AF_INET6,SOCK_DGRAM);
 
 		bool optval = true;
@@ -226,12 +226,12 @@ void run()
 		}
 #endif//
 
-#ifdef USE_MANAGER
+#if USE_MANAGER
 		m.AddSocket(&c[i]);
 #endif//
 	}
 	getchar();
-#ifdef USE_MANAGER
+#if USE_MANAGER
 	m.Clear(true);
 #else
 	for(i=0;i<DEFAULT_CLIENT_COUNT;i++)

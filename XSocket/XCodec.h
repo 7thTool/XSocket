@@ -23,10 +23,10 @@
 
 #include "XSocketDef.h"
 #include <limits.h>
-#ifdef USE_ZLIB
+#if USE_ZLIB
 #include <zlib.h>
 #endif
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
@@ -478,7 +478,7 @@ void
     );
 
 
-#ifdef USE_ZLIB
+#if USE_ZLIB
 /* Compress gzip data */
 /* data 原数据 ndata 原数据长度 zdata 压缩后数据 nzdata 压缩后长度 */
 int gzcompress(Bytef *data, uLong ndata,

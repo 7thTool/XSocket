@@ -1,10 +1,10 @@
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
 #include "../../../XSocket/XHttpImpl.h"
-#ifdef USE_EPOLL
+#if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #endif//
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 #include "../../../XSocket/XSSLImpl.h"
 #endif
 #include "../../../XSocket/XSimpleImpl.h"
@@ -60,19 +60,19 @@ class client;
 
 typedef TaskServiceT<SelectService> ClientService;
 
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 typedef BasicSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
 #else 
 typedef BasicSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
 #endif
 class client
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 : public HttpsReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
 #else
 : public HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>>
 #endif//
 {
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	typedef HttpsReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
 #else
 	typedef HttpReqSocketImpl<client,SelectClientT<ClientService,HttpSocketT<ClientSocket>>> Base;
@@ -84,7 +84,7 @@ protected:
 public:
 	client()
 	{
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 		EnableWSCache(true);
 #endif
 	}
@@ -143,22 +143,22 @@ protected:
 	virtual void OnUpgrade(const std::shared_ptr<Message>& msg)
 	{
 		static std::default_random_engine random;
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 		SendWSBuf("hello.", 6, SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL, random());
 #endif
 	}
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		PRINTF("%d %.19s", nBufLen, lpBuf);
 		SendWSBuf("hello.", 6, SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL);
 	}
 #endif
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	virtual void OnSSLConnect()
 	{
 		Base::OnSSLConnect();
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 		SendWSUpgrade("localhost");
 #else
 		//PRINTF("%s",http_get_raw.c_str());
@@ -172,8 +172,9 @@ protected:
 		if(!IsConnected()) {
 			return;
 		}
-#ifndef USE_OPENSSL
-#ifdef USE_WEBSOCKET
+#if USE_OPENSSL
+#else
+#if USE_WEBSOCKET
 		SendWSUpgrade("localhost");
 #else
 		/*PRINTF("%s",http_get_raw.c_str());
@@ -222,13 +223,14 @@ public:
 		{
 			c[i] = std::make_shared<client>();
 // 			c[i].Start("www.baidu.com",
-// #ifdef USE_OPENSSL
+// #if USE_OPENSSL
 // 			443);
 // #else
 // 			80);
 // #endif
 			c[i]->Start(DEFAULT_IP,DEFAULT_PORT);
-#ifndef USE_WEBSOCKET
+#if USE_WEBSOCKET
+#else
 			std::shared_ptr<client::RequestInfo> req_info = std::make_shared<client::RequestInfo>();
 			req_info->req_.set_method(HTTP_GET);
 			req_info->req_.set_url("/test/echo");
@@ -260,7 +262,7 @@ int main()
 #endif//
 {
 	client::Init();
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	client::Configure();
 #endif
 	

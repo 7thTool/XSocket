@@ -4,12 +4,12 @@
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
 #include "../../../XSocket/XHttpImpl.h"
-#ifdef USE_EPOLL
+#if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 #include "../../../XSocket/XSSLImpl.h"
 #endif
 #include "../../../XSocket/XSimpleImpl.h"
@@ -60,7 +60,7 @@ static const struct table_entry {
 class worker;
 
 class WorkService : public
-#ifdef USE_EPOLL
+#if USE_EPOLL
 TaskServiceT<EPollService>
 #elif defined(USE_IOCP)
 TaskServiceT<CompletionPortService>
@@ -71,7 +71,7 @@ TaskServiceT<SelectService>
 public:
 };
 
-#ifdef USE_EPOLL
+#if USE_EPOLL
 typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 typedef EPollSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #elif defined(USE_IOCP)
@@ -83,13 +83,13 @@ typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #endif//
 
 class worker
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	: public HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
 #else
 	: public HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
 #endif
 {
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	typedef HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
 #else
 	typedef HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
@@ -144,7 +144,7 @@ protected:
 		this_service()->Post(std::bind((void (worker::*)(HttpBufferMessage& req, HttpResponse&))&worker::SendHttpResponse, this, msg, rsp), this);
 	}*/
 
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		static std::default_random_engine random;
@@ -312,7 +312,7 @@ int main()
 	test();
 
 	worker::Init();
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
 	tls_ctx_config.cert_file = "./ssl/dev.crt";
     tls_ctx_config.key_file = "./ssl/dev_nopass.key";

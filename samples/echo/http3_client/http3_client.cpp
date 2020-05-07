@@ -4,7 +4,7 @@
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
 #include "../../../XSocket/XHttp3ClientImpl.h"
-#ifdef USE_EPOLL
+#if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
 #elif defined(USE_IOCP)
 #include "../../../XSocket/XCompletionPort.h"
@@ -214,7 +214,7 @@ manager mgr(DEFAULT_FD_SETSIZE);
 		Address remote_addr;
 		remote_addr.len = sizeof(SockAddrType);
 		SockAddrType stAddr = {0};
-	#ifdef USE_IPV6
+	#if USE_IPV6
 		stAddr.sin6_family = AF_INET6;
 		IpStr2IpAddr(DEFAULT_IP,AF_INET6,&stAddr.sin6_addr);
 		stAddr.sin6_port = htons((u_short)8083);

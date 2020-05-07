@@ -274,7 +274,7 @@ void
     SHA1Final( &context, Digest );
 }
 
-#ifdef USE_ZLIB
+#if USE_ZLIB
 /* Compress gzip data */
 /* data 原数据 ndata 原数据长度 zdata 压缩后数据 nzdata 压缩后长度 */
 int gzcompress(Bytef *data, uLong ndata,

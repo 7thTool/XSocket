@@ -23,7 +23,7 @@
 
 #include "XSocketImpl.h"
 #include "http-parser/http_parser.h"
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 #include "XWebSocketImpl.h"
 #endif//
 #include "XStr.h"
@@ -978,14 +978,14 @@ namespace XSocket {
 	 */
 	template<class TBase>
 	class HttpSocketT 
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 	: public WebSocketT<TBase>
 #else
 	: public TBase
 #endif
 	{
 		typedef HttpSocketT<TBase> This;
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 		typedef WebSocketT<TBase> Base;
 #else
 		typedef TBase Base;
@@ -1031,7 +1031,7 @@ namespace XSocket {
 			Base::SendBufDirect();
 		}
 
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 		//升级websocket
 		void SendWSUpgrade(const char* host, const char* path = "/")
 		{
@@ -1116,7 +1116,7 @@ namespace XSocket {
 				int nFlags = http_buffer_.ParseBuf(lpBuf, nBufLen);
 				return nFlags;
 			} else {
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 				return Base::ParseBuf(lpBuf, nBufLen);
 #endif
 			}
@@ -1125,7 +1125,7 @@ namespace XSocket {
 
 		virtual void OnUpgrade(const std::shared_ptr<Message>& msg)
 		{
-#ifdef USE_WEBSOCKET
+#if USE_WEBSOCKET
 			if(Base::IsConnectSocket()) {
 				//收到接受升级到WEBSOCKET消息
 			} else {
@@ -1147,7 +1147,7 @@ namespace XSocket {
 // 	{
 // 		//PRINTF("%-79s", lpBuf);
 // 		if (IsHttpParseUpgrade()) {
-// #ifdef USE_WEBSOCKET
+// #if USE_WEBSOCKET
 // 			if(!IsWSParseDone()) {
 // 				if(Base::IsConnectSocket()) {
 // 					//收到接受升级到WEBSOCKET消息

@@ -272,7 +272,7 @@ public:
 		event.events = 0 
 		| EPOLLRDHUP
 						
-#ifdef USE_EPOLLET
+#if USE_EPOLLET
 		| EPOLLET
 #endif//
 		//| EPOLLONESHOT
@@ -313,7 +313,7 @@ public:
 					| EPOLLRDHUP //Stream socket peer closed connection, or shut down writing  half of connection.
 					//| EPOLLERR //表示对应的文件描述符发生错误；不用注册，会自动触发
 					//| EPOLLHUP //表示对应的文件描述符被挂断；不用注册，会自动触发
-	#ifdef USE_EPOLLET
+	#if USE_EPOLLET
 					| EPOLLET //将EPOLL设为边缘触发(Edge Triggered)模式，这是相对于水平触发(LevelTriggered)来说的；
 	#endif
 					//| EPOLLONESHOT //只监听一次事件，当监听完这次事件之后，如果还需要继续监听这个socket的话，需要再次把这个socket加入到EPOLL队列里
@@ -432,7 +432,8 @@ protected:
 				sock_ptr->Trigger(FD_WRITE, 0);
 			}
 		}
-// #ifndef USE_EPOLLET
+// #if USE_EPOLLET
+// #else
 // 		if (sock_ptr->IsSocket()) {
 // 			event.data.ptr = (void *)sock_ptr;
 // 			event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLPRI | EPOLLONESHOT;

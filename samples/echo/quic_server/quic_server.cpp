@@ -1,6 +1,6 @@
 // server.cpp : 定义控制台应用程序的入口点。
 //
-
+#define USE_ZLIB 0
 #include "../../samples.h"
 #include "../../../XSocket/XSocketImpl.h"
 #include "../../../XSocket/XMSQuicImpl.h"
@@ -38,7 +38,7 @@ int main()
 {
 	server::Init();
 
-#ifdef USE_OPENSSL
+#if USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};
 	tls_ctx_config.cert_file = "./ssl/dev.crt";
     tls_ctx_config.key_file = "./ssl/dev_nopass.key";
@@ -54,7 +54,7 @@ int main()
 
 	//mgr.Start("./ssl/dev_nopass.key","./ssl/dev.crt");
 
-	auto s = std::make_shared<server>();
+	auto s = std::make_shared<server>(DEFAULT_MAX_FD_SETSIZE);
 	s->Start();
 
 	getchar();
