@@ -35,12 +35,50 @@ class Connection : public XSocket::TaskSocketT<TBase>
 public:
     Connection() {}
 
+    //connect
+    bool Open(const char* ServerName
+    , uint16_t ServerPort // Host byte order
+    )
+    {
+        QUIC_STATUS Status;
+        if (QUIC_FAILED(Status = api()->ConnectionOpen(session(), [](HQUIC Connection, void* Context, QUIC_CONNECTION_EVENT* Event) -> QUIC_STATUS {
+            T* pT = reinterpret_cast<T*>(Context);
+            if(pT) {
+                return pT->OnEvent(*Event);
+            }
+            return QUIC_STATUS_SUCCESS;
+        }, nullptr, &conn_))) {
+            PRINTF("ConnectionOpen failed, 0x%x!", Status);
+            return false;
+        }
+
+        /*if (GetValue(argc, argv, "unsecure")) {
+            const uint32_t CertificateValidationFlags = QUIC_CERTIFICATE_FLAG_DISABLE_CERT_VALIDATION;
+            if (QUIC_FAILED(Status = MsQuic->SetParam(
+                    Connection, QUIC_PARAM_LEVEL_CONNECTION, QUIC_PARAM_CONN_CERT_VALIDATION_FLAGS,
+                    sizeof(CertificateValidationFlags), &CertificateValidationFlags))) {
+                printf("SetParam(QUIC_PARAM_CONN_CERT_VALIDATION_FLAGS) failed, 0x%x!\n", Status);
+                goto Error;
+            }
+        }*/
+
+        PRINTF("[%s:%d][%p] Connecting...", ServerName, ServerPort, conn_);
+
+        if (QUIC_FAILED(Status = api()->ConnectionStart(conn_, AF_UNSPEC, ServerName, ServerPort))) {
+            PRINTF("ConnectionStart failed, 0x%x!", Status);
+            return false;
+        }
+        return true;
+    }
+
+    //listener
 	SOCKET Attach(TService* srv, const QUIC_NEW_CONNECTION_INFO& info, HQUIC conn, int Role = SOCKET_ROLE_NONE)
     {
         srv_ = srv;
         info_ = info;
+        conn_ = conn;
         SOCKET ret = Attach((SOCKET)conn, Role);
-        api()->SetCallbackHandler(conn_, (void*)[]( HQUIC Connection, void* Context, QUIC_CONNECTION_EVENT* Event) -> QUIC_STATUS {
+        api()->SetCallbackHandler(conn_, (void*)[](HQUIC Connection, void* Context, QUIC_CONNECTION_EVENT* Event) -> QUIC_STATUS {
             T* pT = reinterpret_cast<T*>(Context);
             if(pT) {
                 return pT->OnEvent(*Event);
@@ -50,19 +88,50 @@ public:
         return ret;
     }
 
+    void Close() {
+        if (conn_ != nullptr) {
+            api()->ConnectionClose(conn_);
+            conn_ = nullptr;
+        }
+	}
+
+    inline HQUIC connection() { return conn_; }
     inline QUIC_API_TABLE* api() { return srv_->api(); }
+    inline HQUIC registration() { return srv_->registration(); }
+    inline HQUIC session() { return srv_->session(); }
     inline TService* srv() { return srv_; }
 
 protected:
     //
-    QUIC_STATUS OnEvent(const QUIC_STREAM_EVENT& evt)
+    QUIC_STATUS OnEvent(const QUIC_CONNECTION_EVENT& evt)
     {
+        switch (evt.Type) {
+        case QUIC_CONNECTION_EVENT_CONNECTED:
+            //printf("[conn][%p] Connected\n", Connection);
+            //ClientSend(Connection);
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
+            //printf("[conn][%p] Shutdown\n", Connection);
+            break;
+        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+            //printf("[conn][%p] All done\n", Connection);
+            Close();
+            break;
+        case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED: //listener
+            //printf("[strm][%p] Peer started\n", Event->PEER_STREAM_STARTED.Stream);
+            //MsQuic->SetCallbackHandler(Event->PEER_STREAM_STARTED.Stream, (void*)ServerStreamCallback, nullptr);
+            break;
+        default:
+            break;
+        }
         return QUIC_STATUS_SUCCESS;
     }
 
 private:
     TService* srv_ = nullptr;
     QUIC_NEW_CONNECTION_INFO info_ = {0};
+    HQUIC conn_ = nullptr;
 };
 
 template<class T, class TConnection>
@@ -75,7 +144,62 @@ public:
 
     }
 
+    bool Open()
+    {
+        QUIC_STATUS Status;
+        HQUIC Stream = nullptr;
+        uint8_t* SendBufferRaw;
+        QUIC_BUFFER* SendBuffer;
+        if (QUIC_FAILED(Status = MsQuic->StreamOpen(Connection, QUIC_STREAM_OPEN_FLAG_NONE, ClientStreamCallback, nullptr, &Stream))) {
+            printf("StreamOpen failed, 0x%x!\n", Status);
+            goto Error;
+        }
+
+        printf("[strm][%p] Starting...\n", Stream);
+
+        if (QUIC_FAILED(Status = MsQuic->StreamStart(Stream, QUIC_STREAM_START_FLAG_NONE))) {
+            printf("StreamStart failed, 0x%x!\n", Status);
+            MsQuic->StreamClose(Stream);
+            goto Error;
+        }
+
+        SendBufferRaw = (uint8_t*)QUIC_ALLOC_PAGED(sizeof(QUIC_BUFFER) + SendBufferLength);
+        if (SendBufferRaw == nullptr) {
+            printf("SendBuffer allocation failed!\n");
+            Status = QUIC_STATUS_OUT_OF_MEMORY;
+            goto Error;
+        }
+
+        SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
+        SendBuffer->Buffer = SendBufferRaw + sizeof(QUIC_BUFFER);
+        SendBuffer->Length = SendBufferLength;
+
+        printf("[strm][%p] Sending data...\n", Stream);
+
+        if (QUIC_FAILED(Status = MsQuic->StreamSend(Stream, SendBuffer, 1, QUIC_SEND_FLAG_FIN, SendBuffer))) {
+            printf("StreamSend failed, 0x%x!\n", Status);
+            QUIC_FREE(SendBufferRaw);
+            goto Error;
+        }
+    }
+
+    void Attach()
+    {
+        MsQuic->SetCallbackHandler(Event->PEER_STREAM_STARTED.Stream, (void*)ServerStreamCallback, this);
+    }
+
+    void Close()
+    {
+        if (stream_ != nullptr) {
+            api->ConnectionShutdown(connection(), QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+        }
+    }
+
+    inline HQUIC stream() { return stream_; }
+    inline HQUIC connection() { return conn_->connection(); }
     inline QUIC_API_TABLE* api() { return conn_->api(); }
+    inline HQUIC registration() { return conn_->registration(); }
+    inline HQUIC session() { return conn_->session(); }
     inline Connection* conn() { return conn_; }
 
 protected:
@@ -89,11 +213,35 @@ protected:
     }
     QUIC_STATUS OnEvent(const QUIC_STREAM_EVENT& evt)
     {
+        switch (evt.Type) {
+        case QUIC_STREAM_EVENT_SEND_COMPLETE:
+            QUIC_FREE(Event->SEND_COMPLETE.ClientContext);
+            printf("[strm][%p] Data sent\n", Stream);
+            break;
+        case QUIC_STREAM_EVENT_RECEIVE:
+            printf("[strm][%p] Data received\n", Stream);
+            break;
+        case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+            printf("[strm][%p] Peer shutdown\n", Stream);
+            ServerSend(Stream);
+            break;
+        case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
+            printf("[strm][%p] Peer aborted\n", Stream);
+            MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+            break;
+        case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
+            printf("[strm][%p] All done\n", Stream);
+            MsQuic->StreamClose(Stream);
+            break;
+        default:
+            break;
+        }
         return QUIC_STATUS_SUCCESS;
     }
 
 private:
     Connection* conn_ = nullptr;
+    HQUIC stream_ = nullptr;
 };
 
 template<class T, class TConnectionSet>
@@ -123,6 +271,8 @@ public:
     ServerClientBase(int nMaxConnectionSetCount):Base(nMaxConnectionSetCount) {}
 
     inline QUIC_API_TABLE* api() { return api_; }
+    inline HQUIC registration() { return Registration; }
+    inline HQUIC session() { return Session; }
 
     bool Open(const QUIC_REGISTRATION_CONFIG& RegConfig, const QUIC_BUFFER& Alpn)
     {
@@ -268,6 +418,27 @@ private:
 template<class T, class TConnection>
 class Client : public ServerClientBase<T,TConnection>
 {
+    typedef ServerClientBase<T,TConnection> Base;
+public:
+    using Base::Base;
+    
+    bool Open(const QUIC_REGISTRATION_CONFIG& RegConfig, const QUIC_BUFFER& Alpn)
+    {
+        if(!Base::Open(RegConfig,Alpn)) {
+            return false;
+        }
+        return true;
+    }
+
+    void Close()
+    {
+        Base::Close();
+    }
+
+protected:
+    //
+
+private:
 };
 
 } }  // namespace XSocket::msquic
