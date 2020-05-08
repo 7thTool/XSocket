@@ -16,9 +16,12 @@ class request : public msquic::Stream<request,handler>
 	typedef msquic::Stream<request,handler> Base;
 public:
 	std::function<void()> cb;
-protected:
+
+	using Base::Base;
+
+//protected:
 	//
-	QUIC_STATUS OnEvent(const QUIC_STREAM_EVENT& evt)
+	QUIC_STATUS OnEvent(QUIC_STREAM_EVENT& evt)
 	{
 		switch (evt.Type) {
         case QUIC_STREAM_EVENT_SEND_COMPLETE:
@@ -84,13 +87,13 @@ int main()
 	auto c = std::make_shared<client>(DEFAULT_MAX_FD_SETSIZE);
 	c->Start();
 
-	auto h = std:make_shared<handler>();
+	auto h = std::make_shared<handler>();
 	c->AddSocket(h);
 	h->Post([h](){
 		h->Open(DEFAULT_IP,DEFAULT_PORT);
-		auto req = std::make_shared<request>(h);
+		auto req = std::make_shared<request>(h.get());
+		req->Open();
 		req->cb = [h,req](){
-			;
 		};
 	});
 

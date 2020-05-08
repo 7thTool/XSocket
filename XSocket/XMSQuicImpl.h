@@ -47,7 +47,7 @@ public:
                 return pT->OnEvent(*Event);
             }
             return QUIC_STATUS_SUCCESS;
-        }, nullptr, &conn_))) {
+        }, this, &conn_))) {
             PRINTF("ConnectionOpen failed, 0x%x!", Status);
             return false;
         }
@@ -88,6 +88,12 @@ public:
         return ret;
     }
 
+    void ShutDown(QUIC_CONNECTION_SHUTDOWN_FLAGS Flags = QUIC_CONNECTION_SHUTDOWN_FLAG_NONE
+    , QUIC_UINT62 ErrorCode = 0 // Application defined error code
+    ) {
+        api()->ConnectionShutdown(conn_, Flags, ErrorCode);
+    }
+
     void Close() {
         if (conn_ != nullptr) {
             api()->ConnectionClose(conn_);
@@ -103,7 +109,7 @@ public:
 
 protected:
     //
-    QUIC_STATUS OnEvent(const QUIC_CONNECTION_EVENT& evt)
+    QUIC_STATUS OnEvent(QUIC_CONNECTION_EVENT& evt)
     {
         switch (evt.Type) {
         case QUIC_CONNECTION_EVENT_CONNECTED:
@@ -144,55 +150,82 @@ public:
 
     }
 
-    bool Open()
+    ~Stream()
     {
-        QUIC_STATUS Status;
-        HQUIC Stream = nullptr;
-        uint8_t* SendBufferRaw;
-        QUIC_BUFFER* SendBuffer;
-        if (QUIC_FAILED(Status = MsQuic->StreamOpen(Connection, QUIC_STREAM_OPEN_FLAG_NONE, ClientStreamCallback, nullptr, &Stream))) {
-            printf("StreamOpen failed, 0x%x!\n", Status);
-            goto Error;
-        }
-
-        printf("[strm][%p] Starting...\n", Stream);
-
-        if (QUIC_FAILED(Status = MsQuic->StreamStart(Stream, QUIC_STREAM_START_FLAG_NONE))) {
-            printf("StreamStart failed, 0x%x!\n", Status);
-            MsQuic->StreamClose(Stream);
-            goto Error;
-        }
-
-        SendBufferRaw = (uint8_t*)QUIC_ALLOC_PAGED(sizeof(QUIC_BUFFER) + SendBufferLength);
-        if (SendBufferRaw == nullptr) {
-            printf("SendBuffer allocation failed!\n");
-            Status = QUIC_STATUS_OUT_OF_MEMORY;
-            goto Error;
-        }
-
-        SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
-        SendBuffer->Buffer = SendBufferRaw + sizeof(QUIC_BUFFER);
-        SendBuffer->Length = SendBufferLength;
-
-        printf("[strm][%p] Sending data...\n", Stream);
-
-        if (QUIC_FAILED(Status = MsQuic->StreamSend(Stream, SendBuffer, 1, QUIC_SEND_FLAG_FIN, SendBuffer))) {
-            printf("StreamSend failed, 0x%x!\n", Status);
-            QUIC_FREE(SendBufferRaw);
-            goto Error;
-        }
+        Close();
     }
 
-    void Attach()
+    bool Open(QUIC_STREAM_OPEN_FLAGS flags = QUIC_STREAM_OPEN_FLAG_NONE, QUIC_STREAM_START_FLAGS start_flags = QUIC_STREAM_START_FLAG_NONE)
     {
-        MsQuic->SetCallbackHandler(Event->PEER_STREAM_STARTED.Stream, (void*)ServerStreamCallback, this);
+        QUIC_STATUS Status;
+        if (QUIC_FAILED(Status = api()->StreamOpen(connection(), flags, [](HQUIC Stream, void* Context, QUIC_STREAM_EVENT* Event) -> QUIC_STATUS {
+            T* pT = reinterpret_cast<T*>(Context);
+            if(pT) {
+                return pT->OnEvent(*Event);
+            }
+            return QUIC_STATUS_SUCCESS;
+        }, this, &stream_))) {
+            PRINTF("StreamOpen failed, 0x%x!", Status);
+            return false;
+        }
+
+        PRINTF("[strm][%p] Starting...", stream_);
+
+        if (QUIC_FAILED(Status = api()->StreamStart(stream_, start_flags))) {
+            PRINTF("StreamStart failed, 0x%x!", Status);
+            return false;
+        }
+
+        // SendBufferRaw = (uint8_t*)QUIC_ALLOC_PAGED(sizeof(QUIC_BUFFER) + SendBufferLength);
+        // if (SendBufferRaw == nullptr) {
+        //     printf("SendBuffer allocation failed!\n");
+        //     Status = QUIC_STATUS_OUT_OF_MEMORY;
+        //     goto Error;
+        // }
+
+        // SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
+        // SendBuffer->Buffer = SendBufferRaw + sizeof(QUIC_BUFFER);
+        // SendBuffer->Length = SendBufferLength;
+
+        // printf("[strm][%p] Sending data...\n", Stream);
+
+        // if (QUIC_FAILED(Status = MsQuic->StreamSend(Stream, SendBuffer, 1, QUIC_SEND_FLAG_FIN, SendBuffer))) {
+        //     printf("StreamSend failed, 0x%x!\n", Status);
+        //     QUIC_FREE(SendBufferRaw);
+        //     goto Error;
+        // }
+        return true;
+    }
+
+    void Attach(HQUIC stream)
+    {
+        stream_ = stream;
+        api()->SetCallbackHandler(stream_, (void*)[](HQUIC Stream, void* Context, QUIC_STREAM_EVENT* Event) -> QUIC_STATUS {
+            T* pT = reinterpret_cast<T*>(Context);
+            if(pT) {
+                return pT->OnEvent(*Event);
+            }
+            return QUIC_STATUS_SUCCESS;
+        }, this);
+    }
+
+    QUIC_STATUS ShutDown(QUIC_STREAM_SHUTDOWN_FLAGS Flags = QUIC_STREAM_SHUTDOWN_FLAG_NONE
+    , QUIC_UINT62 ErrorCode = 0// Application defined error code
+    ) {
+        api()->StreamShutdown(stream_, Flags, ErrorCode);
     }
 
     void Close()
     {
         if (stream_ != nullptr) {
-            api->ConnectionShutdown(connection(), QUIC_CONNECTION_SHUTDOWN_FLAG_NONE, 0);
+            api()->StreamClose(stream_);
+            stream_ = nullptr;
         }
+    }
+
+    QUIC_STATUS Send(const QUIC_BUFFER* const Buffers, uint32_t BufferCount, QUIC_SEND_FLAGS Flags, void* ClientSendContext = nullptr)
+    {
+        return api()->StreamSend(stream_, Buffers, BufferCount, Flags, ClientSendContext);
     }
 
     inline HQUIC stream() { return stream_; }
@@ -203,35 +236,28 @@ public:
     inline Connection* conn() { return conn_; }
 
 protected:
-    static QUIC_STATUS Callback(HQUIC Stream, void* Context, QUIC_STREAM_EVENT* Event)
-    {
-        T* pT = reinterpret_cast<T*>(Context);
-        if(pT) {
-           return pT->OnEvent(*Event);
-        }
-        return QUIC_STATUS_SUCCESS;
-    }
-    QUIC_STATUS OnEvent(const QUIC_STREAM_EVENT& evt)
+    //
+    QUIC_STATUS OnEvent(QUIC_STREAM_EVENT& evt)
     {
         switch (evt.Type) {
         case QUIC_STREAM_EVENT_SEND_COMPLETE:
-            QUIC_FREE(Event->SEND_COMPLETE.ClientContext);
-            printf("[strm][%p] Data sent\n", Stream);
+            QUIC_FREE(evt.SEND_COMPLETE.ClientContext);
+            PRINTF("[strm][%p] Data sent", stream_);
             break;
         case QUIC_STREAM_EVENT_RECEIVE:
-            printf("[strm][%p] Data received\n", Stream);
+            PRINTF("[strm][%p] Data received", stream_);
             break;
         case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-            printf("[strm][%p] Peer shutdown\n", Stream);
-            ServerSend(Stream);
+            PRINTF("[strm][%p] Peer shutdown", stream_);
+            //ServerSend(stream_);
             break;
         case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-            printf("[strm][%p] Peer aborted\n", Stream);
-            MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+            PRINTF("[strm][%p] Peer aborted", stream_);
+            //MsQuic->StreamShutdown(stream_, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
             break;
         case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
-            printf("[strm][%p] All done\n", Stream);
-            MsQuic->StreamClose(Stream);
+            PRINTF("[strm][%p] All done", stream_);
+            //MsQuic->StreamClose(stream_);
             break;
         default:
             break;
@@ -395,7 +421,7 @@ public:
     }
 protected:
     //
-    QUIC_STATUS OnEvent(const QUIC_LISTENER_EVENT& evt)
+    QUIC_STATUS OnEvent(QUIC_LISTENER_EVENT& evt)
     {
         switch (evt.Type) {
         case QUIC_LISTENER_EVENT_NEW_CONNECTION:
