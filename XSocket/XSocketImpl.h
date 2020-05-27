@@ -864,14 +864,14 @@ public:
 	auto Send(const TaskID& key, F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		return Base::this_service()->PostF(key, std::forward<F>(f), std::forward<Args>(args)...);
+		return Base::this_service()->Send(key, std::forward<F>(f), std::forward<Args>(args)...);
 	}
 	
 	template<class F, class... Args>
 	inline auto Send(F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		return Base::this_service()->PostF(std::forward<F>(f), std::forward<Args>(args)...);
+		return Base::this_service()->Send(std::forward<F>(f), std::forward<Args>(args)...);
 	}
 
 	inline void Cancel(const TaskID& key)
