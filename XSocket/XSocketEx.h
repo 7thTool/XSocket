@@ -844,41 +844,115 @@ struct TaskID
 };
 
 /*!
+ *	@brief TaskPool 模板定义.
+ *
+ *	封装TaskPool，任务池
+ */
+class TaskPool
+{
+public:
+	inline void Post(const TaskID& key, std::function<void()> && task)
+	{
+		//std::lock_guard<std::mutex> lock(mutex_);
+		auto it = tasks_.emplace(key,std::move(task));
+		ASSERT(it.second);
+#ifdef _DEBUG
+		printf("task pool delay queue:");
+		for(auto& pr : tasks_) {
+			ssize_t delay = std::chrono::duration_cast<std::chrono::milliseconds>(pr.first.time-std::chrono::steady_clock::now()).count();
+			printf("%d ", (int)delay);
+		}
+		printf("\n");
+#endif//
+	}
+
+	inline void Post(std::function<void()> && task)
+	{		
+		// TaskID key;
+		// Post(key, std::move(task));
+		//std::lock_guard<std::mutex> lock(mutex_);
+		tasks_que_.emplace(std::move(task));
+	}
+
+	inline void Cancel(const TaskID& t)
+	{
+		//std::unique_lock<std::mutex> lock(mutex_);
+		tasks_.erase(t);
+	}
+
+	inline std::function<void()>&& PopTask(ssize_t* dealy)
+	{
+		std::function<void()> task;
+		if (!tasks_que_.empty()) {
+			task = std::move(tasks_que_.front());
+			tasks_que_.pop();
+		} else {
+			auto it = tasks_.begin();
+			if(IsActive(it->first, dealy)) {
+				task = std::move(it->second);
+				tasks_.erase(it);
+			}
+		}
+		return std::move(task);
+	}
+
+	inline bool IsTaskEmpty() { return tasks_que_.empty() && tasks_.empty(); }
+
+protected:
+	inline bool IsActive(const TaskID& t, ssize_t* delay) {
+		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
+		if(delay) {
+			*delay = diff;
+		}
+		return diff <= 0;
+	}
+	
+private:
+	std::map<TaskID,std::function<void()>> tasks_;
+	std::queue<std::function<void()>> tasks_que_;
+};
+
+/*!
  *	@brief TaskService 定义.
  *
  *	封装TaskService，实现简单事件服务
  */
 template<class TBase/* = Service*/>
-class TaskServiceT : public TBase
+class TaskServiceT : public TBase, public TaskPool
 {
 	typedef TBase Base;
 public:
 	inline void Post(const TaskID& key, std::function<void()> && task)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
-		auto it = tasks_.emplace(key,std::move(task));
-		ASSERT(it.second);
-#ifdef _DEBUG
-		printf("task delay queue:");
-		for(auto& pr : tasks_) {
-			ssize_t delay = 0;
-			IsActive(pr.first,&delay);
-			printf("%d ", (int)delay);
-		}
-		printf("\n");
-#endif//
+ 		std::lock_guard<std::mutex> lock(mutex_);
+// 		auto it = tasks_.emplace(key,std::move(task));
+// 		ASSERT(it.second);
+// #ifdef _DEBUG
+// 		printf("task delay queue:");
+// 		for(auto& pr : tasks_) {
+// 			ssize_t delay = 0;
+// 			IsActive(pr.first,&delay);
+// 			printf("%d ", (int)delay);
+// 		}
+// 		printf("\n");
+// #endif//
+		TaskPool::Post(key, std::move(task));
 		ssize_t delay = 0;
-		if (IsActive(it.first->first,&delay)) {
-			Base::PostTimer(delay);
-		} else {
+		if (IsActive(key,&delay)) {
 			Base::PostNotify();	
+		} else {
+			Base::PostTimer(delay);
 		}
 	}
 
 	inline void Post(std::function<void()> && task)
 	{
-		TaskID key;
-		Post(key, std::move(task));
+		// TaskID key;
+		// Post(key, std::move(task));
+		std::lock_guard<std::mutex> lock(mutex_);
+		// tasks_que_.emplace(std::move(task));
+		TaskPool::Post(std::move(task));
+		Base::PostNotify();	
 	}
 
 	template<class F, class... Args>
@@ -902,14 +976,25 @@ public:
 	inline auto Send(F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		TaskID key;
-		return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+		// TaskID key;
+		// return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+		{
+			Post([task](){ (*task)(); });
+		}
+		return res;
 	}
 
-	inline void Cancel(const TaskID& key)
+	void Cancel(const TaskID& t)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		tasks_.erase(key);
+		TaskPool::Cancel(t);
 	}
 
 	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
@@ -929,24 +1014,53 @@ protected:
 	//
 	void DoTask()
 	{
-		//从头开始消费
+		// //从头开始消费
 		std::unique_lock<std::mutex> lock(mutex_);
-		size_t i = 0, j = tasks_.size();
-		for(; i < j; i++)
+		
+		// size_t i = 0, j = tasks_que_.size();
+		// for(; i < j; i++)
+		// {
+		// 	auto task = std::move(tasks_que_.front());
+		// 	tasks_que_.pop();
+		// 	lock.unlock();
+		// 	task();
+		// 	lock.lock();
+		// 	if (tasks_que_.empty()) {
+		// 		break;
+		// 	}
+		// } 
+
+		// i = 0, j = tasks_.size();
+		// for(; i < j; i++)
+		// {
+		// 	auto it = tasks_.begin();
+		// 	ssize_t delay = 0;
+		// 	if (IsActive(it->first,&delay)) {
+		// 		auto task(std::move(it->second));
+		// 		tasks_.erase(it);
+		// 		lock.unlock();
+		// 		task();
+		// 		lock.lock();
+		// 	} else {
+		// 		Base::PostTimer(delay);
+		// 		break;
+		// 	}
+		// 	if (tasks_.empty()) {
+		// 		break;
+		// 	}
+		// }
+		while(!IsTaskEmpty())
 		{
-			auto it = tasks_.begin();
 			ssize_t delay = 0;
-			if (IsActive(it->first,&delay)) {
-				auto task(std::move(it->second));
-				tasks_.erase(it);
-				lock.unlock();
+			auto task = TaskPool::PopTask(&delay);
+			lock.unlock();
+			if(task) {
 				task();
 				lock.lock();
 			} else {
-				Base::PostTimer(delay);
-				break;
-			}
-			if (tasks_.empty()) {
+				if(delay > 0) {
+					Base::PostTimer(delay);
+				}
 				break;
 			}
 		}
@@ -968,14 +1082,15 @@ protected:
 	}
 
 private:
-	inline bool IsActive(const TaskID& t, ssize_t* delay) {
-		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
-		if(delay) {
-			*delay = diff;
-		}
-		return diff <= 0;
-	}
-	std::map<TaskID,std::function<void()>> tasks_;
+// 	inline bool IsActive(const TaskID& t, ssize_t* delay) {
+// 		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
+// 		if(delay) {
+// 			*delay = diff;
+// 		}
+// 		return diff <= 0;
+// 	}
+// 	std::map<TaskID,std::function<void()>> tasks_;
+// 	std::queue<std::function<void()>> tasks_que_;
 	std::mutex mutex_;
 };
 
@@ -1221,12 +1336,13 @@ protected:
 typedef ThreadServiceT<Service> ThreadService;
 typedef ThreadServiceT<CVServiceT<Service>> ThreadCVService;
 
+
 /*!
  *	@brief ThreadPool 模板定义.
  *
  *	封装ThreadPool，线程池
  */
-class ThreadPool
+class ThreadPool : public TaskPool
 {
 public:
 	static ThreadPool& Inst() {
@@ -1267,26 +1383,37 @@ public:
 						std::function<void()> task;
 						{
 							std::unique_lock<std::mutex> lock(mutex_);
-							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !tasks_.empty(); })) {
+							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !TaskPool::IsTaskEmpty(); })) {
 								continue;
 							}
 							if (stop_flag_)
 								break;
-
-							auto it = tasks_.begin();
-							std::chrono::steady_clock::time_point tp_now = std::chrono::steady_clock::now();
-							if(it->first.time > tp_now) {
-								timeout = std::chrono::duration_cast<std::chrono::milliseconds>(it->first.time - tp_now);
-								continue;
+							
+							ssize_t delay = 0;
+							task = TaskPool::PopTask(&delay);
+							if(delay > 0) {
+								timeout = std::chrono::milliseconds(delay);
 							} else {
 								timeout = std::chrono::milliseconds(3000);
 							}
-							task = std::move(it->second);
-							tasks_.erase(it);
-							//task = std::move(tasks_.front());
-							//tasks_.pop();
+							// if(!tasks_que_.empty()) {
+							// 	task = std::move(tasks_que_.front());
+							// 	tasks_que_.pop();
+							// } else {
+							// 	auto it = tasks_.begin();
+							// 	std::chrono::steady_clock::time_point tp_now = std::chrono::steady_clock::now();
+							// 	if(it->first.time > tp_now) {
+							// 		timeout = std::chrono::duration_cast<std::chrono::milliseconds>(it->first.time - tp_now);
+							// 		continue;
+							// 	} else {
+							// 		timeout = std::chrono::milliseconds(3000);
+							// 	}
+							// 	task = std::move(it->second);
+							// 	tasks_.erase(it);
+							// }
 						}
-						task();
+						if(task)
+							task();
 					}
 				});
 		}
@@ -1303,28 +1430,23 @@ public:
 		for (auto &worker : workers_) {
 			worker.join();
 		}
+		workers_.clear();
 	}
 
 	void Post(const TaskID& key, std::function<void()> && task)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		auto it = tasks_.emplace(key,std::move(task));
-		ASSERT(it.second);
-#ifdef _DEBUG
-		printf("thread pool task delay queue:");
-		for(auto& pr : tasks_) {
-			ssize_t delay = std::chrono::duration_cast<std::chrono::milliseconds>(pr.first.time-std::chrono::steady_clock::now()).count();
-			printf("%d ", (int)delay);
-		}
-		printf("\n");
-#endif//
+		TaskPool::Post(key, std::move(task));
 		cv_.notify_one();
 	}
 
-	inline void Post(std::function<void()> && task)
-	{
-		TaskID key;
-		Post(key, std::move(task));
+	void Post(std::function<void()> && task)
+	{		
+		// TaskID key;
+		// Post(key, std::move(task));
+		std::lock_guard<std::mutex> lock(mutex_);
+		TaskPool::Post(std::move(task));
+		cv_.notify_one();
 	}
 
 	template<class F, class... Args>
@@ -1345,26 +1467,100 @@ public:
 	}
 
 	template<class F, class... Args>
-	inline auto Send(F&& f, Args&&... args) 
+	auto Send(F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		TaskID key;
-		return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+		// TaskID key;
+		// return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+		{
+			Post([task](){ (*task)(); });
+		}
+		return res;
 	}
 
-	inline void Cancel(const TaskID& t)
+	void Cancel(const TaskID& t)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		tasks_.erase(t);
+		TaskPool::Cancel(t);
 	}
 
 private:
 	std::atomic<bool> stop_flag_;
 	std::vector<std::thread> workers_;
-	std::map<TaskID,std::function<void()>> tasks_;
-	//std::queue<std::function<void()>> tasks_;
+	// std::map<TaskID,std::function<void()>> tasks_;
+	// std::queue<std::function<void()>> tasks_que_;
 	std::mutex mutex_;
 	std::condition_variable cv_;
+};
+
+class ThreadGroupPool
+{
+public:
+	static ThreadGroupPool& Inst() {
+		static ThreadGroupPool _inst(std::thread::hardware_concurrency()+1);
+		return _inst;
+	}
+
+	ThreadGroupPool() : stop_flag_(true)
+	{
+		
+	}
+	ThreadGroupPool(size_t threads) : stop_flag_(true)
+	{
+		Start(threads);
+	}
+
+	~ThreadGroupPool()
+	{
+		Stop();
+	}
+
+	inline bool IsStopFlag() {
+		return stop_flag_;
+	}
+
+	void Start(size_t threads)
+	{
+		bool expected = true;
+		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+			return;
+		}
+
+		for (size_t i = 0; i < threads; ++i) {
+			workers_.emplace_back(std::make_shared<ThreadPool>(1));
+		}
+	}
+
+	void Stop()
+	{
+		bool expected = false;
+		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+			return;
+		}
+		for (auto &worker : workers_) {
+			worker->Stop();
+		}
+		workers_.clear();
+	}
+
+	ThreadPool& operator[](size_t n) {
+		n %= workers_.size();
+		return *workers_[n];
+	}
+	const ThreadPool& operator[](size_t n) const {
+		n %= workers_.size();
+		return *workers_[n];
+	}
+private:
+	std::atomic<bool> stop_flag_;
+	std::vector<std::shared_ptr<ThreadPool>> workers_;
 };
 
 /*!
