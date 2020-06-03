@@ -62,16 +62,18 @@ public:
 		recv_buf_.resize(size);
 	}
 
-	inline void ReserveSendQueSize(size_t size) {
-		send_que_.reserve(size);
-	}
+	// inline void ReserveSendQueSize(size_t size) {
+	// 	send_que_.reserve(size);
+	// }
 
 	inline int Close()
 	{
 		int ret = Base::Close();
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 
-		send_que_.clear();
+		while(!send_que_.empty()) {
+			send_que_.pop();
+		}
 		//lock.unlock();
 		return ret;
 	}

@@ -23,7 +23,7 @@
 
 #include <atomic>
 #include <mutex>
-#include <shared_mutex>
+//#include <shared_mutex>
 #ifndef WIN32
 #include <condition_variable>
 #endif
@@ -434,8 +434,7 @@ template<class T, class _Ty>
 class ObjectPoolT
 {
 public:
-	
-	ObjectPoolT()
+	ObjectPoolT():count_(0)
 	{
 	}
 	ObjectPoolT(size_t count, size_t max_count = 0)
@@ -549,7 +548,7 @@ protected:
 	inline void Free(_Ty* ptr) { return delete ptr; }
 private:
 	size_t max_count_ = 0; //0表示不限制
-	std::atomic<size_t> count_ = 0;
+	std::atomic<size_t> count_;
 #if USE_BOOST
 	boost::lockfree::queue<_Ty > objptrs_;
 #else
@@ -606,89 +605,89 @@ private:
 // template<typename _Ty>
 // INLINE_GLOBAL IDGenerator<_Ty>::id_;
 
-/*!
- *	@brief IDManager 定义.
- *
- *	封装IDManager，实现ID管理，判断ID是否存在
- */
-template<typename _Kty, typename _Ty>
-class IDManager
-{
-public:
-	static IDManager<_Kty, _Ty>& Inst() {
-		static IDManager<_Kty, _Ty> _inst;
-		return _inst;
-	}
+// /*!
+//  *	@brief IDManager 定义.
+//  *
+//  *	封装IDManager，实现ID管理，判断ID是否存在
+//  */
+// template<typename _Kty, typename _Ty>
+// class IDManager
+// {
+// public:
+// 	static IDManager<_Kty, _Ty>& Inst() {
+// 		static IDManager<_Kty, _Ty> _inst;
+// 		return _inst;
+// 	}
 
-	inline void Add(const _Kty& id, const _Ty& val) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::unique_lock<std::shared_mutex> lock(mutex_);
-		map_id2vs_.emplace(id,val);
-	}
-	inline bool AddBidi(const _Kty& id, const _Ty& val) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::unique_lock<std::shared_mutex> lock(mutex_);
-		map_id2vs_.emplace(id,val);
-		map_v2id_.emplace(val,id);
-		return true;
-	}
-	inline void Remove(const _Kty& id) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::unique_lock<std::shared_mutex> lock(mutex_);
-		map_id2vs_.erase(id);
-	}
-	inline void RemoveBidi(const _Kty& id) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::unique_lock<std::shared_mutex> lock(mutex_);
-		auto pr = map_id2vs_.equal_range(id);
-		if(pr.first != map_id2vs_.end()) {
-			for(auto it = pr.first; it != pr.second; ++it)
-			{
-				map_v2id_.erase(it->second);
-			}
-			map_id2vs_.erase(pr.first,pr.second);
-		}
-	}
-	inline void RemoveByVal(const _Ty& val) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::unique_lock<std::shared_mutex> lock(mutex_);
-		auto it = map_v2id_.find(val);
-		if(it != map_v2id_.end()) {
-			auto itt = map_id2vs_.find(it->second);
-			while(itt != map_id2vs_.end()) {
-				if(itt->second == val) {
-					map_id2vs_.erase(itt);
-					break;
-				}
-				++itt;
-			}
-			map_v2id_.erase(it);
-		}
-	}
-	inline bool Find(const _Kty& id) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::shared_lock<std::shared_mutex> lock(mutex_);
-		auto it = map_id2vs_.find(id);
-		if(it != map_id2vs_.end()) {
-			return true;
-		}
-		return false;
-	}
-	inline bool FindByVal(const _Ty& val) {
-		//std::lock_guard<std::mutex> lock(mutex_);
-		std::shared_lock<std::shared_mutex> lock(mutex_);
-		auto it = map_v2id_.find(val);
-		if(it != map_v2id_.end()) {
-			return true;
-		}
-		return false;
-	}
-private:
-	//std::mutex mutex_;
-	std::shared_mutex mutex_;
-	std::multimap<_Kty,_Ty> map_id2vs_;
-	std::unordered_map<_Ty,_Kty> map_v2id_;
-};
+// 	inline void Add(const _Kty& id, const _Ty& val) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::unique_lock<std::shared_mutex> lock(mutex_);
+// 		map_id2vs_.emplace(id,val);
+// 	}
+// 	inline bool AddBidi(const _Kty& id, const _Ty& val) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::unique_lock<std::shared_mutex> lock(mutex_);
+// 		map_id2vs_.emplace(id,val);
+// 		map_v2id_.emplace(val,id);
+// 		return true;
+// 	}
+// 	inline void Remove(const _Kty& id) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::unique_lock<std::shared_mutex> lock(mutex_);
+// 		map_id2vs_.erase(id);
+// 	}
+// 	inline void RemoveBidi(const _Kty& id) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::unique_lock<std::shared_mutex> lock(mutex_);
+// 		auto pr = map_id2vs_.equal_range(id);
+// 		if(pr.first != map_id2vs_.end()) {
+// 			for(auto it = pr.first; it != pr.second; ++it)
+// 			{
+// 				map_v2id_.erase(it->second);
+// 			}
+// 			map_id2vs_.erase(pr.first,pr.second);
+// 		}
+// 	}
+// 	inline void RemoveByVal(const _Ty& val) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::unique_lock<std::shared_mutex> lock(mutex_);
+// 		auto it = map_v2id_.find(val);
+// 		if(it != map_v2id_.end()) {
+// 			auto itt = map_id2vs_.find(it->second);
+// 			while(itt != map_id2vs_.end()) {
+// 				if(itt->second == val) {
+// 					map_id2vs_.erase(itt);
+// 					break;
+// 				}
+// 				++itt;
+// 			}
+// 			map_v2id_.erase(it);
+// 		}
+// 	}
+// 	inline bool Find(const _Kty& id) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::shared_lock<std::shared_mutex> lock(mutex_);
+// 		auto it = map_id2vs_.find(id);
+// 		if(it != map_id2vs_.end()) {
+// 			return true;
+// 		}
+// 		return false;
+// 	}
+// 	inline bool FindByVal(const _Ty& val) {
+// 		//std::lock_guard<std::mutex> lock(mutex_);
+// 		std::shared_lock<std::shared_mutex> lock(mutex_);
+// 		auto it = map_v2id_.find(val);
+// 		if(it != map_v2id_.end()) {
+// 			return true;
+// 		}
+// 		return false;
+// 	}
+// private:
+// 	//std::mutex mutex_;
+// 	std::shared_mutex mutex_;
+// 	std::multimap<_Kty,_Ty> map_id2vs_;
+// 	std::unordered_map<_Ty,_Kty> map_v2id_;
+// };
 
 /*!
  *	@brief Service 定义.
@@ -929,6 +928,232 @@ private:
 };
 
 /*!
+ *	@brief ThreadPool 模板定义.
+ *
+ *	封装ThreadPool，线程池
+ */
+class ThreadPool : public TaskPool
+{
+public:
+	static ThreadPool& Inst() {
+		static ThreadPool _inst(std::thread::hardware_concurrency() + 1);
+		return _inst;
+	}
+
+	ThreadPool() : stop_flag_(true)
+	{
+		
+	}
+	ThreadPool(size_t threads) : stop_flag_(true)
+	{
+		Start(threads);
+	}
+
+	~ThreadPool()
+	{
+		Stop();
+	}
+
+	inline bool IsStopFlag() {
+		return stop_flag_;
+	}
+
+	void Start(size_t threads)
+	{
+		bool expected = true;
+		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+			return;
+		}
+		for (size_t i = 0; i < threads; ++i) {
+			workers_.emplace_back(
+				[this] {
+					std::chrono::milliseconds timeout(3000);
+					for (;;)
+					{
+						std::function<void()> task;
+						{
+							std::unique_lock<std::mutex> lock(mutex_);
+							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !TaskPool::IsTaskEmpty(); })) {
+								continue;
+							}
+							if (stop_flag_)
+								break;
+							
+							ssize_t delay = 0;
+							task = TaskPool::PopTask(&delay);
+							if(delay > 0) {
+								timeout = std::chrono::milliseconds(delay);
+							} else {
+								timeout = std::chrono::milliseconds(3000);
+							}
+							// if(!tasks_que_.empty()) {
+							// 	task = std::move(tasks_que_.front());
+							// 	tasks_que_.pop();
+							// } else {
+							// 	auto it = tasks_.begin();
+							// 	std::chrono::steady_clock::time_point tp_now = std::chrono::steady_clock::now();
+							// 	if(it->first.time > tp_now) {
+							// 		timeout = std::chrono::duration_cast<std::chrono::milliseconds>(it->first.time - tp_now);
+							// 		continue;
+							// 	} else {
+							// 		timeout = std::chrono::milliseconds(3000);
+							// 	}
+							// 	task = std::move(it->second);
+							// 	tasks_.erase(it);
+							// }
+						}
+						if(task)
+							task();
+					}
+				});
+		}
+		//return true;
+	}
+
+	void Stop()
+	{
+		bool expected = false;
+		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+			return;
+		}
+		cv_.notify_all();
+		for (auto &worker : workers_) {
+			worker.join();
+		}
+		workers_.clear();
+	}
+
+	void Post(const TaskID& key, std::function<void()> && task)
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+		TaskPool::Post(key, std::move(task));
+		cv_.notify_one();
+	}
+
+	void Post(std::function<void()> && task)
+	{		
+		// TaskID key;
+		// Post(key, std::move(task));
+		std::lock_guard<std::mutex> lock(mutex_);
+		TaskPool::Post(std::move(task));
+		cv_.notify_one();
+	}
+
+	template<class F, class... Args>
+	auto Send(const TaskID& key, F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+		{
+			Post(key, [task](){ (*task)(); });
+		}
+		return res;
+	}
+
+	template<class F, class... Args>
+	auto Send(F&& f, Args&&... args) 
+		-> std::future<typename std::result_of<F(Args...)>::type>
+	{
+		// TaskID key;
+		// return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+		using return_type = typename std::result_of<F(Args...)>::type;
+
+		auto task = std::make_shared< std::packaged_task<return_type()> >(
+				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+			);
+			
+		std::future<return_type> res = task->get_future();
+		{
+			Post([task](){ (*task)(); });
+		}
+		return res;
+	}
+
+	void Cancel(const TaskID& t)
+	{
+		std::unique_lock<std::mutex> lock(mutex_);
+		TaskPool::Cancel(t);
+	}
+
+private:
+	std::atomic<bool> stop_flag_;
+	std::vector<std::thread> workers_;
+	// std::map<TaskID,std::function<void()>> tasks_;
+	// std::queue<std::function<void()>> tasks_que_;
+	std::mutex mutex_;
+	std::condition_variable cv_;
+};
+
+class ThreadGroupPool
+{
+public:
+	static ThreadGroupPool& Inst() {
+		static ThreadGroupPool _inst(std::thread::hardware_concurrency()+1);
+		return _inst;
+	}
+
+	ThreadGroupPool() : stop_flag_(true)
+	{
+		
+	}
+	ThreadGroupPool(size_t threads) : stop_flag_(true)
+	{
+		Start(threads);
+	}
+
+	~ThreadGroupPool()
+	{
+		Stop();
+	}
+
+	inline bool IsStopFlag() {
+		return stop_flag_;
+	}
+
+	void Start(size_t threads)
+	{
+		bool expected = true;
+		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+			return;
+		}
+
+		for (size_t i = 0; i < threads; ++i) {
+			workers_.emplace_back(std::make_shared<ThreadPool>(1));
+		}
+	}
+
+	void Stop()
+	{
+		bool expected = false;
+		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+			return;
+		}
+		for (auto &worker : workers_) {
+			worker->Stop();
+		}
+		workers_.clear();
+	}
+
+	ThreadPool& operator[](size_t n) {
+		n %= workers_.size();
+		return *workers_[n];
+	}
+	const ThreadPool& operator[](size_t n) const {
+		n %= workers_.size();
+		return *workers_[n];
+	}
+private:
+	std::atomic<bool> stop_flag_;
+	std::vector<std::shared_ptr<ThreadPool>> workers_;
+};
+
+/*!
  *	@brief TaskService 定义.
  *
  *	封装TaskService，实现简单事件服务
@@ -1019,7 +1244,7 @@ public:
 		return ThreadPool::Inst().Post(
 			[this,hostname,service,hints,cb = std::move(cb)]() mutable {
 			struct addrinfo* res = nullptr;
-			GetAddrInfo(hostname.c_str(),service.c_str(),&hints,&res);
+			XSocket::Socket::GetAddrInfo(hostname.c_str(),service.c_str(),&hints,&res);
 			Post([res,cb = std::move(cb)]() mutable {
 				cb(res);
 			});
@@ -1352,232 +1577,6 @@ protected:
 typedef ThreadServiceT<Service> ThreadService;
 typedef ThreadServiceT<CVServiceT<Service>> ThreadCVService;
 
-
-/*!
- *	@brief ThreadPool 模板定义.
- *
- *	封装ThreadPool，线程池
- */
-class ThreadPool : public TaskPool
-{
-public:
-	static ThreadPool& Inst() {
-		static ThreadPool _inst(std::thread::hardware_concurrency() + 1);
-		return _inst;
-	}
-
-	ThreadPool() : stop_flag_(true)
-	{
-		
-	}
-	ThreadPool(size_t threads) : stop_flag_(true)
-	{
-		Start(threads);
-	}
-
-	~ThreadPool()
-	{
-		Stop();
-	}
-
-	inline bool IsStopFlag() {
-		return stop_flag_;
-	}
-
-	void Start(size_t threads)
-	{
-		bool expected = true;
-		if (!stop_flag_.compare_exchange_strong(expected, false)) {
-			return;
-		}
-		for (size_t i = 0; i < threads; ++i) {
-			workers_.emplace_back(
-				[this] {
-					std::chrono::milliseconds timeout(3000);
-					for (;;)
-					{
-						std::function<void()> task;
-						{
-							std::unique_lock<std::mutex> lock(mutex_);
-							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !TaskPool::IsTaskEmpty(); })) {
-								continue;
-							}
-							if (stop_flag_)
-								break;
-							
-							ssize_t delay = 0;
-							task = TaskPool::PopTask(&delay);
-							if(delay > 0) {
-								timeout = std::chrono::milliseconds(delay);
-							} else {
-								timeout = std::chrono::milliseconds(3000);
-							}
-							// if(!tasks_que_.empty()) {
-							// 	task = std::move(tasks_que_.front());
-							// 	tasks_que_.pop();
-							// } else {
-							// 	auto it = tasks_.begin();
-							// 	std::chrono::steady_clock::time_point tp_now = std::chrono::steady_clock::now();
-							// 	if(it->first.time > tp_now) {
-							// 		timeout = std::chrono::duration_cast<std::chrono::milliseconds>(it->first.time - tp_now);
-							// 		continue;
-							// 	} else {
-							// 		timeout = std::chrono::milliseconds(3000);
-							// 	}
-							// 	task = std::move(it->second);
-							// 	tasks_.erase(it);
-							// }
-						}
-						if(task)
-							task();
-					}
-				});
-		}
-		//return true;
-	}
-
-	void Stop()
-	{
-		bool expected = false;
-		if (!stop_flag_.compare_exchange_strong(expected, true)) {
-			return;
-		}
-		cv_.notify_all();
-		for (auto &worker : workers_) {
-			worker.join();
-		}
-		workers_.clear();
-	}
-
-	void Post(const TaskID& key, std::function<void()> && task)
-	{
-		std::lock_guard<std::mutex> lock(mutex_);
-		TaskPool::Post(key, std::move(task));
-		cv_.notify_one();
-	}
-
-	void Post(std::function<void()> && task)
-	{		
-		// TaskID key;
-		// Post(key, std::move(task));
-		std::lock_guard<std::mutex> lock(mutex_);
-		TaskPool::Post(std::move(task));
-		cv_.notify_one();
-	}
-
-	template<class F, class... Args>
-	auto Send(const TaskID& key, F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
-		{
-			Post(key, [task](){ (*task)(); });
-		}
-		return res;
-	}
-
-	template<class F, class... Args>
-	auto Send(F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		// TaskID key;
-		// return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
-		{
-			Post([task](){ (*task)(); });
-		}
-		return res;
-	}
-
-	void Cancel(const TaskID& t)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		TaskPool::Cancel(t);
-	}
-
-private:
-	std::atomic<bool> stop_flag_;
-	std::vector<std::thread> workers_;
-	// std::map<TaskID,std::function<void()>> tasks_;
-	// std::queue<std::function<void()>> tasks_que_;
-	std::mutex mutex_;
-	std::condition_variable cv_;
-};
-
-class ThreadGroupPool
-{
-public:
-	static ThreadGroupPool& Inst() {
-		static ThreadGroupPool _inst(std::thread::hardware_concurrency()+1);
-		return _inst;
-	}
-
-	ThreadGroupPool() : stop_flag_(true)
-	{
-		
-	}
-	ThreadGroupPool(size_t threads) : stop_flag_(true)
-	{
-		Start(threads);
-	}
-
-	~ThreadGroupPool()
-	{
-		Stop();
-	}
-
-	inline bool IsStopFlag() {
-		return stop_flag_;
-	}
-
-	void Start(size_t threads)
-	{
-		bool expected = true;
-		if (!stop_flag_.compare_exchange_strong(expected, false)) {
-			return;
-		}
-
-		for (size_t i = 0; i < threads; ++i) {
-			workers_.emplace_back(std::make_shared<ThreadPool>(1));
-		}
-	}
-
-	void Stop()
-	{
-		bool expected = false;
-		if (!stop_flag_.compare_exchange_strong(expected, true)) {
-			return;
-		}
-		for (auto &worker : workers_) {
-			worker->Stop();
-		}
-		workers_.clear();
-	}
-
-	ThreadPool& operator[](size_t n) {
-		n %= workers_.size();
-		return *workers_[n];
-	}
-	const ThreadPool& operator[](size_t n) const {
-		n %= workers_.size();
-		return *workers_[n];
-	}
-private:
-	std::atomic<bool> stop_flag_;
-	std::vector<std::shared_ptr<ThreadPool>> workers_;
-};
 
 /*!
  *	@brief WorkSocketT 模板定义.
