@@ -68,7 +68,37 @@ TaskServiceT<CompletionPortService>
 TaskServiceT<SelectService>
 #endif//
 {
+#if USE_EPOLL
+typedef TaskServiceT<EPollService> Base;
+#elif USE_IOCP
+typedef TaskServiceT<CompletionPortService> Base;
+#else
+typedef TaskServiceT<SelectService> Base;
+#endif// 
 public:
+
+protected:
+	//
+	bool OnInit() override
+	{
+		bool ret = Base::OnInit();
+		TaskID t(3000);
+		Post(t, []{
+			std::cout << "WorkService dealy test" << std::endl;
+		});
+		TaskID t2(5000);
+		Post(t2, [this,t]{
+			std::cout << "WorkService cancel test" << std::endl;
+			Cancel(t);
+		});
+		TaskID t3(2000);
+		Post(t3, [this,t2]{
+			Cancel(t2);
+			std::cout << "WorkServicecancel cancel test" << std::endl;
+		});
+		return ret;
+	}
+
 };
 
 #if USE_EPOLL
@@ -185,17 +215,17 @@ protected:
 		bool ret = Base::OnInit();
 		TaskID t(3000);
 		Post(t, []{
-			std::cout << "dealy test" << std::endl;
+			std::cout << "HttpHandler dealy test" << std::endl;
 		});
 		TaskID t2(5000);
 		Post(t2, [this,t]{
-			std::cout << "cancel test" << std::endl;
+			std::cout << "HttpHandler cancel test" << std::endl;
 			Cancel(t);
 		});
 		TaskID t3(2000);
 		Post(t3, [this,t2]{
 			Cancel(t2);
-			std::cout << "cancel cancel test" << std::endl;
+			std::cout << "HttpHandlercancel cancel test" << std::endl;
 		});
 		return ret;
 	}

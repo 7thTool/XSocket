@@ -178,18 +178,23 @@ public:
 		if(timerfd_ == -1) {
 			return;
 		} 
+		// The it_value field returns the amount of time until the timer will
+       	// next expire.  If both fields of this structure are zero, then the
+       	// timer is currently disarmed.
 		struct itimerspec curr_value = {0};
 		timerfd_gettime(timerfd_, &curr_value);
-		if((curr_value.it_value.tv_sec *1000 + curr_value.it_value.tv_nsec/1000/1000) < millis) {
-			//说明有更快的定时器任务需要执行
-			return;
+		if(curr_value.it_value.tv_sec || curr_value.it_value.tv_nsec) {
+			if((curr_value.it_value.tv_sec *1000 + curr_value.it_value.tv_nsec/1000/1000) < millis) {
+				//说明有更快的定时器任务需要执行
+				return;
+			}
 		}
 
 		struct timespec now;
 		if (clock_gettime(CLOCK_REALTIME, &now) == -1)
 			return;
 		struct itimerspec new_value = {0};
-		millis += now.tv_nsec/1000;
+		millis += now.tv_nsec/1000/1000;
 		new_value.it_value.tv_sec = now.tv_sec + millis/1000;
 		new_value.it_value.tv_nsec = millis%1000*1000*1000;
 		timerfd_settime(timerfd_, TFD_TIMER_ABSTIME, &new_value, NULL);
