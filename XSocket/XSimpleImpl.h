@@ -36,15 +36,16 @@ namespace XSocket {
  *
  *	封装CustomSocketT，实现自定义的快速发送/接收（写入/读取）网络架构
  */
-template<class TBase>
+template<class TBase, class TSendBuffer>
 class CustomSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;
-protected:
+public:
 	typedef std::string RecvBuffer;
+	typedef TSendBuffer SendBuffer;
+protected:
 	RecvBuffer recv_buf_;
-	typedef std::pair<const char*,size_t> SendBuffer;
-	std::queue<SendBuffer> send_que_;
+	std::vector<SendBuffer> send_que_;
 	//std::mutex m_SendSection;
 public:
 	CustomSocketT()
@@ -57,45 +58,63 @@ public:
 		
 	}
 
-	inline void ReserveRecvBufSize(size_t size) {
+	inline void ReserveRecvBufBufSize(size_t size) {
 		recv_buf_.reserve(size);
 		recv_buf_.resize(size);
 	}
 
-	// inline void ReserveSendQueSize(size_t size) {
-	// 	send_que_.reserve(size);
-	// }
+	inline void ReserveSendQueSize(size_t size) {
+		send_que_.reserve(size);
+	}
 
 	inline int Close()
 	{
 		int ret = Base::Close();
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 
-		while(!send_que_.empty()) {
-			send_que_.pop();
-		}
+		send_que_.clear();
 		//lock.unlock();
 		return ret;
 	}
 
-	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	inline size_t NotSendBufSize() 
+	{
+		size_t size = 0;
+		for(auto& send_buf : send_que_)
+		{
+			size += send_buf.size();
+		}
+		return size;
+	}
+
+	inline SendBuffer& SendBuf() 
+	{
+		send_que_.emplace_back(SendBuffer::Construct());
+		return send_que_.back();
+	}
+
+	inline void SendBuf(const SendBuffer& buf)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
+		ASSERT(buf.data() && buf.size()>0);
+		send_que_.emplace_back(buf);
+		SendBufDirect();
+	}
 
-		ASSERT(lpBuf && nBufLen>0);
-		if(nBufLen<=0) {
-			return 0;
-		}
+	inline void SendBuf(const char* lpBuf, int nBufLen)
+	{
+		//std::lock_guard<std::mutex> lock(m_SendSection);
+		SendBuf().set_data(lpBuf,nBufLen);
+		return SendBufDirect();
+	}
 
-		send_que_.emplace(lpBuf,nBufLen);
-
+	inline void SendBufDirect()
+	{
+		ASSERT(Base::IsSocket());
 		if(!Base::IsSelect(FD_WRITE)) {
 			Base::Select(FD_WRITE);
 		}
-
-		return nBufLen;
 	}
-
 protected:
 	//TcpSocket 实现接口
 	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen)
@@ -117,10 +136,9 @@ protected:
 	{
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 		if(!send_que_.empty()) {
-			SendBuffer& send_buf = send_que_.front();
-			int nSendBufLen = send_buf.second;
-			lpBuf = send_buf.first;
-			nBufLen = send_buf.second;
+			SendBuffer& send_buf = send_que_[0];
+			lpBuf = send_buf.data();
+			nBufLen = send_buf.size();
 			ASSERT(lpBuf && nBufLen>0);
 			//lock.unlock();
 			return true;
@@ -134,7 +152,7 @@ protected:
 
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 		ASSERT(!send_que_.empty());
-		send_que_.pop();
+		send_que_.erase(send_que_.begin());
 	}
 };
 
@@ -147,11 +165,13 @@ template<class TBase, u_short uMaxBufSize = DEFAULT_BUFSIZE>
 class SimpleSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;
+public:
+	typedef std::string RecvBuffer;
+	typedef std::string SendBuffer;
 protected:
-	typedef std::string SimpleBuffer;
-	SimpleBuffer m_RecvBuffer;
-	SimpleBuffer m_SendBuffer;
-	SimpleBuffer m_PrepareSendBuffer;
+	RecvBuffer m_RecvBuffer;
+	SendBuffer m_SendBuffer;
+	SendBuffer m_PrepareSendBuffer;
 	//std::mutex m_SendSection;
 	//std::mutex m_RecvSection;
 
@@ -185,37 +205,35 @@ public:
 		return m_SendBuffer.size() + m_PrepareSendBuffer.size();
 	}
 
-	inline std::string& SendBuf() 
+	inline SendBuffer& SendBuf() 
 	{
 		return m_SendBuffer;
 	}
 
-	inline int SendBuf(const std::string& Buf, int nFlags = 0)
+	inline void SendBuf(const SendBuffer& Buf)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 		
 		m_SendBuffer += Buf;
 
-		return SendBufDirect(nFlags);
+		SendBufDirect();
 	}
 
-	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	inline void SendBuf(const char* lpBuf, int nBufLen)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 
 		m_SendBuffer.append(lpBuf,lpBuf+nBufLen);
 
-		return SendBufDirect(nFlags);
+		return SendBufDirect();
 	}
 
-	inline int SendBufDirect(int nFlags = 0)
+	inline void SendBufDirect()
 	{
 		ASSERT(Base::IsSocket());
-		int nBufLen = m_SendBuffer.size();
 		if(!Base::IsSelect(FD_WRITE)) {
 			Base::Select(FD_WRITE);
 		}
-		return nBufLen;
 	}
 
 // 	int RecvBuf(char* lpBuf, int nBufLen, int* nFlags = nullptr)

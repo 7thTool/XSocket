@@ -137,25 +137,25 @@ public:
 
 public:
 	//
-	inline void PostBuf(const std::string& Buf, int nFlags = 0)
+	inline void PostBuf(const SendBuffer& Buf)
 	{
-		this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf,nFlags](){ spWorker->SendBuf(Buf, nFlags); }));
-		this_service()->Post(3000, std::bind((int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
+		this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf](){ spWorker->SendBuf(Buf); }));
+		this_service()->Post(3000, std::bind((void (worker::*)(const SendBuffer&))&worker::SendBuf, this, Buf));
 		//std::future<int> fu;
-		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf, nFlags));
+		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf));
 	}
-	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	inline void PostBuf(const char* lpBuf, int nBufLen)
 	{
 		auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
-		this_service()->Post(std::function<void()>([this,buf,nFlags](){ SendBuf(buf->c_str(), buf->size(), nFlags); }));
+		this_service()->Post(std::function<void()>([this,buf](){ SendBuf(buf->c_str(), buf->size()); }));
 		/*以下是bind，package、future使用方法
-		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags);
-		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags));
+		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen);
+		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen));
 		// auto task = std::make_shared< std::packaged_task<int()> >(
-		// 		std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags)
+		// 		std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen)
 		// 	);
 		std::future<int> fu;
-		this_service()->Post(this_service()->Package(fu, (int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen, nFlags));
+		this_service()->Post(this_service()->Package(fu, (int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen));
 		*/
 	}
 

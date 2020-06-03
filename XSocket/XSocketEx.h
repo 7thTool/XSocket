@@ -565,7 +565,7 @@ public:
 		return _inst;
 	}
 	
-protected:
+//protected:
 	inline std::string* Alloc() { 
 		auto ptr = new std::string();
 		ptr->reserve(DEFAULT_BUFSIZE);

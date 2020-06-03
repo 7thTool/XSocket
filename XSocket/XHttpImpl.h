@@ -1045,7 +1045,7 @@ namespace XSocket {
 			int base64_len = Base64EncodeGetRequiredLength(buflen, BASE64_FLAG_NOCRLF);
 			Base64Encode((const byte*)buf, buflen, (char*)base64_key, &base64_len, BASE64_FLAG_NOCRLF);
 			base64_key[base64_len] = 0; 
-			std::string& send_buf = Base::SendBuf();int send_len = send_buf.size();
+			SendBuffer& send_buf = Base::SendBuf();int send_len = send_buf.size();
 			send_buf.resize(send_len + 1024);
 			std::ostrstream ss(&send_buf[send_len], 1024);
 			ss << "GET " << path << " HTTP/1.1\r\n"
@@ -1076,7 +1076,7 @@ namespace XSocket {
 			buflen = Base64EncodeGetRequiredLength(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
 			Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, &buflen, BASE64_FLAG_NOCRLF);
 			buf[buflen] = 0; 
-			std::string& send_buf = Base::SendBuf();int send_len = send_buf.size();
+			SendBuffer& send_buf = Base::SendBuf();int send_len = send_buf.size();
 			send_buf.resize(send_len + 1024);
 			std::ostrstream ss(&send_buf[send_len], 1024);
 			ss << "HTTP/1.1 101 Switching Protocols\r\n"
