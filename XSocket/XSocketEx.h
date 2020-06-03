@@ -859,14 +859,14 @@ struct TaskID
 };
 
 /*!
- *	@brief TaskPool 模板定义.
+ *	@brief TaskQue 模板定义.
  *
- *	封装TaskPool，任务池
+ *	封装TaskQue，任务池
  */
-class TaskPool
+class TaskQue
 {
 public:
-	inline void Post(const TaskID& key, std::function<void()> && task)
+	inline void Push(const TaskID& key, std::function<void()> && task)
 	{
 		//std::lock_guard<std::mutex> lock(mutex_);
 		auto it = tasks_.emplace(key,std::move(task));
@@ -881,7 +881,7 @@ public:
 #endif//
 	}
 
-	inline void Post(std::function<void()> && task)
+	inline void Push(std::function<void()> && task)
 	{		
 		// TaskID key;
 		// Post(key, std::move(task));
@@ -889,29 +889,31 @@ public:
 		tasks_que_.emplace(std::move(task));
 	}
 
-	inline void Cancel(const TaskID& t)
+	inline void Remove(const TaskID& t)
 	{
 		//std::unique_lock<std::mutex> lock(mutex_);
 		tasks_.erase(t);
 	}
 
-	inline std::function<void()>&& PopTask(ssize_t* dealy)
+	inline bool Count() { return tasks_que_.size() + tasks_.size(); }
+	inline bool IsEmpty() { return tasks_que_.empty() && tasks_.empty(); }
+
+	inline bool Pop(std::function<void()>& task, ssize_t* dealy)
 	{
-		std::function<void()> task;
 		if (!tasks_que_.empty()) {
 			task = std::move(tasks_que_.front());
 			tasks_que_.pop();
+			return true;
 		} else {
 			auto it = tasks_.begin();
 			if(IsActive(it->first, dealy)) {
 				task = std::move(it->second);
 				tasks_.erase(it);
+				return true;
 			}
 		}
-		return std::move(task);
+		return false;
 	}
-
-	inline bool IsTaskEmpty() { return tasks_que_.empty() && tasks_.empty(); }
 
 protected:
 	inline bool IsActive(const TaskID& t, ssize_t* delay) {
@@ -932,7 +934,7 @@ private:
  *
  *	封装ThreadPool，线程池
  */
-class ThreadPool : public TaskPool
+class ThreadPool : public TaskQue
 {
 public:
 	static ThreadPool& Inst() {
@@ -973,14 +975,14 @@ public:
 						std::function<void()> task;
 						{
 							std::unique_lock<std::mutex> lock(mutex_);
-							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !TaskPool::IsTaskEmpty(); })) {
+							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !TaskQue::IsEmpty(); })) {
 								continue;
 							}
 							if (stop_flag_)
 								break;
 							
 							ssize_t delay = 0;
-							task = TaskPool::PopTask(&delay);
+							TaskQue::Pop(task,&delay);
 							if(delay > 0) {
 								timeout = std::chrono::milliseconds(delay);
 							} else {
@@ -1002,8 +1004,7 @@ public:
 							// 	tasks_.erase(it);
 							// }
 						}
-						if(task)
-							task();
+						task();
 					}
 				});
 		}
@@ -1026,7 +1027,7 @@ public:
 	void Post(const TaskID& key, std::function<void()> && task)
 	{
 		std::lock_guard<std::mutex> lock(mutex_);
-		TaskPool::Post(key, std::move(task));
+		TaskQue::Push(key, std::move(task));
 		cv_.notify_one();
 	}
 
@@ -1035,7 +1036,7 @@ public:
 		// TaskID key;
 		// Post(key, std::move(task));
 		std::lock_guard<std::mutex> lock(mutex_);
-		TaskPool::Post(std::move(task));
+		TaskQue::Push(std::move(task));
 		cv_.notify_one();
 	}
 
@@ -1078,7 +1079,7 @@ public:
 	void Cancel(const TaskID& t)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		TaskPool::Cancel(t);
+		TaskQue::Remove(t);
 	}
 
 private:
@@ -1159,7 +1160,7 @@ private:
  *	封装TaskService，实现简单事件服务
  */
 template<class TBase/* = Service*/>
-class TaskServiceT : public TBase, public TaskPool
+class TaskServiceT : public TBase, public TaskQue
 {
 	typedef TBase Base;
 public:
@@ -1177,7 +1178,7 @@ public:
 // 		}
 // 		printf("\n");
 // #endif//
-		TaskPool::Post(key, std::move(task));
+		TaskQue::Push(key, std::move(task));
 		ssize_t delay = 0;
 		if (IsActive(key,&delay)) {
 			Base::PostNotify();	
@@ -1192,7 +1193,7 @@ public:
 		// Post(key, std::move(task));
 		std::lock_guard<std::mutex> lock(mutex_);
 		// tasks_que_.emplace(std::move(task));
-		TaskPool::Post(std::move(task));
+		TaskQue::Push(std::move(task));
 		Base::PostNotify();	
 	}
 
@@ -1235,7 +1236,7 @@ public:
 	void Cancel(const TaskID& t)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		TaskPool::Cancel(t);
+		TaskQue::Remove(t);
 	}
 
 	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
@@ -1290,12 +1291,13 @@ protected:
 		// 		break;
 		// 	}
 		// }
-		while(!IsTaskEmpty())
-		{
+		
+		std::function<void()> task;
+		size_t i = 0, j = TaskQue::Count();
+		for(; i < j; i++) {
 			ssize_t delay = 0;
-			auto task = TaskPool::PopTask(&delay);
-			lock.unlock();
-			if(task) {
+			if(TaskQue::Pop(task,&delay)) {
+				lock.unlock();
 				task();
 				lock.lock();
 			} else {
