@@ -6,7 +6,7 @@
 #include "../../../XSocket/XHttpImpl.h"
 #if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
 #if USE_OPENSSL
@@ -62,7 +62,7 @@ class worker;
 class WorkService : public
 #if USE_EPOLL
 TaskServiceT<EPollService>
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 TaskServiceT<CompletionPortService>
 #else
 TaskServiceT<SelectService>
@@ -74,7 +74,7 @@ public:
 #if USE_EPOLL
 typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 typedef EPollSocketT<WorkSocketSet,SocketEx> WorkSocket;
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 typedef CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
 typedef CompletionPortSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #else

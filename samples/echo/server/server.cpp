@@ -5,7 +5,7 @@
 #include "../../../XSocket/XSocketImpl.h"
 #if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
 #if USE_OPENSSL
@@ -113,7 +113,7 @@ public:
 class WorkEventService : public
 #if USE_EPOLL
 EventServiceT<WorkEvent,EPollService>
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 EventServiceT<WorkEvent,CompletionPortService>
 #else
 EventServiceT<WorkEvent,SelectService>
@@ -138,7 +138,7 @@ class WorkSocketSet;
 class WorkSocketSet : public
 #if USE_EPOLL
 EPollSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 CompletionPortSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 #else
 SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
@@ -150,7 +150,7 @@ SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
 class WorkSocket : public
 #if USE_EPOLL
 EPollSocketT<WorkSocketSet,SocketEx>
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 CompletionPortSocketT<WorkSocketSet,SocketEx>
 #else
 SelectSocketT<WorkSocketSet,SocketEx>

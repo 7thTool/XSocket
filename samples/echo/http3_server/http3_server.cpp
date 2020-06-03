@@ -6,7 +6,7 @@
 #include "../../../XSocket/XHttp3ServerImpl.h"
 #if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 #include "../../../XSocket/XCompletionPort.h"
 #endif//
 #include "../../../XSocket/XSimpleImpl.h"

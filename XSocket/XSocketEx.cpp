@@ -410,7 +410,7 @@ bool Service::OnInit()
 {
 	s_thread_service_ = this;
 #ifdef _DEBUG
-	PRINTF("thread id="I64U", service=%p", std::this_thread::get_id(), s_thread_service_);
+	PRINTF("thread id=%s, service=%p", tostr(std::this_thread::get_id()).c_str(), s_thread_service_);
 #endif
 	return true;
 }

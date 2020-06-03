@@ -32,11 +32,116 @@ using namespace std;
 namespace XSocket {
 
 /*!
+ *	@brief CustomSocketT 定义.
+ *
+ *	封装CustomSocketT，实现自定义的快速发送/接收（写入/读取）网络架构
+ */
+template<class TBase>
+class CustomSocketT : public TcpSocket<TBase>
+{
+	typedef TcpSocket<TBase> Base;
+protected:
+	typedef std::string RecvBuffer;
+	RecvBuffer recv_buf_;
+	typedef std::pair<const char*,size_t> SendBuffer;
+	std::queue<SendBuffer> send_que_;
+	//std::mutex m_SendSection;
+public:
+	CustomSocketT()
+	{
+		
+	}
+
+	virtual ~CustomSocketT()
+	{
+		
+	}
+
+	inline void ReserveRecvBufSize(size_t size) {
+		recv_buf_.reserve(size);
+		recv_buf_.resize(size);
+	}
+
+	inline void ReserveSendQueSize(size_t size) {
+		send_que_.reserve(size);
+	}
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		//std::unique_lock<std::mutex> lock(m_SendSection);
+
+		send_que_.clear();
+		//lock.unlock();
+		return ret;
+	}
+
+	inline int SendBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
+	{
+		//std::lock_guard<std::mutex> lock(m_SendSection);
+
+		ASSERT(lpBuf && nBufLen>0);
+		if(nBufLen<=0) {
+			return 0;
+		}
+
+		send_que_.emplace(lpBuf,nBufLen);
+
+		if(!Base::IsSelect(FD_WRITE)) {
+			Base::Select(FD_WRITE);
+		}
+
+		return nBufLen;
+	}
+
+protected:
+	//TcpSocket 实现接口
+	virtual bool PrepareRecvBuf(char* & lpBuf, int & nBufLen)
+	{
+		lpBuf = &recv_buf_[0];
+		nBufLen = recv_buf_.size();
+
+		return true;
+	}
+	virtual bool PrepareExpandRecvBuf(char* & lpBuf, int & nBufLen)
+	{
+		recv_buf_.resize(recv_buf_.size() + recv_buf_.size()/2);
+		lpBuf = &recv_buf_[0];
+		nBufLen = recv_buf_.size();
+		return true;
+	}
+
+	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen)
+	{
+		//std::unique_lock<std::mutex> lock(m_SendSection);
+		if(!send_que_.empty()) {
+			SendBuffer& send_buf = send_que_.front();
+			int nSendBufLen = send_buf.second;
+			lpBuf = send_buf.first;
+			nBufLen = send_buf.second;
+			ASSERT(lpBuf && nBufLen>0);
+			//lock.unlock();
+			return true;
+		}
+		return false;
+	}
+
+	virtual void OnSendBuf(const char* lpBuf, int nBufLen) 
+	{
+		Base::OnSendBuf(lpBuf, nBufLen);
+
+		//std::unique_lock<std::mutex> lock(m_SendSection);
+		ASSERT(!send_que_.empty());
+		send_que_.pop();
+	}
+};
+
+/*!
  *	@brief SimpleSocketT 定义.
  *
  *	封装SimpleSocketT，实现简单的流式发送/接收（写入/读取）网络架构
  */
-template<class TBase, u_short uMaxBufSize = 8*1024>
+template<class TBase, u_short uMaxBufSize = DEFAULT_BUFSIZE>
 class SimpleSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;

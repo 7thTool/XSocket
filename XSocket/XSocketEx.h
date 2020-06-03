@@ -44,6 +44,7 @@
 #include <boost/lockfree/queue.hpp>
 #endif
 #include "XSocket.h"
+#include "XStr.h"
 
 namespace XSocket {
 
@@ -429,14 +430,10 @@ protected:
  *
  *	封装ObjectPoolT，对象池
  */
-template<class _Ty>
+template<class T, class _Ty>
 class ObjectPoolT
 {
 public:
-	static ObjectPoolT<_Ty>& Inst() {
-		static ObjectPoolT<_Ty> _inst;
-		return _inst;
-	}
 	
 	ObjectPoolT()
 	{
@@ -452,48 +449,47 @@ public:
 
 	void Init(size_t count, size_t max_count = 0)
 	{
+		T* pT = static_cast<T*>(this);
 		count_ = count;
 		max_count_ = max_count;
 		for(size_t i = 0; i < count_; i++)
 		{
 #if USE_BOOST
-			objptrs_.push(new _Ty());
+			objptrs_.push(pT->Alloc());
 #else
-			objptrs_.emplace(new _Ty());
+			objptrs_.emplace(pT->Alloc());
 #endif
 		}
 	}
 
 	void Release()
 	{
+		T* pT = static_cast<T*>(this);
 #if USE_BOOST
 		while(count_ != objptrs_.size())) {
 			std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-			// if(!cv_.wait(lock,[this] { return count_ == objptrs_.size(); })) {
-			// 	;
-			// }
 		}
 		auto objptr = nullptr;
 		while(!objptrs_.pop(objptr)) {
-			delete objptr;
+			pT->Free(objptr);
 		}
 #else
-		std::lock_guard<std::mutex> lock(mutex_);
-		while(!cv_.wait(lock,[this] { return count_ == objptrs_.size(); })) {
-			;
+		std::unique_lock<std::mutex> lock(mutex_);
+		while(count_ != objptrs_.size()) {
+			cv_.wait(lock);
 		}
 		while(!objptrs_.empty()) {
 			auto objptr = objptrs_.front();
-			delete objptr;
+			pT->Free(objptr);
 			objptrs_.pop();
 		}
 #endif
 	}
 
 	/*template<typename _Rep, typename _Period>
-	std::shared_ptr<_Ty> Alloc(const std::chrono::duration<_Rep, _Period>& timeout)
+	std::shared_ptr<_Ty> New(const std::chrono::duration<_Rep, _Period>& timeout)
 	{
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::mutex> lock(mutex_);
 		if(!cv_.wait_for(lock,timeout,[this] { return !objptrs_.empty(); })) {
 			return nullptr;
 		}
@@ -506,43 +502,40 @@ public:
 		return objptr;
 	}*/
 
-	std::shared_ptr<_Ty> Alloc()
+	std::shared_ptr<_Ty> New()
 	{
+		T* pT = static_cast<T*>(this);
 		_Ty* objptr = nullptr;
 #if USE_BOOST
 		if(!objptrs_.pop(objptr)) {
 			if(max_count_ && count_ > max_count_) {
 				do {
 					std::this_thread::sleep_for(std::chrono::nanoseconds(1000));
-					// if(!cv_.wait(lock,[this] { return !objptrs_.empty(); })) {
-					// 	return nullptr;
-					// }
 				} while(!objptrs_.pop(objptr));
 			} else {
-				objptr = new _Ty();
+				objptr = pT->Alloc();
 				count_++;
 			}
 		} 
 		auto sp_objptr = std::shared_ptr<_Ty>(objptr,[this](_Ty* objptr) { 
 			objptrs_.push(objptr);
-			// std::lock_guard<std::mutex> lock(mutex_);
-			// cv_.notify_one();
 		});
 		return sp_objptr;
 #else
-		std::lock_guard<std::mutex> lock(mutex_);
+		std::unique_lock<std::mutex> lock(mutex_);
 		if(objptrs_.empty()) {
 			if(max_count_ && count_ > max_count_) {
-				if(!cv_.wait(lock,[this] { return !objptrs_.empty(); })) {
-					return nullptr;
-				}
+				cv_.wait(lock);
+				objptr = objptrs_.front();
+				objptrs_.pop();
 			} else {
-				objptr = new _Ty();
+				objptr = pT->Alloc();
 				count_++;
 			}
+		} else {
+			objptr = objptrs_.front();
+			objptrs_.pop();
 		}
-		objptr = objptrs_.front();
-		objptrs_.pop();
 		auto sp_objptr = std::shared_ptr<_Ty>(objptr,[this](_Ty* objptr) { 
 			std::lock_guard<std::mutex> lock(mutex_);
 			objptrs_.emplace(objptr);
@@ -551,7 +544,9 @@ public:
 		return sp_objptr;
 #endif
 	}
-
+protected:
+	inline _Ty* Alloc() { return new _Ty(); }
+	inline void Free(_Ty* ptr) { return delete ptr; }
 private:
 	size_t max_count_ = 0; //0表示不限制
 	std::atomic<size_t> count_ = 0;
@@ -563,9 +558,30 @@ private:
 	std::condition_variable cv_;
 #endif
 };
-typedef ObjectPoolT<std::string> BufferPool;
+class BufferPool : public ObjectPoolT<BufferPool,std::string>
+{
+public:
+	static BufferPool& Inst() {
+		static BufferPool _inst;
+		return _inst;
+	}
+	
+protected:
+	inline std::string* Alloc() { 
+		auto ptr = new std::string();
+		ptr->reserve(DEFAULT_BUFSIZE);
+		return ptr;
+	}
+};
 typedef std::array<char,2048> UdpBuffer;
-typedef ObjectPoolT<UdpBuffer> UdpBufferPool;
+class  UdpBufferPool : public ObjectPoolT<UdpBufferPool,UdpBuffer>
+{
+public:
+	static UdpBufferPool& Inst() {
+		static UdpBufferPool _inst;
+		return _inst;
+	}
+};
 
 /*!
  *	@brief IDGenerator 定义.

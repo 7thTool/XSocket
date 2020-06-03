@@ -2,7 +2,7 @@
 #include "../../../XSocket/XSocketImpl.h"
 #if USE_EPOLL
 #include "../../../XSocket/XEPoll.h"
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 #include "../../../XSocket/XCompletionPort.h"
 #else
 #endif//
@@ -40,7 +40,7 @@ public:
 class EventService : public
 #if USE_EPOLL
 EventServiceT<Event,EPollService>
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 EventServiceT<Event,CompletionPortService>
 #else
 EventServiceT<Event,SelectService>
@@ -61,7 +61,7 @@ typedef SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>
 #else
 #if USE_EPOLL
 typedef EPollSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 typedef CompletionPortSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
 #else
 typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
@@ -70,7 +70,7 @@ typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSe
 #if USE_MANAGER
 #if USE_EPOLL
 typedef ConnectSocketExT<EPollSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
-#elif defined(USE_IOCP)
+#elif USE_IOCP
 typedef ConnectSocketExT<CompletionPortSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
 #else
 typedef ConnectSocketExT<SelectSocketT<ClientSocketSet,SocketEx>> ClientSocketBase;
