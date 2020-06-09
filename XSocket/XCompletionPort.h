@@ -264,7 +264,8 @@ public:
 				ASSERT(0);
 				return 0;
 			} else {
-				PrintLastError("ConnectEx is failed");
+				int nErrorCode = GetLastError();
+				PRINTF("ConnectEx is failed %d %s", nErrorCode, GetErrorMessage(nErrorCode));
 				return SOCKET_ERROR;
 			}
 		}
