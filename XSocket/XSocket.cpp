@@ -226,7 +226,7 @@ const char* Socket::SockAddr2PortStr(const SOCKADDR* lpSockAddr, int nSockAddrLe
 	break;
 	case AF_INET6:
 	{
-		snprintf(str, len, "%s:%d", ntohs(((SOCKADDR_IN6*)lpSockAddr)->sin6_port));
+		snprintf(str, len, "%d", ntohs(((SOCKADDR_IN6*)lpSockAddr)->sin6_port));
 		return str;
 	}
 	break;
@@ -734,6 +734,7 @@ const char* Socket::GetErrorMessage(int nError)
 		::LocalFree(hLocal);
 		return nMessageLen;
 	}
+	return 0;
 	})(nError,error.data(),error.size());
 	return error.data();
 #else
