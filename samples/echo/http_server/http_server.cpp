@@ -127,7 +127,8 @@ class worker
 public:
 	worker()
 	{
-		
+		ReserveRecvBufSize(DEFAULT_BUFSIZE);
+		ReserveSendBufSize(DEFAULT_BUFSIZE);
 	}
 
 	~worker() 

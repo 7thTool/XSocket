@@ -227,9 +227,9 @@ public:
 			}
 			PRINTF("SendBuf:%.*s", evt.buf.size(), evt.buf.c_str());
 #if USE_UDP
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.addr,evt.flags);
+			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.addr);
 #else
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
+			SendBuf(evt.buf.c_str(),evt.buf.size());
 #endif
 		}
 	}

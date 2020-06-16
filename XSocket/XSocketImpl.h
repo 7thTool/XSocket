@@ -221,7 +221,14 @@ protected:
 				}
 			} else {
 				//需要扩展接收缓存
-				PrepareExpandRecvBuf(m_pRecvBuf, m_nRecvBufLen);
+				if(!PrepareExpandRecvBuf(m_pRecvBuf, m_nRecvBufLen)) {
+					//扩展失败，断开连接
+#ifdef WIN32
+					Base::Trigger(FD_CLOSE, WSAEMSGSIZE);
+#else
+					Base::Trigger(FD_CLOSE, EMSGSIZE);
+#endif
+				}
 			}
 		}
 	}

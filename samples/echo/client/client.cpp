@@ -113,7 +113,11 @@ protected:
 public:
 	client():m_incr(0)
 	{
-		
+#if USE_UDP
+#else
+		ReserveRecvBufSize(DEFAULT_BUFSIZE);
+		ReserveSendBufSize(DEFAULT_BUFSIZE);
+#endif//USE_UDP
 	}
 
 #if USE_MANAGER
@@ -187,9 +191,9 @@ public:
 			}
 			PRINTF("SendBuf:%.*s", evt.buf.size(), evt.buf.c_str());
 #if USE_UDP
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.addr,evt.flags);
+			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.addr);
 #else
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
+			SendBuf(evt.buf.c_str(),evt.buf.size());
 #endif
 		}
 	}
@@ -215,7 +219,7 @@ protected:
 		if(!IsConnected()) {
 			return;
 		}
-		SendBuf("hello.",6,0);
+		SendBuf("hello.",6);
 	}
 #endif//
 };

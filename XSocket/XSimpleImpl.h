@@ -58,7 +58,7 @@ public:
 		
 	}
 
-	inline void ReserveRecvBufBufSize(size_t size) {
+	inline void ReserveRecvBufSize(size_t size) {
 		recv_buf_.reserve(size);
 		recv_buf_.resize(size);
 	}
@@ -89,7 +89,7 @@ public:
 
 	inline SendBuffer& SendBuf() 
 	{
-		send_que_.emplace_back(SendBuffer::Construct());
+		send_que_.emplace_back();
 		return send_que_.back();
 	}
 
@@ -161,7 +161,7 @@ protected:
  *
  *	封装SimpleSocketT，实现简单的流式发送/接收（写入/读取）网络架构
  */
-template<class TBase, u_short uMaxBufSize = DEFAULT_BUFSIZE>
+template<class TBase>
 class SimpleSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;
@@ -169,19 +169,19 @@ public:
 	typedef std::string RecvBuffer;
 	typedef std::string SendBuffer;
 protected:
-	RecvBuffer m_RecvBuffer;
-	SendBuffer m_SendBuffer;
-	SendBuffer m_PrepareSendBuffer;
+	RecvBuffer recv_buf_;
+	SendBuffer send_buf_;
+	SendBuffer ppr_send_buf_;
 	//std::mutex m_SendSection;
 	//std::mutex m_RecvSection;
 
 public:
 	SimpleSocketT()
 	{
-		m_RecvBuffer.reserve(uMaxBufSize);
-		m_RecvBuffer.resize(uMaxBufSize);
-		m_SendBuffer.reserve(uMaxBufSize);
-		m_PrepareSendBuffer.reserve(uMaxBufSize);
+		// recv_buf_.reserve(uMaxBufSize);
+		// recv_buf_.resize(uMaxBufSize);
+		// send_buf_.reserve(uMaxBufSize);
+		// ppr_send_buf_.reserve(uMaxBufSize);
 	}
 
 	virtual ~SimpleSocketT()
@@ -189,32 +189,42 @@ public:
 		
 	}
 
+	inline void ReserveRecvBufSize(size_t size) {
+		recv_buf_.reserve(size);
+		recv_buf_.resize(size);
+	}
+
+	inline void ReserveSendBufSize(size_t size) {
+		send_buf_.reserve(size);
+		ppr_send_buf_.reserve(size);
+	}
+
 	inline int Close()
 	{
 		int ret = Base::Close();
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 
-		m_PrepareSendBuffer.clear();
-		m_SendBuffer.clear();
+		ppr_send_buf_.clear();
+		send_buf_.clear();
 		//lock.unlock();
 		return ret;
 	}
 
 	inline size_t NotSendBufSize() 
 	{
-		return m_SendBuffer.size() + m_PrepareSendBuffer.size();
+		return send_buf_.size() + ppr_send_buf_.size();
 	}
 
 	inline SendBuffer& SendBuf() 
 	{
-		return m_SendBuffer;
+		return send_buf_;
 	}
 
 	inline void SendBuf(const SendBuffer& Buf)
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 		
-		m_SendBuffer += Buf;
+		send_buf_ += Buf;
 
 		SendBufDirect();
 	}
@@ -223,7 +233,7 @@ public:
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 
-		m_SendBuffer.append(lpBuf,lpBuf+nBufLen);
+		send_buf_.append(lpBuf,lpBuf+nBufLen);
 
 		return SendBufDirect();
 	}
@@ -240,14 +250,14 @@ public:
 // 	{
 // 		std::lock_guard<std::mutex> lock(m_RecvSection);
 // 		ASSERT(nFlags);
-// 		int nRecvBufLen = m_RecvBuffer.size();
+// 		int nRecvBufLen = recv_buf_.size();
 // 		if (nRecvBufLen>0) {
 // 			if (!(*nFlags)) {
-// 				*nFlags = ParseBuf(&m_RecvBuffer[0],nRecvBufLen);
+// 				*nFlags = ParseBuf(&recv_buf_[0],nRecvBufLen);
 // 				if ((*nFlags)&SOCKET_PACKET_FLAG_COMPLETE) {
 // 					if (nRecvBufLen<=nBufLen) {
-// 						memcpy(lpBuf,&m_RecvBuffer[0],nRecvBufLen);
-// 						m_RecvBuffer.erase(m_RecvBuffer.begin(),m_RecvBuffer.begin()+nRecvBufLen);
+// 						memcpy(lpBuf,&recv_buf_[0],nRecvBufLen);
+// 						recv_buf_.erase(recv_buf_.begin(),recv_buf_.begin()+nRecvBufLen);
 // 					}
 // 					return nRecvBufLen;
 // 				}
@@ -256,8 +266,8 @@ public:
 // 					nBufLen = nRecvBufLen;
 // 				}
 // 				if (nBufLen>0) {
-// 					memcpy(lpBuf,&m_RecvBuffer[0],nBufLen);
-// 					m_RecvBuffer.erase(m_RecvBuffer.begin(),m_RecvBuffer.begin()+nBufLen);
+// 					memcpy(lpBuf,&recv_buf_[0],nBufLen);
+// 					recv_buf_.erase(recv_buf_.begin(),recv_buf_.begin()+nBufLen);
 // 				}
 // 				return nBufLen;
 // 			}
@@ -303,8 +313,8 @@ protected:
 	{
 		//std::lock_guard<std::mutex> lock(m_RecvSection);
 
-		lpBuf = &m_RecvBuffer[0];
-		nBufLen = m_RecvBuffer.size();
+		lpBuf = &recv_buf_[0];
+		nBufLen = recv_buf_.size();
 
 		return true;
 	}
@@ -312,9 +322,9 @@ protected:
 	{
 		//std::lock_guard<std::mutex> lock(m_RecvSection);
 
-		m_RecvBuffer.resize(m_RecvBuffer.size() + uMaxBufSize);
-		lpBuf = &m_RecvBuffer[0];
-		nBufLen = m_RecvBuffer.size();
+		recv_buf_.resize(recv_buf_.size() * 2);
+		lpBuf = &recv_buf_[0];
+		nBufLen = recv_buf_.size();
 		return true;
 	}
 
@@ -324,19 +334,19 @@ protected:
 
 	// 	// std::lock_guard<std::mutex> lock(m_RecvSection);
 
-	// 	// m_RecvBuffer.insert(m_RecvBuffer.end(),lpBuf,lpBuf+nBufLen);
+	// 	// recv_buf_.insert(recv_buf_.end(),lpBuf,lpBuf+nBufLen);
 	// }
 
 	virtual bool PrepareSendBuf(const char* & lpBuf, int & nBufLen)
 	{
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 
-		int nSendBufLen = m_SendBuffer.size();
+		int nSendBufLen = send_buf_.size();
 		if (nSendBufLen>0) {
-			m_PrepareSendBuffer.swap(m_SendBuffer);
-			m_SendBuffer.clear();
-			lpBuf = m_PrepareSendBuffer.c_str();
-			nBufLen = m_PrepareSendBuffer.size();
+			ppr_send_buf_.swap(send_buf_);
+			send_buf_.clear();
+			lpBuf = ppr_send_buf_.c_str();
+			nBufLen = ppr_send_buf_.size();
 			//lock.unlock();
 			return true;
 		}

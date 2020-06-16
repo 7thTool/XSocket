@@ -178,7 +178,8 @@ protected:
 public:
 	worker()
 	{
-		
+		ReserveRecvBufSize(DEFAULT_BUFSIZE);
+		ReserveSendBufSize(DEFAULT_BUFSIZE);
 	}
 
 	~worker() 
@@ -199,7 +200,7 @@ public:
 				return;
 			}
 			PRINTF("echo:%.*s", evt.buf.size(), evt.buf.c_str());
-			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.flags);
+			SendBuf(evt.buf.c_str(),evt.buf.size());
 		}
 	}
 protected:

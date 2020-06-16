@@ -84,9 +84,14 @@ protected:
 public:
 	client()
 	{
+#if USE_UDP
+#else
+		ReserveRecvBufSize(DEFAULT_BUFSIZE);
+		ReserveSendBufSize(DEFAULT_BUFSIZE);
 #if USE_WEBSOCKET
 		EnableWSCache(true);
 #endif
+#endif//USE_UDP
 	}
 
 	bool Start(const std::string& addr, u_short port)
