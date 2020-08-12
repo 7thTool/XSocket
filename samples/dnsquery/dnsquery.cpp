@@ -61,11 +61,11 @@ typedef SimpleSocketEvtServiceT<EventService> ClientService;
 typedef DNSClientSocketT<DNSUdpSocketT<SimpleUdpSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>,SockAddrType>>> ClientSocket;
 #else
 #if USE_EPOLL
-typedef EPollSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
+typedef EPollSocketSetT<ClientService,client> ClientSocketSet;
 #elif USE_IOCP
-typedef CompletionPortSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
+typedef CompletionPortSocketSetT<ClientService,client> ClientSocketSet;
 #else
-typedef SelectSocketSetT<ClientService,client,DEFAULT_FD_SETSIZE> ClientSocketSet;
+typedef SelectSocketSetT<ClientService,client> ClientSocketSet;
 #endif//
 
 #if USE_MANAGER
@@ -265,7 +265,7 @@ protected:
 public:
 
 #if USE_MANAGER
-	manager(int nMaxSocketCount):Base((nMaxSocketCount + ClientSocketSet::GetMaxSocketCount() - 1) / ClientSocketSet::GetMaxSocketCount())
+	manager(int nMaxSocketCount):Base(nMaxSocketCount,DEFAULT_MAX_SOCKSET_COUNT)
 #else
 	manager(int nMaxSocketCount)
 #endif

@@ -525,7 +525,7 @@ namespace XSocket {
 		{
 			http_parser parser = parser_;
 			http_parser_init(&parser_, (http_parser_type)parser_.type);
-			parser_.upgrade = parser.upgrade;
+			//parser_.upgrade = parser.upgrade;
 			parser_.data = parser.data;
 		}
 
@@ -969,6 +969,12 @@ namespace XSocket {
 				memcpy(&buf[len + head.size()], lpBuf, nBufLen);
 			memcpy(&buf[len + head.size() + nBufLen], "\r\n", 2);
 		}
+
+		inline void clear()
+		{
+			Base::clear();
+			msg_.reset();
+		}
 	};
 
 	/*!
@@ -1042,9 +1048,18 @@ namespace XSocket {
 			char buf[1024] = {0};
 			int buflen = sprintf(buf, "XSocket: %d", rand());
 			char base64_key[1024] = {0};
-			int base64_len = Base64EncodeGetRequiredLength(buflen, BASE64_FLAG_NOCRLF);
-			Base64Encode((const byte*)buf, buflen, (char*)base64_key, &base64_len, BASE64_FLAG_NOCRLF);
-			base64_key[base64_len] = 0; 
+#if USE_OPENSSL
+			int base64_len = base64_encode(buf, buflen, base64_key, base64_len);
+			if (base64_len < 0) {
+				ASSERT(0);
+				return;
+			}
+#else
+			//int base64_len = Base64EncodeGetRequiredLength(buflen, BASE64_FLAG_NOCRLF);
+			//Base64Encode((const byte*)buf, buflen, (char*)base64_key, &base64_len, BASE64_FLAG_NOCRLF);
+			//base64_key[base64_len] = 0;
+			en64((const byte*)buf, (byte*)base64_key, buflen);
+#endif
 			SendBuffer& send_buf = Base::SendBuf();int send_len = send_buf.size();
 			send_buf.resize(send_len + 1024);
 			std::ostrstream ss(&send_buf[send_len], 1024);
@@ -1073,9 +1088,18 @@ namespace XSocket {
 			//std::string ws_key = std::string(key,key_len) + WEBSOCKET_UUID;
 			SHA1_HASH hash_key = {0};
 			SHA1(buf, buflen, &hash_key);
-			buflen = Base64EncodeGetRequiredLength(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
-			Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, &buflen, BASE64_FLAG_NOCRLF);
-			buf[buflen] = 0; 
+#if USE_OPENSSL
+			int buflen = base64_encode((char*)hash_key.bytes, SHA1_HASH_SIZE, buf, buflen);
+			if (buflen < 0) {
+				ASSERT(0);
+				return;
+			}
+#else
+			//buflen = Base64EncodeGetRequiredLength(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
+			//Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, &buflen, BASE64_FLAG_NOCRLF);
+			//buf[buflen] = 0;
+			en64((const byte*)hash_key.bytes, (byte*)buf, SHA1_HASH_SIZE);
+#endif
 			SendBuffer& send_buf = Base::SendBuf();int send_len = send_buf.size();
 			send_buf.resize(send_len + 1024);
 			std::ostrstream ss(&send_buf[send_len], 1024);
@@ -1105,6 +1129,18 @@ namespace XSocket {
 			Select(FD_IDLE);
 		}
 
+		inline int IsCloseIfTimeOut() {
+			static const std::chrono::steady_clock::time_point tp_zero;
+			if(close_if_time_point_ > tp_zero) {
+				if(close_if_time_point_ < std::chrono::steady_clock::now()) {
+					return 1;
+				} else {
+					return 2;
+				}
+			}
+			return 0;
+		 }
+
 		inline void DoClose()
 		{
 			Base::Trigger(FD_CLOSE, 0); //关闭连接
@@ -1126,6 +1162,10 @@ namespace XSocket {
 		virtual void OnUpgrade(const std::shared_ptr<Message>& msg)
 		{
 #if USE_WEBSOCKET
+			//升级到了WebSocket，就不用超时关闭了，需要维持长连接
+			if(IsCloseIfTimeOut()) {
+				StopCloseIfTimeOut();
+			}
 			if(Base::IsConnectSocket()) {
 				//收到接受升级到WEBSOCKET消息
 			} else {
@@ -1204,9 +1244,9 @@ namespace XSocket {
 
 		virtual void OnIdle()
 		{
-			static const std::chrono::steady_clock::time_point tp_zero;
-			if(close_if_time_point_ > tp_zero) {
-				if(close_if_time_point_ < std::chrono::steady_clock::now()) {
+			auto isval = IsCloseIfTimeOut();
+			if(isval) {
+				if(isval == 1) {
 					DoClose();
 				} else {
 					Select(FD_IDLE);
@@ -1216,6 +1256,7 @@ namespace XSocket {
 
 		virtual void OnClose(int nErrorCode)
 		{
+			http_buffer_.clear();
 			StopCloseIfTimeOut();
 
 			Base::OnClose(nErrorCode);

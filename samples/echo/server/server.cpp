@@ -133,19 +133,15 @@ typedef SimpleSocketEvtServiceT<WorkEventService> WorkService;
 
 
 class WorkSocket;
-class WorkSocketSet;
+//class WorkSocketSet;
 
-class WorkSocketSet : public
 #if USE_EPOLL
-EPollSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
+typedef EPollSocketSetT<WorkService,WorkSocket> WorkSocketSet;
 #elif USE_IOCP
-CompletionPortSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
+typedef CompletionPortSocketSetT<WorkService,WorkSocket> WorkSocketSet;
 #else
-SelectSocketSetT<WorkService,WorkSocket,DEFAULT_FD_SETSIZE>
+typedef SelectSocketSetT<WorkService,WorkSocket> WorkSocketSet;
 #endif//
-{
-
-};
 
 class WorkSocket : public
 #if USE_EPOLL
@@ -276,9 +272,9 @@ protected:
 #endif
 public:
 #if 0
-	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
+	server(int nMaxSocketCount = DEFAULT_MAX_SOCKET_COUNT):Base(nMaxSocketCount,DEFAULT_MAX_SOCKSET_COUNT)
 #else
-	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base((nMaxSocketCount+WorkSocketSet::GetMaxSocketCount()-1)/WorkSocketSet::GetMaxSocketCount())
+	server(int nMaxSocketCount = DEFAULT_MAX_SOCKET_COUNT):Base(nMaxSocketCount,DEFAULT_MAX_SOCKSET_COUNT)
 #endif
 	{
 		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);

@@ -820,7 +820,7 @@ protected:
 						break;
 					}
 					if(!wait_timeout_) {
-						static const std::chrono::microseconds max_span(50);
+						static const std::chrono::microseconds max_span(200);
 						std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
 						if(tp_span < max_span) {
 							//std::this_thread::yield();
@@ -1555,6 +1555,7 @@ public:
 			return true; //说明其他线程调用Start了，这里直接返回true
 		}
 		Base::Start();
+		//thread_ = std::thread(std::bind(&This::OnRun, this));
 		thread_ptr_ = std::make_shared<std::thread>(std::bind(&This::OnRun,this));
 		return true;
 	}
@@ -1564,6 +1565,7 @@ public:
 		if(!Base::StopTest()) {
 			return; //说明其他线程调用Stop了，这里直接返回
 		}
+		//thread_.join();
 		if(thread_ptr_) {
 			thread_ptr_->join();
 			thread_ptr_.reset();
@@ -1573,6 +1575,7 @@ public:
 
 protected:
 	//线程
+	//std::thread thread_;
 	std::shared_ptr<std::thread> thread_ptr_;
 };
 
@@ -1884,32 +1887,33 @@ public:
  *
  *	封装SocketSet，实现最多管理uFD_SETSize数Socket
  */
-template<class TService = ThreadService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
+template<class TService = ThreadService, class TSocket = SocketEx>
 class SocketSetT : public TService
 {
 	typedef TService Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
-	//static const u_short SOCKET_SETSIZE = uFD_SETSize;
 protected:
 	u_short sock_count_ = 0;
-	std::shared_ptr<Socket> sock_ptrs_[uFD_SETSize];
+	std::vector<std::shared_ptr<Socket>> sock_ptrs_;
 	//u_short sock_idle_next_ = 0;
 	std::mutex mutex_;
 public:
-	SocketSetT()
+	SocketSetT(){}
+	SocketSetT(int nMaxSocketCount):sock_ptrs_(nMaxSocketCount)
 	{
 	}
 
-	inline static const size_t GetMaxSocketCount() { return uFD_SETSize; }
+	inline void SetMaxSocketCount(int nMaxSocketCount) { sock_ptrs_.resize(nMaxSocketCount); }
+	inline const size_t GetMaxSocketCount() { return sock_ptrs_.size(); }
 	inline size_t GetSocketCount() { return sock_count_; }
 
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j;
+		for (i = 0, j = sock_ptrs_.size(); i < j; i++)
 		{
 			if(sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
@@ -1927,12 +1931,13 @@ public:
 		}
 		return -1;
 	}
-	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	template<class Ty = Socket>
+	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)
 	{
 		if(sock_ptr) {
 			sock_ptr->Connect(port);
 		}
-		return AddSocket(sock_ptr);
+		return AddSocket(std::static_pointer_cast<Socket>(sock_ptr));
 	}
 	inline int AddAccept(std::shared_ptr<Socket> sock_ptr)
 	{
@@ -1943,8 +1948,8 @@ public:
 	{
 		ASSERT(sock_ptr);
 		//std::unique_lock<std::mutex> lock(mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j;
+		for (i = 0, j = sock_ptrs_.size(); i < j; i++)
 		{
 			if(sock_ptrs_[i]==sock_ptr) {
 				return RemoveSocketByPos(i);
@@ -1956,8 +1961,8 @@ public:
 	/*int RemoveInvalidSocket(std::shared_ptr<Socket> & sock_ptr)
 	{
 		//std::unique_lock<std::mutex> lock(mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j;
+		for (i = 0, j = sock_ptrs_.size(); i < j; i++)
 		{
 			if(sock_ptrs_[i]) {
 				std::unique_lock<std::mutex> lock(mutex_);
@@ -1980,7 +1985,7 @@ protected:
 	//
 	inline int RemoveSocketByPos(int i)
 	{
-		if (i>=0 && i<uFD_SETSize) {
+		if (i>=0 && i<sock_ptrs_.size()) {
 			std::unique_lock<std::mutex> lock(mutex_);
 			std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
 			if (sock_ptr) {
@@ -1998,8 +2003,8 @@ protected:
 
 	void RemoveAllSocket(bool bClose = false)
 	{
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j;
+		for (i = 0, j = sock_ptrs_.size(); i < j; i++)
 		{
 			if (sock_ptrs_[i]) {
 				std::shared_ptr<Socket> sock_ptr = sock_ptrs_[i];
@@ -2017,8 +2022,8 @@ protected:
 
 	inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
 		if(sock_ptr) {
-			int i;
-			for (i=0;i<uFD_SETSize;i++)
+			int i, j;
+			for (i = 0, j = sock_ptrs_.size(); i < j; i++)
 			{
 				if(sock_ptrs_[i].get()==sock_ptr) {
 					return sock_ptrs_[i];
@@ -2040,6 +2045,7 @@ protected:
 	{
 		Base::OnIdle();
 		
+		int uFD_SETSize = sock_ptrs_.size();
 		//int next = sock_idle_next_, next_end = sock_idle_next_ + 20;
 		//sock_idle_next_ = next_end % uFD_SETSize;
 		//for (; next < next_end; next++)
@@ -2086,14 +2092,10 @@ protected:
 	std::vector<SocketSet*> sockset_ptrs_;
 	size_t sockset_add_next_ = 0;
 public:
-	SocketManagerT(int nMaxSockSetCount)
+	SocketManagerT(){}
+	SocketManagerT(int nMaxSocketCount, int nMaxSockSetCount/* = std::thread::hardware_concurrency() + 1*/)
 	{
-		sockset_ptrs_.resize(nMaxSockSetCount,NULL);
-		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
-		{
-			sockset_ptrs_[i] = new SocketSet();
-		}
-		sockset_add_next_ = 0;
+		SetMaxSocketCount(nMaxSocketCount, nMaxSockSetCount);
 	}
 
 	~SocketManagerT() 
@@ -2137,6 +2139,16 @@ public:
 		return 0; 
 	}
 
+	inline void SetMaxSocketCount(int nMaxSocketCount, int nMaxSockSetCount/* = std::thread::hardware_concurrency() + 1*/)
+	{
+		int nMaxSocketCountPerSet = nMaxSocketCount/nMaxSockSetCount;
+		sockset_ptrs_.resize(nMaxSockSetCount,NULL);
+		for (size_t i = 0; i < sockset_ptrs_.size(); i++)
+		{
+			sockset_ptrs_[i] = new SocketSet(nMaxSocketCountPerSet);
+		}
+		sockset_add_next_ = 0; 
+	}
 	inline size_t GetSocketSetCount() { return sockset_ptrs_.size(); }
 	inline size_t GetMaxSocketCount() { 
 		return sockset_ptrs_.size() * SocketSet::GetMaxSocketCount(); 
@@ -2171,7 +2183,8 @@ public:
 		}
 		return -1;
 	}
-	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	template<class Ty = Socket>
+	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)
 	{
 		size_t next = sockset_add_next_, next_end = sockset_add_next_ + sockset_ptrs_.size();
 		sockset_add_next_ = (sockset_add_next_ + 1) % sockset_ptrs_.size();
@@ -2399,7 +2412,7 @@ public:
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
-	SelectSocketT() : Base()
+	SelectSocketT()
 	{
     	
 	}
@@ -2410,15 +2423,15 @@ public:
  *
  *	封装SelectSocketSet，实现对select模型封装，最多管理uFD_SETSize数Socket
  */
-template<class TService = SelectService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class SelectSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+template<class TService = SelectService, class TSocket = SocketEx>
+class SelectSocketSetT : public SocketSetT<TService,TSocket>
 {
-	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
+	typedef SocketSetT<TService,TSocket> Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
 public:
-	SelectSocketSetT()
+	SelectSocketSetT(int nMaxSocketCount):Base(nMaxSocketCount)
 	{
 		
 	}
@@ -2578,7 +2591,7 @@ protected:
 	std::string address_;
 	u_short port_;
 public:
-	SelectServerT(int nMaxSocketCount) : Base(),SockManager((nMaxSocketCount+SocketSet::GetMaxSocketCount()-1)/SocketSet::GetMaxSocketCount())
+	SelectServerT(int nMaxSocketCount, int nMaxSockSetCount) : Base(),SockManager(nMaxSocketCount,nMaxSockSetCount)
 	{
 		
 	}

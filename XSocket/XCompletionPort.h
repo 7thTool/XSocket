@@ -558,15 +558,15 @@ typedef ThreadServiceT<CompletionPortServiceT<Service>> CompletionPortService;
  *
  *	封装CompletionPortSocketSet，实现对CompletionPort模型封装，最多管理uFD_SETSize数Socket
  */
-template<class TService = CompletionPortService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class CompletionPortSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+template<class TService = CompletionPortService, class TSocket = SocketEx>
+class CompletionPortSocketSetT : public SocketSetT<TService,TSocket>
 {
-	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
+	typedef SocketSetT<TService,TSocket> Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
 public:
-	CompletionPortSocketSetT()
+	CompletionPortSocketSetT(int nMaxSocketCount):Base(nMaxSocketCount)
 	{
 		
 	}
@@ -579,8 +579,8 @@ public:
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j = sock_ptrs_.size();
+		for (i = 0; i < j; i++)
 		{
 			if(sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
@@ -635,9 +635,10 @@ public:
 		}
 		return -1;
 	}
-	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	template<class Ty = Socket>
+	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)
 	{
-		int ret = AddSocket(sock_ptr);
+		int ret = AddSocket(std::static_pointer_cast<Socket>(sock_ptr));
 		if(ret >= 0 && sock_ptr) {
 			sock_ptr->Connect(port);
 		}
@@ -653,6 +654,7 @@ protected:
 	virtual bool OnCompletion(BOOL bStatus, ULONG_PTR Key, DWORD dwTransfer, WSAOVERLAPPED* lpOverlap)
 	{
 		PER_IO_OPERATION_DATA* lpOverlapped = (PER_IO_OPERATION_DATA*)lpOverlap;
+		int uFD_SETSize = sock_ptrs_.size();
 		int Pos = Key;
 		if (Pos > 0 && Pos <= uFD_SETSize) {
 			std::unique_lock<std::mutex> lock(mutex_);

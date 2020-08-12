@@ -42,6 +42,11 @@ namespace XSocket {
 //=======================================================================
 //
 
+	unsigned char* en64(const unsigned char *in, unsigned char *out, int inlen);
+	int de64(const char *in, char *out, int maxlen);
+	void tohex(unsigned char *in, unsigned char *out, int len);
+	void fromhex(unsigned char *in, unsigned char *out, int len);
+
 inline int HexEncodeGetRequiredLength(int nSrcLen)
 {
 	int64_t nRet64=2*static_cast<int64_t>(nSrcLen)+1;
@@ -487,6 +492,13 @@ int gzcompress(Bytef *data, uLong ndata,
 /* zdata 数据 nzdata 原数据长度 data 解压后数据 ndata 解压后长度 */
 int gzdecompress(Byte *zdata, uLong nzdata,
                  Byte *data, uLong *ndata);
+#endif
+
+#if USE_OPENSSL
+
+int base64_encode(char *str, int str_len, char *encode, int encode_len);
+int base64_decode(char *str, int str_len, char *decode, int decode_len);
+
 #endif
 
 }

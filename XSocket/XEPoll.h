@@ -254,15 +254,15 @@ typedef ThreadServiceT<EPollServiceT<Service>> EPollService;
  *
  *	封装EPollSocketSet，实现epoll模型
  */
-template<class TService = EPollService, class TSocket = SocketEx, u_short uFD_SETSize = FD_SETSIZE>
-class EPollSocketSetT : public SocketSetT<TService,TSocket,uFD_SETSize>
+template<class TService = EPollService, class TSocket = SocketEx>
+class EPollSocketSetT : public SocketSetT<TService,TSocket>
 {
-	typedef SocketSetT<TService,TSocket,uFD_SETSize> Base;
+	typedef SocketSetT<TService,TSocket> Base;
 public:
 	typedef TService Service;
 	typedef TSocket Socket;
 public:
-	EPollSocketSetT()
+	EPollSocketSetT(int nMaxSocketCount):Base(nMaxSocketCount)
 	{
 	}
 	~EPollSocketSetT() 
@@ -297,8 +297,8 @@ public:
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(Base::mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j = sock_ptrs_.size();
+		for (i = 0; i < j; i++)
 		{
 			if(Base::sock_ptrs_[i]==NULL) {
 				if (sock_ptr) {
@@ -347,12 +347,13 @@ public:
 		}
 		return -1;
 	}
-	inline int AddConnect(std::shared_ptr<Socket> sock_ptr, u_short port)
+	template<class Ty = Socket>
+	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)
 	{
 		if(sock_ptr) {
 			sock_ptr->Connect(port);
 		}
-		return AddSocket(sock_ptr);
+		return AddSocket(std::static_pointer_cast<Socket>(sock_ptr));
 	}
 	inline int AddAccept(std::shared_ptr<Socket> sock_ptr)
 	{
@@ -362,8 +363,8 @@ public:
 	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
 	{
 		//std::unique_lock<std::mutex> lock(Base::mutex_);
-		int i;
-		for (i=0;i<uFD_SETSize;i++)
+		int i, j = sock_ptrs_.size();
+		for (i = 0; i < j; i++)
 		{
 			if(Base::sock_ptrs_[i]==sock_ptr) {
 				if (sock_ptr->IsSocket()) {

@@ -102,13 +102,13 @@ protected:
 };
 
 #if USE_EPOLL
-typedef EPollSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef EPollSocketSetT<WorkService,worker> WorkSocketSet;
 typedef EPollSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #elif USE_IOCP
-typedef CompletionPortSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef CompletionPortSocketSetT<WorkService,worker> WorkSocketSet;
 typedef CompletionPortSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #else
-typedef SelectSocketSetT<WorkService,worker,DEFAULT_FD_SETSIZE> WorkSocketSet;
+typedef SelectSocketSetT<WorkService,worker> WorkSocketSet;
 typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #endif//
 
@@ -264,7 +264,7 @@ class server
 {
 	typedef SelectServerT<SelectService,SocketExImpl<server,ListenSocketT<SelectSocketT<SelectService,SocketEx>>>,WorkSocketSet> Base;
 public:
-	server(int nMaxSocketCount = DEFAULT_MAX_FD_SETSIZE):Base(nMaxSocketCount)
+	server(int nMaxSocketCount = DEFAULT_MAX_SOCKSET_COUNT):Base(nMaxSocketCount,DEFAULT_MAX_SOCKSET_COUNT)
 	{
 		SetWaitTimeOut(DEFAULT_WAIT_TIMEOUT);
 	}
