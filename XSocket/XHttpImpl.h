@@ -1146,9 +1146,11 @@ namespace XSocket {
 			Base::Trigger(FD_CLOSE, 0); //关闭连接
 		}
 
+		inline bool IsUpgrade() { return http_buffer_.upgrade(); }
+
 		//解析数据包
 		virtual int ParseBuf(const char* lpBuf, int & nBufLen) {
-			if(!http_buffer_.upgrade()) {
+			if(!IsUpgrade()) {
 				int nFlags = http_buffer_.ParseBuf(lpBuf, nBufLen);
 				return nFlags;
 			} else {
