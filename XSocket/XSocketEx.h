@@ -895,7 +895,7 @@ public:
 		tasks_.erase(t);
 	}
 
-	inline bool Count() { return tasks_que_.size() + tasks_.size(); }
+	inline size_t Count() { return tasks_que_.size() + tasks_.size(); }
 	inline bool IsEmpty() { return tasks_que_.empty() && tasks_.empty(); }
 
 	inline bool Pop(std::function<void()>& task, ssize_t* dealy)
