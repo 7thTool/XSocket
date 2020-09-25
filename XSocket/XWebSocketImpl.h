@@ -237,7 +237,7 @@ enum {
 		//解析数据包
 		int ParseBuf(const char* lpBuf, int & nBufLen) { 
 			if(nBufLen < 2) {
-				return 0;
+				return SOCKET_PACKET_FLAG_PENDING;
 			}
 			const char* pCur = lpBuf;
 			const char* pEnd = lpBuf + nBufLen;
@@ -383,6 +383,9 @@ enum {
 		//解析数据包
 		virtual int ParseBuf(const char* lpBuf, int & nBufLen) { 
 			int nFlags = ws_buffer_.ParseBuf(lpBuf, nBufLen);
+			if (!(nFlags & SOCKET_PACKET_FLAG_COMPLETE)) {
+				return nFlags;
+			}
 			if(ws_buffer_.IsCacheEnable()) {
 				//Cache下，分片不调用OnWSMessage，分片接收结束时再调用OnWSMessage
 				if(!(nFlags&SOCKET_PACKET_FLAG_FINAL)) {
