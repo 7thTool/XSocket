@@ -504,7 +504,7 @@ public:
 
 protected:
 	//
-	virtual void OnNotify(void* data)
+	virtual void OnNotifyData(void* data)
 	{
 
 	}
@@ -538,13 +538,13 @@ protected:
 			PRINTF("GetQueuedCompletionStatus Eixt");
 			return;
 		}
-		if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
-			//
+		else if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
+			OnNotify();
 		}
-		if (dwTransfer == IOCP_OPERATION_NOTIFYDATA) { //
-			OnNotify((void*)Key);
+		else if (dwTransfer == IOCP_OPERATION_NOTIFYDATA) { //
+			OnNotifyData((void*)Key);
 		}
-		if(!OnCompletion(bStatus, Key, dwTransfer, lpOverlapped)) {
+		else if(!OnCompletion(bStatus, Key, dwTransfer, lpOverlapped)) {
 			break;
 		}
 		} while(true);

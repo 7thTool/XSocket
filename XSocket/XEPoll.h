@@ -202,9 +202,9 @@ public:
 
 protected:
 	//
-	virtual void OnNotify(void* data)
+	virtual void OnNotifyData(void* data)
 	{
-		//PRINTF("OnNotify %p", data);
+		//PRINTF("OnNotifyData %p", data);
 	}
 
 	virtual void OnEPollEvent(const epoll_event& event)
@@ -225,11 +225,12 @@ protected:
 					size_t data = 0;
 					if(sizeof(size_t) == read(event.data.fd, &data, sizeof(data))) {
 						//PRINTF("OnNotify %u", data);
+						OnNotify();
 					}
 				} else if(evfd_pair_[0] == event.data.fd) {
 					void* data = 0;
 					if(sizeof(void*) == read(event.data.fd, &data, sizeof(data))) {
-						OnNotify(data);
+						OnNotifyData(data);
 					}
 				} else if(timerfd_ == event.data.fd) {
 					uint64_t data = 0;
