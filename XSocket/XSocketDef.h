@@ -226,7 +226,7 @@ typedef unsigned char byte;
 //DATE TIME [日志级别] [标识] 内容
 
 #ifndef XSOCKET_LOGOUT
-#define XSOCKET_LOGOUT(format,...) printf("%s %s " format "\n", __DATE__, __TIME__, ##__VA_ARGS__)
+#define XSOCKET_LOGOUT(format,...) printf(format "\n", ##__VA_ARGS__)
 #endif//
 
 #ifndef XSOCKET_LOG4E 
