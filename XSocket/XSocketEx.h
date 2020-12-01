@@ -477,6 +477,8 @@ public:
 		while(count_ != objptrs_.size()) {
 			cv_.wait(lock);
 		}
+		count_ = 0;
+		max_count_ = 0;
 		while(!objptrs_.empty()) {
 			auto objptr = objptrs_.front();
 			pT->Free(objptr);
@@ -563,13 +565,6 @@ public:
 	static BufferPool& Inst() {
 		static BufferPool _inst;
 		return _inst;
-	}
-	
-//protected:
-	inline std::string* Alloc() { 
-		auto ptr = new std::string();
-		ptr->reserve(DEFAULT_BUFSIZE);
-		return ptr;
 	}
 };
 typedef std::array<char,2048> UdpBuffer;
@@ -1897,6 +1892,7 @@ public:
 protected:
 	u_short sock_count_ = 0;
 	std::vector<std::shared_ptr<Socket>> sock_ptrs_;
+	u_short sock_add_next_ = 0;
 	//u_short sock_idle_next_ = 0;
 	std::mutex mutex_;
 public:
@@ -1912,24 +1908,23 @@ public:
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		int i, j;
-		for (i = 0, j = sock_ptrs_.size(); i < j; i++)
-		{
-			if(sock_ptrs_[i]==NULL) {
+		int i = 0, j = sock_ptrs_.size();
+		if(sock_count_ >= j) {
+			return -1;
+		}
+		do {
+			i = sock_add_next_++ % j;
+			if(!sock_ptrs_[i]) {
 				if (sock_ptr) {
 					sock_count_++;
 					sock_ptr->AttachService(this);
 					sock_ptr->Select(evt);
 					sock_ptrs_[i] = sock_ptr;
-					return i;
-				} else {
-					//测试可不可以增加Socket，返回true表示可以增加
-					return i;
 				}
 				break;
 			}
-		}
-		return -1;
+		} while (true);
+		return i;
 	}
 	template<class Ty = Socket>
 	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)
@@ -2020,7 +2015,7 @@ protected:
 		sock_count_ = 0;
 	}
 
-	inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
+	/*inline std::shared_ptr<Socket> FindSocket(SocketEx* sock_ptr) {
 		if(sock_ptr) {
 			int i, j;
 			for (i = 0, j = sock_ptrs_.size(); i < j; i++)
@@ -2031,7 +2026,7 @@ protected:
 			}
 		}
 		return nullptr;
-	}
+	}*/
 
 protected:
 	//
@@ -2451,7 +2446,7 @@ protected:
 		struct timeval tv = {0, Base::GetWaitingTimeOut()*1000};
 		std::unique_lock<std::mutex> lock(Base::mutex_);
 		{
-			for (size_t i=0; i<uFD_SETSize; ++i)
+			for (size_t i=0,j=Base::sock_ptrs_.size(); i<j; ++i)
 			{
 				if (Base::sock_ptrs_[i] && Base::sock_ptrs_[i]->IsSocket()) {
 					nfds++;
@@ -2477,7 +2472,7 @@ protected:
 		else if(tv.tv_usec)
 			std::this_thread::sleep_for(std::chrono::microseconds(tv.tv_usec));
 		if (nfds > 0) {
-			for (size_t i = 0; i < uFD_SETSize; ++i)
+			for (size_t i = 0, j = Base::sock_ptrs_.size(); i < j; ++i)
 			{
 				if (Base::sock_ptrs_[i]) {
 					lock.lock();

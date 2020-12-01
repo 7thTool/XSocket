@@ -579,10 +579,13 @@ public:
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
-		int i, j = sock_ptrs_.size();
-		for (i = 0; i < j; i++)
-		{
-			if(sock_ptrs_[i]==NULL) {
+		int i = 0, j = sock_ptrs_.size();
+		if(sock_count_ >= j) {
+			return -1;
+		}
+		do {
+			i = sock_add_next_++ % j;
+			if(!sock_ptrs_[i]) {
 				if (sock_ptr) {
 					sock_count_++;
 					sock_ptrs_[i] = sock_ptr;
@@ -625,15 +628,11 @@ public:
 					if(evt & FD_ACCEPT) {
 						PostQueuedCompletionStatus(hIocp_, IOCP_OPERATION_TRYACCEPT, (ULONG_PTR)(i + 1), NULL);
 					}
-					return i;
-				} else {
-					//测试可不可以增加Socket，返回true表示可以增加
-					return i;
 				}
 				break;
 			}
-		}
-		return -1;
+		} while (true);
+		return i;
 	}
 	template<class Ty = Socket>
 	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)

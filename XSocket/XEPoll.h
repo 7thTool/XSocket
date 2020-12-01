@@ -40,6 +40,8 @@ class EPollSocketT : public TBase
 public:
 	typedef TSocketSet SocketSet;
 public:
+	u_short sock_pos_ = 0;
+public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 
 	EPollSocketT():Base()
@@ -106,8 +108,7 @@ public:
         		PRINTF("create event fd failed, errno(%d): %s\n", errno, strerror(errno));
 			} else {
 				struct epoll_event event = {0};
-				event.data.ptr = nullptr;
-				event.data.fd = evfd_;
+				event.data.ptr = &evfd_;
 				event.events = EPOLLIN | EPOLLERR;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
 			}
@@ -117,8 +118,7 @@ public:
         		PRINTF("create fd pair failed, errno(%d): %s\n", errno, strerror(errno));
     		} else {
 				struct epoll_event event = {0};
-				event.data.ptr = nullptr;
-				event.data.fd = evfd_pair_[0];
+				event.data.ptr = &evfd_pair_[0];
 				event.events = EPOLLIN | EPOLLERR;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_pair_[0], &event);
 			}
@@ -127,8 +127,7 @@ public:
 				PRINTF("timerfd_create failed, errno(%d): %s\n", errno, strerror(errno));
 			} else {
 				struct epoll_event event = {0};
-				event.data.ptr = nullptr;
-				event.data.fd = timerfd_;
+				event.data.ptr = &timerfd_;
 				event.events = EPOLLIN | EPOLLERR | EPOLLET;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, timerfd_, &event);
 			}
@@ -221,20 +220,20 @@ protected:
 			for (int i = 0; i < nfds; ++i)
 			{
 				const struct epoll_event& event = events[i];
-				if(evfd_ == event.data.fd) {
+				if(&evfd_ == event.data.ptr) {
 					size_t data = 0;
-					if(sizeof(size_t) == read(event.data.fd, &data, sizeof(data))) {
+					if(sizeof(size_t) == read(evfd_, &data, sizeof(data))) {
 						//PRINTF("OnNotify %u", data);
 						OnNotify();
 					}
-				} else if(evfd_pair_[0] == event.data.fd) {
+				} else if(&evfd_pair_[0] == event.data.ptr) {
 					void* data = 0;
-					if(sizeof(void*) == read(event.data.fd, &data, sizeof(data))) {
+					if(sizeof(void*) == read(evfd_pair_[0], &data, sizeof(data))) {
 						OnNotifyData(data);
 					}
-				} else if(timerfd_ == event.data.fd) {
+				} else if(&timerfd_ == event.data.ptr) {
 					uint64_t data = 0;
-					if(sizeof(uint64_t) == read(event.data.fd, &data, sizeof(data))) {
+					if(sizeof(uint64_t) == read(timerfd_, &data, sizeof(data))) {
 						//PRINTF("OnTimer %u", data);
 						OnTimer();
 					}
@@ -270,14 +269,13 @@ public:
 	{
 	}
 
-	void SelectSocket(SocketEx* sock_ptr, int evt) {
+	void SelectSocket(Socket* sock_ptr, int evt) {
 		//Base::SelectSocket(sock_ptr, evt);
 		int fd = *sock_ptr;
 		struct epoll_event event = {0};
-		event.data.ptr = (void*)sock_ptr;
+		event.data.u64 = sock_ptr->sock_pos_;
 		event.events = 0 
-		| EPOLLRDHUP
-						
+		| EPOLLRDHUP				
 #if USE_EPOLLET
 		| EPOLLET
 #endif//
@@ -298,18 +296,22 @@ public:
 	int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
 	{
 		std::unique_lock<std::mutex> lock(Base::mutex_);
-		int i, j = sock_ptrs_.size();
-		for (i = 0; i < j; i++)
-		{
-			if(Base::sock_ptrs_[i]==NULL) {
+		int i = 0, j = Base::sock_ptrs_.size();
+		if(Base::sock_count_ >= j) {
+			return -1;
+		}
+		do {
+			i = Base::sock_add_next_++ % j;
+			if(!Base::sock_ptrs_[i]) {
 				if (sock_ptr) {
 					Base::sock_count_++;
 					Base::sock_ptrs_[i] = sock_ptr;
+					sock_ptr->sock_pos_ = i;
 					sock_ptr->AttachService(this);
 					sock_ptr->SocketEx::Select(evt);
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
-					event.data.ptr = (void *)sock_ptr.get();
+					event.data.u64 = i;
 					//LT(默认)，LT+EPOLLONESHOT最可靠
 					//ET，EPOLLET最高效,ET+EPOLLONESHOT高效可靠
 					event.events = 0 
@@ -338,15 +340,11 @@ public:
 					} else {
 						PRINTF("epoll_ctl err:%d", XSocket::Socket::GetLastError());
 					}
-					return i;
-				} else {
-					//测试可不可以增加Socket，返回true表示可以增加
-					return i;
 				}
 				break;
 			}
-		}
-		return -1;
+		} while (true);
+		return i;
 	}
 	template<class Ty = Socket>
 	inline int AddConnect(std::shared_ptr<Ty> sock_ptr, u_short port)
@@ -364,14 +362,15 @@ public:
 	int RemoveSocket(std::shared_ptr<Socket> sock_ptr)
 	{
 		//std::unique_lock<std::mutex> lock(Base::mutex_);
-		int i, j = sock_ptrs_.size();
+		int i, j = Base::sock_ptrs_.size();
 		for (i = 0; i < j; i++)
 		{
-			if(Base::sock_ptrs_[i]==sock_ptr) {
+			if(Base::sock_ptrs_[i] == sock_ptr) {
+				ASSERT(sock_ptr->sock_pos_ == i);
 				if (sock_ptr->IsSocket()) {
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
-					event.data.ptr = (void *)sock_ptr.get();
+					event.data.u64 = i;
 					epoll_ctl(Base::epfd_, EPOLL_CTL_DEL, fd, &event);
 				}
 				return Base::RemoveSocketByPos(i);
@@ -384,12 +383,13 @@ protected:
 	//
 	virtual void OnEPollEvent(const epoll_event& event)
 	{
-		std::unique_lock<std::mutex> lock(Base::mutex_);
-		std::shared_ptr<Socket> sock_ptr = Base::FindSocket((Socket *)event.data.ptr);
-		lock.unlock();
+		//std::unique_lock<std::mutex> lock(Base::mutex_);
+		std::shared_ptr<Socket> sock_ptr = Base::sock_ptrs_[event.data.u64];
+		//lock.unlock();
 		if (!sock_ptr) {
 			return;
 		}
+		ASSERT(sock_ptr->sock_pos_ == event.data.u64);
 		unsigned int evt = event.events;
 		int fd = *sock_ptr;
 		int nErrorCode = 0;
