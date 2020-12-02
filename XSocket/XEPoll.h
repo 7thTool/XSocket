@@ -84,6 +84,14 @@ public:
 	}
 };
 
+enum {
+	EPOLL_EVENT_POS_NONE = 0,
+	EPOLL_EVENT_POS_EVENT,
+	EPOLL_EVENT_POS_PAIR,
+	EPOLL_EVENT_POS_TIMER,
+	EPOLL_EVENT_POS_BASE,
+};
+
 /*!
  *	@brief EPollServiceT 模板定义.
  *
@@ -108,7 +116,7 @@ public:
         		PRINTF("create event fd failed, errno(%d): %s\n", errno, strerror(errno));
 			} else {
 				struct epoll_event event = {0};
-				event.data.ptr = &evfd_;
+				event.data.u64 = EPOLL_EVENT_POS_EVENT;
 				event.events = EPOLLIN | EPOLLERR;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_, &event);
 			}
@@ -118,7 +126,7 @@ public:
         		PRINTF("create fd pair failed, errno(%d): %s\n", errno, strerror(errno));
     		} else {
 				struct epoll_event event = {0};
-				event.data.ptr = &evfd_pair_[0];
+				event.data.u64 = EPOLL_EVENT_POS_PAIR;
 				event.events = EPOLLIN | EPOLLERR;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, evfd_pair_[0], &event);
 			}
@@ -127,7 +135,7 @@ public:
 				PRINTF("timerfd_create failed, errno(%d): %s\n", errno, strerror(errno));
 			} else {
 				struct epoll_event event = {0};
-				event.data.ptr = &timerfd_;
+				event.data.u64 = EPOLL_EVENT_POS_TIMER;
 				event.events = EPOLLIN | EPOLLERR | EPOLLET;
 				epoll_ctl(epfd_, EPOLL_CTL_ADD, timerfd_, &event);
 			}
@@ -157,7 +165,7 @@ public:
 			epfd_ = 0;
 		}
 	}
-	
+
 	inline void PostNotify()
 	{
 		Base::PostNotify();
@@ -220,18 +228,18 @@ protected:
 			for (int i = 0; i < nfds; ++i)
 			{
 				const struct epoll_event& event = events[i];
-				if(&evfd_ == event.data.ptr) {
+				if(EPOLL_EVENT_POS_EVENT == event.data.u64) {
 					size_t data = 0;
 					if(sizeof(size_t) == read(evfd_, &data, sizeof(data))) {
 						//PRINTF("OnNotify %u", data);
 						OnNotify();
 					}
-				} else if(&evfd_pair_[0] == event.data.ptr) {
+				} else if(EPOLL_EVENT_POS_PAIR == event.data.u64) {
 					void* data = 0;
 					if(sizeof(void*) == read(evfd_pair_[0], &data, sizeof(data))) {
 						OnNotifyData(data);
 					}
-				} else if(&timerfd_ == event.data.ptr) {
+				} else if(EPOLL_EVENT_POS_TIMER == event.data.u64) {
 					uint64_t data = 0;
 					if(sizeof(uint64_t) == read(timerfd_, &data, sizeof(data))) {
 						//PRINTF("OnTimer %u", data);
@@ -273,7 +281,7 @@ public:
 		//Base::SelectSocket(sock_ptr, evt);
 		int fd = *sock_ptr;
 		struct epoll_event event = {0};
-		event.data.u64 = sock_ptr->sock_pos_;
+		event.data.u64 = sock_ptr->sock_pos_ + EPOLL_EVENT_POS_BASE;
 		event.events = 0 
 		| EPOLLRDHUP				
 #if USE_EPOLLET
@@ -311,7 +319,7 @@ public:
 					sock_ptr->SocketEx::Select(evt);
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
-					event.data.u64 = i;
+					event.data.u64 = i + EPOLL_EVENT_POS_BASE;
 					//LT(默认)，LT+EPOLLONESHOT最可靠
 					//ET，EPOLLET最高效,ET+EPOLLONESHOT高效可靠
 					event.events = 0 
@@ -370,7 +378,7 @@ public:
 				if (sock_ptr->IsSocket()) {
 					int fd = *sock_ptr;
 					struct epoll_event event = {0};
-					event.data.u64 = i;
+					event.data.u64 = i + EPOLL_EVENT_POS_BASE;
 					epoll_ctl(Base::epfd_, EPOLL_CTL_DEL, fd, &event);
 				}
 				return Base::RemoveSocketByPos(i);
@@ -384,12 +392,17 @@ protected:
 	virtual void OnEPollEvent(const epoll_event& event)
 	{
 		//std::unique_lock<std::mutex> lock(Base::mutex_);
-		std::shared_ptr<Socket> sock_ptr = Base::sock_ptrs_[event.data.u64];
+		if(event.data.u64 < EPOLL_EVENT_POS_BASE) {
+			ASSERT(0);
+			return;
+		}
+		size_t pos = event.data.u64 - EPOLL_EVENT_POS_BASE;
+		std::shared_ptr<Socket> sock_ptr = Base::sock_ptrs_[pos];
 		//lock.unlock();
 		if (!sock_ptr) {
 			return;
 		}
-		ASSERT(sock_ptr->sock_pos_ == event.data.u64);
+		ASSERT(sock_ptr->sock_pos_ == pos);
 		unsigned int evt = event.events;
 		int fd = *sock_ptr;
 		int nErrorCode = 0;
