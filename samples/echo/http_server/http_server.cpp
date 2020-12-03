@@ -99,13 +99,13 @@ protected:
 };
 
 #if USE_EPOLL
-typedef HttpSocketSetT<EPollSocketSetT<WorkService,worker>> WorkSocketSet;
+typedef EPollSocketSetT<WorkService,worker> WorkSocketSet;
 typedef EPollSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #elif USE_IOCP
-typedef HttpSocketSetT<CompletionPortSocketSetT<WorkService,worker>> WorkSocketSet;
+typedef CompletionPortSocketSetT<WorkService,worker> WorkSocketSet;
 typedef CompletionPortSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #else
-typedef HttpSocketSetT<SelectSocketSetT<WorkService,worker>> WorkSocketSet;
+typedef SelectSocketSetT<WorkService,worker> WorkSocketSet;
 typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #endif//
 

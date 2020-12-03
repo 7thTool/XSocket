@@ -428,29 +428,33 @@ public:
 		return nRecv;
 	}
 
-	inline void Select(int lEvent) {  
-		int lAsyncEvent = 0;
-		if(!(event_ & FD_READ) && (lEvent & FD_READ)) {
-			lAsyncEvent |= FD_READ;
-		}
-		if(!(event_ & FD_WRITE) && (lEvent & FD_WRITE)) {
-			lAsyncEvent |= FD_WRITE;
-		}
-		if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
-			lAsyncEvent |= FD_ACCEPT;
-		}
-		if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
-			lAsyncEvent |= FD_IDLE;
-		}
-		Base::Select(lEvent);
-		if(lAsyncEvent & FD_READ) {
-			Trigger(FD_READ, 0);
-		}
-		if(lAsyncEvent & FD_WRITE) {
-			Trigger(FD_WRITE, 0);
-		}
-		if(lAsyncEvent & FD_ACCEPT) {
-			Trigger(FD_ACCEPT, 0);
+	inline void Select(int lEvent) { 
+		if(service()) { 
+			int lAsyncEvent = 0;
+			if(!(event_ & FD_READ) && (lEvent & FD_READ)) {
+				lAsyncEvent |= FD_READ;
+			}
+			if(!(event_ & FD_WRITE) && (lEvent & FD_WRITE)) {
+				lAsyncEvent |= FD_WRITE;
+			}
+			if(!(event_ & FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
+				lAsyncEvent |= FD_ACCEPT;
+			}
+			if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
+				lAsyncEvent |= FD_IDLE;
+			}
+			Base::Select(lEvent);
+			if(lAsyncEvent & FD_READ) {
+				Trigger(FD_READ, 0);
+			}
+			if(lAsyncEvent & FD_WRITE) {
+				Trigger(FD_WRITE, 0);
+			}
+			if(lAsyncEvent & FD_ACCEPT) {
+				Trigger(FD_ACCEPT, 0);
+			}
+		} else {
+			Base::Select(lEvent);
 		}
 	}
 };
@@ -590,6 +594,18 @@ public:
 					sock_count_++;
 					sock_ptrs_[i] = sock_ptr;
 					sock_ptr->AttachService(this);
+					if(sock_ptr->IsSelect(FD_READ)) {
+						sock_ptr->RemoveSelect(FD_READ);
+						evt |= FD_READ;
+					}
+					if(sock_ptr->IsSelect(FD_WRITE)) {
+						sock_ptr->RemoveSelect(FD_WRITE);
+						evt |= FD_WRITE;
+					}
+					if(sock_ptr->IsSelect(FD_ACCEPT)) {
+						sock_ptr->RemoveSelect(FD_ACCEPT);
+						evt |= FD_ACCEPT;
+					}
 					//SetHandleInformation((HANDLE) (SOCKET)*sock_ptr, HANDLE_FLAG_INHERIT, 0);
 					HANDLE hIocp = CreateIoCompletionPort((HANDLE)(SOCKET)*sock_ptr, hIocp_, (ULONG_PTR)(i + 1), 0);
 					ASSERT(hIocp);

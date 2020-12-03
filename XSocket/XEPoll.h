@@ -54,32 +54,36 @@ public:
 		
 	}
 	
-	inline void Select(int lEvent) {  
-		int lAsyncEvent = 0;
-		if(!Base::IsSelect(FD_READ) && (lEvent & FD_READ)) {
-			lAsyncEvent |= FD_READ;
-		}
-		if(!Base::IsSelect(FD_WRITE) && (lEvent & FD_WRITE)) {
-			lAsyncEvent |= FD_WRITE;
-		}
-		if(!Base::IsSelect(FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
-			lAsyncEvent |= FD_ACCEPT;
-		}
-		if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
-			lAsyncEvent |= FD_IDLE;
-		}
-		Base::Select(lEvent);
-		if(lAsyncEvent) {
-			service()->SelectSocket(this,lAsyncEvent);
-		}
-		if(lAsyncEvent & FD_READ) {
-			Base::Trigger(FD_READ, 0);
-		}
-		if(lAsyncEvent & FD_WRITE) {
-			Base::Trigger(FD_WRITE, 0);
-		}
-		if(lAsyncEvent & FD_ACCEPT) {
-			Base::Trigger(FD_ACCEPT, 0);
+	inline void Select(int lEvent) {
+		if(service()) {  
+			int lAsyncEvent = 0;
+			if(!Base::IsSelect(FD_READ) && (lEvent & FD_READ)) {
+				lAsyncEvent |= FD_READ;
+			}
+			if(!Base::IsSelect(FD_WRITE) && (lEvent & FD_WRITE)) {
+				lAsyncEvent |= FD_WRITE;
+			}
+			if(!Base::IsSelect(FD_ACCEPT) && (lEvent & FD_ACCEPT)) {
+				lAsyncEvent |= FD_ACCEPT;
+			}
+			if(!Base::IsSelect(FD_IDLE) && (lEvent & FD_IDLE)) {
+				lAsyncEvent |= FD_IDLE;
+			}
+			Base::Select(lEvent);
+			if(lAsyncEvent) {
+				service()->SelectSocket(this,lAsyncEvent);
+			}
+			if(lAsyncEvent & FD_READ) {
+				Base::Trigger(FD_READ, 0);
+			}
+			if(lAsyncEvent & FD_WRITE) {
+				Base::Trigger(FD_WRITE, 0);
+			}
+			if(lAsyncEvent & FD_ACCEPT) {
+				Base::Trigger(FD_ACCEPT, 0);
+			}
+		} else {
+			Base::Select(lEvent);
 		}
 	}
 };

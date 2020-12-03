@@ -1126,11 +1126,9 @@ namespace XSocket {
 		inline void SetCloseIfTimeOut(size_t millis)
 		{
 			close_if_time_point_ = (std::chrono::steady_clock::now() + std::chrono::milliseconds(millis));
-			if(Base::service()) {
-				Base::Select(FD_IDLE);
-			}
+			Base::Select(FD_IDLE);
 		}
-	public:
+		
 		inline int IsCloseIfTimeOut() {
 			static const std::chrono::steady_clock::time_point tp_zero;
 			if(close_if_time_point_ > tp_zero) {
@@ -1143,8 +1141,6 @@ namespace XSocket {
 			return 0;
 		}
 
-	protected:
-		//
 		inline void DoClose()
 		{
 			Base::Trigger(FD_CLOSE, 0); //关闭连接
@@ -1266,25 +1262,6 @@ namespace XSocket {
 			StopCloseIfTimeOut();
 
 			Base::OnClose(nErrorCode);
-		}
-	};
-
-	template<class TBase>
-	class HttpSocketSetT : public TBase
-	{
-		typedef TBase Base;
-	public:
-		typedef typename TBase::Socket Socket;
-
-	public:
-		using Base::Base;
-
-		int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
-		{
-			if(sock_ptr && sock_ptr->IsCloseIfTimeOut()) {
-				evt |= FD_IDLE;
-			}
-			return Base::AddSocket(sock_ptr, evt);
 		}
 	};
 
