@@ -1753,7 +1753,13 @@ namespace XSocket {
 					close_if_send_size_ = 0;
 				}
 				if(close_flag) {
+#ifdef WIN32
+					//Win下发现直接关闭，还是会有数据发布出去
+					//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+					Base::SetCloseIfTimeOut(1);
+#else
 					Base::DoClose();
+#endif//
 				}
 			}
 		}

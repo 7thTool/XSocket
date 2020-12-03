@@ -531,7 +531,7 @@ protected:
 			if (WAIT_TIMEOUT == dwErr) {
 				break;
 			} else {
-				PRINTF("GetQueuedCompletionStatus Error:%d ", dwErr);
+				PRINTF("GetQueuedCompletionStatus Error:%s ", Socket::GetErrorMessage(dwErr));
 			}
 		} 
 		if (dwTransfer == IOCP_OPERATION_EXIT) { //
