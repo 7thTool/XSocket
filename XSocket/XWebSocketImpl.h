@@ -38,7 +38,7 @@ namespace XSocket {
 	template<class THolder>
 	class WSBufferT
 	{
-		typedef WSBufferT This;
+		typedef WSBufferT<THolder> This;
 	protected:
 		THolder* holder_;
 //   0                   1                   2                   3
@@ -188,7 +188,8 @@ enum {
 		inline bool IsCacheEnable() { return enable_cache_; }
 
 		//构建数据包
-		static void BuildBuf(std::string& out, const char* lpBody, int nBodyLen, int nFlags, uint32_t mask = 0)
+		template<typename TBuffer>
+		static void BuildBuf(TBuffer& out, const char* lpBody, int nBodyLen, int nFlags, uint32_t mask = 0)
 		{
 			int flags = 0;
 			if(nFlags == SOCKET_PACKET_OP_CONTINUE) {

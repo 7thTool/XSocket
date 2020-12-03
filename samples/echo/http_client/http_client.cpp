@@ -241,8 +241,7 @@ public:
 			req_info->req_.set_url("/test/echo");
 			req_info->req_.set_field("Accept-Encoding", "gzip");
 			req_info->rsp_ = [] (std::shared_ptr<HttpResponse> rsp) {
-				std::string buf;
-				PRINTF("%s",rsp->to_string(buf).c_str());
+				PRINTF("%s",rsp->to_string().c_str());
 			};
 			c[i]->PostHttpRequest(req_info);
 #endif

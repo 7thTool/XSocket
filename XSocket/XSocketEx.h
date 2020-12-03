@@ -559,12 +559,20 @@ private:
 	std::condition_variable cv_;
 #endif
 };
-class BufferPool : public ObjectPoolT<BufferPool,std::string>
+typedef std::vector<char> Buffer;
+class BufferPool : public ObjectPoolT<BufferPool,Buffer>
 {
 public:
 	static BufferPool& Inst() {
 		static BufferPool _inst;
 		return _inst;
+	}
+	
+//protected:
+	inline Buffer* Alloc() { 
+		auto buf = new Buffer();
+		buf->reserve(4*1024);
+		return buf;
 	}
 };
 typedef std::array<char,2048> UdpBuffer;

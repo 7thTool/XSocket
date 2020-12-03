@@ -302,7 +302,7 @@ namespace XSocket {
 		}
 		inline void set_url(const std::string& url) { url_ = url; }
 
-		std::string& to_string(std::string& buf) const
+		std::string to_string() const
 		{
 			bool chunked = is_chunked();
 			std::ostringstream oss;
@@ -319,8 +319,7 @@ namespace XSocket {
 			if(chunked) {
 				oss << "\r\n";
 			}
-			buf += oss.str();
-			return buf;
+			return oss.str();
 		}
 	};
 	class HttpResponse : virtual public HttpMessage
@@ -340,7 +339,7 @@ namespace XSocket {
 		}
 		inline void set_reason(const std::string& reason) { status_ = reason; }
 
-		std::string& to_string(std::string& buf) const
+		std::string to_string() const
 		{
 			bool chunked = is_chunked();
 			std::ostringstream oss;
@@ -357,8 +356,7 @@ namespace XSocket {
 			if(chunked) {
 				oss << "\r\n";
 			}
-			buf += oss.str();
-			return buf;
+			return oss.str();
 		}
 	};
 
@@ -868,7 +866,8 @@ namespace XSocket {
 		{
 		}
 
-		void BuildReqBuf(std::string& buf, HttpRequest& req)
+		template<typename TBuffer>
+		void BuildReqBuf(TBuffer& buf, HttpRequest& req)
 		{
 			if(!req.major()) {
 				req.set_major(holder_->GetHttpMajor());
@@ -884,11 +883,16 @@ namespace XSocket {
 				req.set_field("Content-Length", tostr(req.size()));
 			}
 
-			req.to_string(buf);
+			auto str = req.to_string();
+			if(!str.empty()) {
+				auto bufsize = buf.size();
+				buf.resize(bufsize + str.size());
+				memcpy(&buf[bufsize], str.data(), str.size());
+			}
 		}
 
-		template<class T>
-		void BuildRspBuf(std::string& buf, T&& req, HttpResponse& rsp)
+		template<typename TRequest, typename TBuffer>
+		void BuildRspBuf(TBuffer& buf, TRequest&& req, HttpResponse& rsp)
 		{
 			if(!rsp.major()) {
 				rsp.set_major(holder_->GetHttpMajor());
@@ -954,10 +958,16 @@ namespace XSocket {
 				rsp.remove_field("Proxy-Connection");
 			}
 
-			rsp.to_string(buf);
+			auto str = rsp.to_string();
+			if(!str.empty()) {
+				auto bufsize = buf.size();
+				buf.resize(bufsize + str.size());
+				memcpy(&buf[bufsize], str.data(), str.size());
+			}
 		}
 
-		void BuildChunkBuf(std::string& buf, const char* lpBuf, int nBufLen)
+		template<typename TBuffer>
+		void BuildChunkBuf(TBuffer& buf, const char* lpBuf, int nBufLen)
 		{
 			std::ostringstream oss;
 			oss << std::hex << nBufLen << "\r\n";
@@ -996,6 +1006,8 @@ namespace XSocket {
 #else
 		typedef TBase Base;
 #endif
+	public:
+		//typedef typename Base::SendBuffer SendBuffer;
 	protected:
 		friend HttpBufferT<This>;
 		typedef HttpBufferT<This> HttpBuffer;
@@ -1445,11 +1457,13 @@ namespace XSocket {
 				return stricmp(path_.c_str(), o.path_.c_str()) < 0;
 			}
 
-			void operator()(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> request) const
+			bool operator()(std::shared_ptr<T> http, std::shared_ptr<HttpRequest> request) const
 			{
 				if(cb_) {
 					cb_(http, request);
+					return true;
 				}
+				return false;
 			}
 
 			HttpPath& Set(const std::function<void(std::shared_ptr<T>, std::shared_ptr<HttpRequest>)>& cb)
@@ -1697,8 +1711,8 @@ namespace XSocket {
 		inline void HandleHttpRequest()
 		{
 			auto handler = Router().Find(*req_);
-			if(handler) {
-				(*handler)(shared_from_this(), req_);
+			if(handler && (*handler)(shared_from_this(), req_)) {
+				//;
 			} else {
 				HttpResponse rsp;
 				rsp.set_code(HTTP_STATUS_NOT_FOUND);

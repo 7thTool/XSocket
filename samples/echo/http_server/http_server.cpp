@@ -232,8 +232,7 @@ protected:
 			[http,req] {
 			if(req->size())
 				PRINTF("%.19s", req->data());
-			std::string data;
-			req->to_string(data);
+			std::string data = req->to_string();
 			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
 			rsp->set_code(200);
 			//msg.field("Content-type")

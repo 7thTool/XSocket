@@ -296,7 +296,7 @@ class UdpSocket : public TBase
 	typedef TBase Base;
 public:
 	typedef TSockAddr SockAddr;
-	typedef char UdpBuffer[uMaxBufSize];
+	//typedef char UdpBuffer[uMaxBufSize];
 	//static const u_short GetMaxBufSize() const { return uMaxBufSize; }
 protected:
 	int m_nSendLen;

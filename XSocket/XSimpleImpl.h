@@ -41,7 +41,7 @@ class CustomSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;
 public:
-	typedef std::string RecvBuffer;
+	typedef Buffer RecvBuffer;
 	typedef TSendBuffer SendBuffer;
 protected:
 	RecvBuffer recv_buf_;
@@ -165,8 +165,8 @@ class SimpleSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;
 public:
-	typedef std::string RecvBuffer;
-	typedef std::string SendBuffer;
+	typedef Buffer RecvBuffer;
+	typedef Buffer SendBuffer;
 protected:
 	RecvBuffer recv_buf_;
 	SendBuffer send_buf_;
@@ -223,7 +223,7 @@ public:
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 		
-		send_buf_ += Buf;
+		send_buf_.insert(send_buf_.end(), Buf.begin(), Buf.end());
 
 		SendBufDirect();
 	}
@@ -232,7 +232,7 @@ public:
 	{
 		//std::lock_guard<std::mutex> lock(m_SendSection);
 
-		send_buf_.append(lpBuf,lpBuf+nBufLen);
+		send_buf_.insert(send_buf_.end(), lpBuf, lpBuf+nBufLen);
 
 		return SendBufDirect();
 	}
@@ -344,7 +344,7 @@ protected:
 		if (nSendBufLen>0) {
 			ppr_send_buf_.swap(send_buf_);
 			send_buf_.clear();
-			lpBuf = ppr_send_buf_.c_str();
+			lpBuf = ppr_send_buf_.data();
 			nBufLen = ppr_send_buf_.size();
 			//lock.unlock();
 			return true;
@@ -356,7 +356,7 @@ protected:
 	virtual void OnSendBuf(const char* lpBuf, int nBufLen) 
 	{
 		Base::OnSendBuf(lpBuf, nBufLen);
-		ASSERT(lpBuf==ppr_send_buf_.c_str() && nBufLen==ppr_send_buf_.size());
+		ASSERT(lpBuf==ppr_send_buf_.data() && nBufLen==ppr_send_buf_.size());
 		ppr_send_buf_.clear();
 	}
 };
