@@ -3,7 +3,7 @@
 
 #define USE_ZLIB 1
 #define USE_OPENSSL 0
-#define USE_WEBSOCKET 1
+#define USE_WEBSOCKET 0
 
 #define USE_IPV6 0
 

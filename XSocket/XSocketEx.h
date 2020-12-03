@@ -837,7 +837,10 @@ protected:
  */
 struct TaskID
 {
-	TaskID(size_t _delay = 0) : id(IDGenerator<size_t>::Inst().get()), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {}
+	TaskID() : id(0), time() {}
+	TaskID(size_t _delay) : id(IDGenerator<size_t>::Inst().get()), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {}
+
+	inline operator bool() const { return id != 0; }
 
 	inline bool operator<(const TaskID &o) const
 	{
@@ -899,7 +902,7 @@ public:
 			task = std::move(tasks_que_.front());
 			tasks_que_.pop();
 			return true;
-		} else {
+		} else if(!tasks_.empty()) {
 			auto it = tasks_.begin();
 			if(IsActive(it->first, dealy)) {
 				task = std::move(it->second);
@@ -1019,11 +1022,13 @@ public:
 		workers_.clear();
 	}
 
-	void Post(const TaskID& key, std::function<void()> && task)
+	TaskID Post(const size_t delay, std::function<void()> && task)
 	{
+		TaskID key(delay);
 		std::lock_guard<std::mutex> lock(mutex_);
 		TaskQue::Push(key, std::move(task));
 		cv_.notify_one();
+		return key;
 	}
 
 	void Post(std::function<void()> && task)
@@ -1036,7 +1041,7 @@ public:
 	}
 
 	template<class F, class... Args>
-	auto Send(const TaskID& key, F&& f, Args&&... args) 
+	auto Send(const size_t delay, F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
@@ -1047,7 +1052,7 @@ public:
 			
 		std::future<return_type> res = task->get_future();
 		{
-			Post(key, [task](){ (*task)(); });
+			Post(delay, [task](){ (*task)(); });
 		}
 		return res;
 	}
@@ -1159,8 +1164,9 @@ class TaskServiceT : public TBase, public TaskQue
 {
 	typedef TBase Base;
 public:
-	inline void Post(const TaskID& key, std::function<void()> && task)
+	inline TaskID Post(const size_t delay, std::function<void()> && task)
 	{
+		TaskID key(delay);
  		std::lock_guard<std::mutex> lock(mutex_);
 // 		auto it = tasks_.emplace(key,std::move(task));
 // 		ASSERT(it.second);
@@ -1174,12 +1180,12 @@ public:
 // 		printf("\n");
 // #endif//
 		TaskQue::Push(key, std::move(task));
-		ssize_t delay = 0;
-		if (IsActive(key,&delay)) {
+		if (!delay) {
 			Base::PostNotify();	
 		} else {
 			Base::PostTimer(delay);
 		}
+		return key;
 	}
 
 	inline void Post(std::function<void()> && task)
@@ -1193,7 +1199,7 @@ public:
 	}
 
 	template<class F, class... Args>
-	auto Send(const TaskID& key, F&& f, Args&&... args) 
+	auto Send(const size_t delay, F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
 		using return_type = typename std::result_of<F(Args...)>::type;
@@ -1204,7 +1210,7 @@ public:
 			
 		std::future<return_type> res = task->get_future();
 		{
-			Post(key, [task](){ (*task)(); });
+			Post(delay, [task](){ (*task)(); });
 		}
 		return res;
 	}

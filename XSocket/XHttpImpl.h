@@ -1014,7 +1014,7 @@ namespace XSocket {
 
 		inline int GetHttpMajor() { return 1; }
 		inline int GetHttpMinor() { return 0; }
-		inline int GetConnectionTimeout() { return 15; }
+		inline int GetConnectionTimeout() { return 3; }
 		inline const char* GetDefaultContentType() { return "text/html"; }
 
 		template<class TRequest>
@@ -1126,9 +1126,11 @@ namespace XSocket {
 		inline void SetCloseIfTimeOut(size_t millis)
 		{
 			close_if_time_point_ = (std::chrono::steady_clock::now() + std::chrono::milliseconds(millis));
-			Select(FD_IDLE);
+			if(Base::service()) {
+				Base::Select(FD_IDLE);
+			}
 		}
-
+	public:
 		inline int IsCloseIfTimeOut() {
 			static const std::chrono::steady_clock::time_point tp_zero;
 			if(close_if_time_point_ > tp_zero) {
@@ -1139,8 +1141,10 @@ namespace XSocket {
 				}
 			}
 			return 0;
-		 }
+		}
 
+	protected:
+		//
 		inline void DoClose()
 		{
 			Base::Trigger(FD_CLOSE, 0); //关闭连接
@@ -1265,6 +1269,25 @@ namespace XSocket {
 		}
 	};
 
+	template<class TBase>
+	class HttpSocketSetT : public TBase
+	{
+		typedef TBase Base;
+	public:
+		typedef typename TBase::Socket Socket;
+
+	public:
+		using Base::Base;
+
+		int AddSocket(std::shared_ptr<Socket> sock_ptr, int evt = 0)
+		{
+			if(sock_ptr && sock_ptr->IsCloseIfTimeOut()) {
+				evt |= FD_IDLE;
+			}
+			return Base::AddSocket(sock_ptr, evt);
+		}
+	};
+
 	template<class T, class TBase>
 	class HttpReqSocketImpl : public SocketExImpl<T,TBase>, public std::enable_shared_from_this<T>
 	{
@@ -1293,7 +1316,7 @@ namespace XSocket {
 
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			this_service()->Post(std::bind(&This::SendHttpRequest, shared_from_this(), req));
+			/*this_service()->*/Base::Post(std::bind(&This::SendHttpRequest, shared_from_this(), req));
 		}
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1458,6 +1481,14 @@ namespace XSocket {
 				return *this;
 			}
 
+			HttpPath* Find(const std::string& uri)
+			{
+				if(uri.empty() || uri == "/" || uri == "\\") {
+					return this;
+				}
+				return Find(uri, nullptr, nullptr);
+			}
+
 			HttpPath& Path(const std::string& uri)
 			{
 				if(uri.empty() || uri == "/" || uri == "\\") {
@@ -1495,7 +1526,7 @@ namespace XSocket {
 				}
 			}
 
-			HttpPath* Find(const std::string& uri, std::string* sub_uri = nullptr, HttpPath** parent = nullptr)
+			HttpPath* Find(const std::string& uri, std::string* sub_uri, HttpPath** parent)
 			{
 				HttpPath* path = this;
 				size_t pos = 0, offset = 0;
@@ -1602,7 +1633,8 @@ namespace XSocket {
 
 		HttpRspSocketImpl()
 		{
-			Base::SetCloseIfTimeOut(3*1000);
+			T* pT = static_cast<T*>(this);
+			Base::SetCloseIfTimeOut(pT->GetConnectionTimeout()*1000);
 		}
 		~HttpRspSocketImpl() 
 		{ 
@@ -1610,12 +1642,12 @@ namespace XSocket {
 
 		inline void PostHttpResponse(std::shared_ptr<HttpResponse> rsp)
 		{
-			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, shared_from_this(), rsp));
+			/*this_service()->*/Base::Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, shared_from_this(), rsp));
 		}
 
 		inline void PostHttpChunk(std::shared_ptr<std::string> rsp)
 		{
-			this_service()->Post(std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, shared_from_this(), rsp));
+			/*this_service()->*/Base::Post(std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, shared_from_this(), rsp));
 		}
 
 		inline void SendHttpResponse(std::shared_ptr<HttpResponse> rsp)
@@ -1664,6 +1696,9 @@ namespace XSocket {
 			int timeout = pT->GetConnectionTimeout();
 			if(!Base::http_buffer_.is_should_keep_alive(*rsp_, &timeout)) {
 				close_if_send_size_ = Base::NotSendBufSize();
+				if(!close_if_send_size_) {
+					Base::DoClose();
+				}
 			} else {
 				if(timeout) {
 					Base::SetCloseIfTimeOut(timeout*1000);

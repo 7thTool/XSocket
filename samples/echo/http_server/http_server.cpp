@@ -82,17 +82,14 @@ protected:
 	bool OnInit() override
 	{
 		bool ret = Base::OnInit();
-		TaskID t(3000);
-		Post(t, []{
+		TaskID t = Post(3000, []{
 			std::cout << "WorkService dealy test" << std::endl;
 		});
-		TaskID t2(5000);
-		Post(t2, [this,t]{
+		TaskID t2 = Post(5000, [this,t]{
 			std::cout << "WorkService cancel test" << std::endl;
 			Cancel(t);
 		});
-		TaskID t3(2000);
-		Post(t3, [this,t2]{
+		TaskID t3 = Post(2000, [this,t2]{
 			Cancel(t2);
 			std::cout << "WorkServicecancel cancel test" << std::endl;
 		});
@@ -102,27 +99,27 @@ protected:
 };
 
 #if USE_EPOLL
-typedef EPollSocketSetT<WorkService,worker> WorkSocketSet;
+typedef HttpSocketSetT<EPollSocketSetT<WorkService,worker>> WorkSocketSet;
 typedef EPollSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #elif USE_IOCP
-typedef CompletionPortSocketSetT<WorkService,worker> WorkSocketSet;
+typedef HttpSocketSetT<CompletionPortSocketSetT<WorkService,worker>> WorkSocketSet;
 typedef CompletionPortSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #else
-typedef SelectSocketSetT<WorkService,worker> WorkSocketSet;
+typedef HttpSocketSetT<SelectSocketSetT<WorkService,worker>> WorkSocketSet;
 typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 #endif//
 
 class worker
 #if USE_OPENSSL
-	: public HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
+	: public HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
 #else
-	: public HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
+	: public HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
 #endif
 {
 #if USE_OPENSSL
-	typedef HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
+	typedef HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
 #else
-	typedef HttpRspSocketImpl<worker,BasicSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
+	typedef HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
 #endif
 public:
 	worker()
@@ -214,17 +211,14 @@ protected:
 	bool OnInit() override
 	{
 		bool ret = Base::OnInit();
-		TaskID t(3000);
-		Post(t, []{
+		TaskID t = Post(3000, []{
 			std::cout << "HttpHandler dealy test" << std::endl;
 		});
-		TaskID t2(5000);
-		Post(t2, [this,t]{
+		TaskID t2 = Post(5000, [this,t]{
 			std::cout << "HttpHandler cancel test" << std::endl;
 			Cancel(t);
 		});
-		TaskID t3(2000);
-		Post(t3, [this,t2]{
+		TaskID t3 = Post(2000, [this,t2]{
 			Cancel(t2);
 			std::cout << "HttpHandlercancel cancel test" << std::endl;
 		});
@@ -244,6 +238,7 @@ protected:
 			rsp->set_code(200);
 			//msg.field("Content-type")
 			rsp->set_field("Content-type", "text/html");
+			rsp->set_field("Connection", "close");
 #if 1
 			rsp->set_chunked();
 			rsp->set_data(data);

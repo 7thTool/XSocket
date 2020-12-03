@@ -857,9 +857,9 @@ public:
 	typedef typename Base::SocketSet TaskSocketSet;
 public:
 	
-	inline void Post(const TaskID& key, std::function<void()> && task)
+	inline TaskID Post(const size_t delay, std::function<void()> && task)
 	{
-		Base::this_service()->Post(key, std::move(task));
+		return Base::this_service()->Post(delay, std::move(task));
 	}
 
 	inline void Post(std::function<void()> && task)
@@ -868,10 +868,10 @@ public:
 	}
 
 	template<class F, class... Args>
-	auto Send(const TaskID& key, F&& f, Args&&... args) 
+	auto Send(const size_t delay, F&& f, Args&&... args) 
 		-> std::future<typename std::result_of<F(Args...)>::type>
 	{
-		return Base::this_service()->Send(key, std::forward<F>(f), std::forward<Args>(args)...);
+		return Base::this_service()->Send(delay, std::forward<F>(f), std::forward<Args>(args)...);
 	}
 	
 	template<class F, class... Args>

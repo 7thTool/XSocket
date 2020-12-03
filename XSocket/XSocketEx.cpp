@@ -174,41 +174,43 @@ int SocketEx::Close()
 
 int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
-	if(IsDebug()) {
-		PRINTF("Bind Socket %p %u", this, (SOCKET)*this);
-	}
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
+	if(IsDebug()) {
+		PRINTF("Bind Socket %p %u rlt=%s", this, (SOCKET)*this, GetErrorMessage(GetLastError()));
+	}
 	return rlt;
 }
 
 int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 {
-	if(IsDebug()) {
-		PRINTF("Connect Socket %p %u", this, (SOCKET)*this);
-	}
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	OnRole(SOCKET_ROLE_CONNECT);
 	role_ = SOCKET_ROLE_CONNECT;
 	event_ |= FD_CONNECT;
 	SetNonBlock();//设为非阻塞模式
-	return Base::Connect(lpSockAddr, nSockAddrLen);
+	int rlt = Base::Connect(lpSockAddr, nSockAddrLen);
+	if(IsDebug()) {
+		PRINTF("Connect Socket %p %u rlt=%s", this, (SOCKET)*this, GetErrorMessage(GetLastError()));
+	}
+	return rlt;
 }
 
 int SocketEx::Listen(int nConnectionBacklog)
 {
-	if(IsDebug()) {
-		PRINTF("Listen Socket %p %u", this, (SOCKET)*this);
-	}
 	//SectionLocker Lock(&m_Section);
 	ASSERT(IsSocket());
 	OnRole(SOCKET_ROLE_LISTEN);
 	role_ = SOCKET_ROLE_LISTEN;
 	event_ |= FD_ACCEPT;
 	SetNonBlock();//设为非阻塞模式
-	return Base::Listen(nConnectionBacklog);
+	int rlt = Base::Listen(nConnectionBacklog);
+	if(IsDebug()) {
+		PRINTF("Listen Socket %p %u rlt=%s", this, (SOCKET)*this, GetErrorMessage(GetLastError()));
+	}
+	return rlt;
 }
 
 // SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)

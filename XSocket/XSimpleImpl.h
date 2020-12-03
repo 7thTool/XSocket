@@ -149,7 +149,6 @@ protected:
 	virtual void OnSendBuf(const char* lpBuf, int nBufLen) 
 	{
 		Base::OnSendBuf(lpBuf, nBufLen);
-
 		//std::unique_lock<std::mutex> lock(m_SendSection);
 		ASSERT(!send_que_.empty());
 		send_que_.erase(send_que_.begin());
@@ -357,6 +356,8 @@ protected:
 	virtual void OnSendBuf(const char* lpBuf, int nBufLen) 
 	{
 		Base::OnSendBuf(lpBuf, nBufLen);
+		ASSERT(lpBuf==ppr_send_buf_.c_str() && nBufLen==ppr_send_buf_.size());
+		ppr_send_buf_.clear();
 	}
 };
 
