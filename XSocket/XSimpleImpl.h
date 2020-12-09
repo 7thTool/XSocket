@@ -71,7 +71,7 @@ public:
 	{
 		int ret = Base::Close();
 		//std::unique_lock<std::mutex> lock(m_SendSection);
-
+		recv_buf_.clear();
 		send_que_.clear();
 		//lock.unlock();
 		return ret;

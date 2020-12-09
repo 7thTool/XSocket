@@ -487,6 +487,9 @@ public:
 #endif
 	}
 
+	inline size_t MaxCount() { return max_count_; }
+	inline size_t Count() { return count_; }
+
 	/*template<typename _Rep, typename _Period>
 	std::shared_ptr<_Ty> New(const std::chrono::duration<_Rep, _Period>& timeout)
 	{
@@ -2613,7 +2616,7 @@ public:
 	inline void SetWaitTimeOut(size_t millis) { SockManager::SetWaitTimeOut(millis); Base::SetWaitTimeOut(millis); }
 	inline size_t GetWaitTimeOut() { return Base::GetWaitTimeOut(); }
 
-	bool Start(const char* address, u_short port)
+	bool Start(const std::string& address, u_short port)
 	{
 		address_ = address;
 		port_ = port;

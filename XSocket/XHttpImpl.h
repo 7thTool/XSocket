@@ -1024,6 +1024,14 @@ namespace XSocket {
 			
 		}
 
+		inline int Close()
+		{
+			int ret = Base::Close();
+			http_buffer_.clear();
+			close_if_time_point_ = std::chrono::steady_clock::time_point();
+			return ret;
+		}
+
 		inline int GetHttpMajor() { return 1; }
 		inline int GetHttpMinor() { return 0; }
 		inline int GetConnectionTimeout() { return 3; }
@@ -1301,6 +1309,14 @@ namespace XSocket {
 		}
 		~HttpReqSocketImpl() 
 		{ 
+		}
+
+		inline int Close()
+		{
+			int ret = Base::Close();
+			req_list_.clear();
+			req_send_count_ = 0;
+			return ret;
 		}
 
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1629,6 +1645,18 @@ namespace XSocket {
 		}
 		~HttpRspSocketImpl() 
 		{ 
+		}
+
+		inline int Close()
+		{
+			int ret = Base::Close();
+			while(!req_list_.empty()) {
+				req_list_.pop();
+			}
+			req_.reset();
+			rsp_.reset();
+			close_if_send_size_ = 0;
+			return ret;
 		}
 
 		inline void PostHttpResponse(std::shared_ptr<HttpResponse> rsp)

@@ -287,7 +287,7 @@ error:
     return -1;
 }
 protected:
-    SSL *ssl_;
+    SSL *ssl_ = nullptr;
     
     /* Process the return code received from OpenSSL>
     * Update the want parameter with expected I/O.
@@ -329,6 +329,16 @@ public:
     ~SSLSocketT() {}
 
     inline SSL_CTX * GetTLSContext() { return tls_ctx_; }
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+        if(ssl_) {
+            SSL_free(ssl_);
+            ssl_ = nullptr;
+        }
+		return ret;
+	}
 
     int Send(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
@@ -453,6 +463,16 @@ public:
         if (ssl_ctx) SSL_CTX_free(ssl_ctx);
         return -1;
     }
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+        if(ssl_ctx_) {
+            SSL_CTX_free(ssl_ctx_);
+            ssl_ctx_ = nullptr;
+        }
+		return ret;
+	}
 };
 
 template<class TBase>
@@ -467,6 +487,14 @@ public:
     ~SSLWorkSocketT() {}
     
 	inline bool IsSSLAccepted() { return ssl_accepted_; }
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+        require_auth_ = false;
+        ssl_accepted_ = false;
+		return ret;
+	}
 
 protected:
     //
@@ -584,6 +612,13 @@ public:
 
     inline bool IsSSLConnected() { return ssl_connected_; }
 
+	inline int Close()
+	{
+		int ret = Base::Close();
+        ssl_connected_ = false;
+		return ret;
+	}
+    
 protected:
     //
     inline int handleSSLConnect(int& nErrorCode)

@@ -41,43 +41,43 @@ namespace XSocket {
 		typedef WSBufferT<THolder> This;
 	protected:
 		THolder* holder_;
-//   0                   1                   2                   3
-//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-//  +-+-+-+-+-------+-+-------------+-------------------------------+
-//  |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
-//  |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
-//  |N|V|V|V|       |S|             |   (if payload len==126/127)   |
-//  | |1|2|3|       |K|             |                               |
-//  +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
-//  |     Extended payload length continued, if payload len == 127  |
-//  + - - - - - - - - - - - - - - - +-------------------------------+
-//  |                               |Masking-key, if MASK set to 1  |
-//  +-------------------------------+-------------------------------+
-//  | Masking-key (continued)       |          Payload Data         |
-//  +-------------------------------- - - - - - - - - - - - - - - - +
-//  :                     Payload Data continued ...                :
-//  + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
-//  |                     Payload Data continued ...                |
-//  +---------------------------------------------------------------+
-enum {
-    // opcodes
-    WS_OP_CONTINUE 	= 0x0,
-    WS_OP_TEXT     	= 0x1,
-    WS_OP_BINARY   	= 0x2,
-    WS_OP_CLOSE    	= 0x8,
-    WS_OP_PING     	= 0x9,
-    WS_OP_PONG     	= 0xA,
-	//
-	WS_OP_MASK 		= 0xF,
-	WS_FINAL_FRAME 	= 0x10,
-	WS_HAS_MASK 	= 0x20,
-};
-		uint8_t flags_;
+		//   0                   1                   2                   3
+		//   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+		//  +-+-+-+-+-------+-+-------------+-------------------------------+
+		//  |F|R|R|R| opcode|M| Payload len |    Extended payload length    |
+		//  |I|S|S|S|  (4)  |A|     (7)     |             (16/64)           |
+		//  |N|V|V|V|       |S|             |   (if payload len==126/127)   |
+		//  | |1|2|3|       |K|             |                               |
+		//  +-+-+-+-+-------+-+-------------+ - - - - - - - - - - - - - - - +
+		//  |     Extended payload length continued, if payload len == 127  |
+		//  + - - - - - - - - - - - - - - - +-------------------------------+
+		//  |                               |Masking-key, if MASK set to 1  |
+		//  +-------------------------------+-------------------------------+
+		//  | Masking-key (continued)       |          Payload Data         |
+		//  +-------------------------------- - - - - - - - - - - - - - - - +
+		//  :                     Payload Data continued ...                :
+		//  + - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+		//  |                     Payload Data continued ...                |
+		//  +---------------------------------------------------------------+
+		enum {
+			// opcodes
+			WS_OP_CONTINUE 	= 0x0,
+			WS_OP_TEXT     	= 0x1,
+			WS_OP_BINARY   	= 0x2,
+			WS_OP_CLOSE    	= 0x8,
+			WS_OP_PING     	= 0x9,
+			WS_OP_PONG     	= 0xA,
+			//
+			WS_OP_MASK 		= 0xF,
+			WS_FINAL_FRAME 	= 0x10,
+			WS_HAS_MASK 	= 0x20,
+		};
+		uint8_t flags_ = 0;
 		inline int GetOPCode() { return flags_ & WS_OP_MASK; }
 		inline bool	IsFinal() { return flags_ & WS_FINAL_FRAME; }
-		char mask_[4];
-		const char* data_;
-		size_t datalen_;
+		char mask_[4] = {0};
+		const char* data_ = nullptr;
+		size_t datalen_ = 0;
 				
 		static inline void decode(char * dst, const char * src, uint64_t len, const char mask[4]) {
 			uint8_t mask_offset = 0;
@@ -339,6 +339,14 @@ enum {
 			return nFlags;
 		}
 
+		inline void clear() {
+			flags_ = 0;
+			memset(mask_, 0, sizeof(mask_));
+			data_ = nullptr;
+			datalen_ = 0;
+			ClearCache();
+		}
+
 		inline const char* data() const { return data_; }
 		inline size_t size() const { return datalen_; }
 	};
@@ -353,6 +361,9 @@ enum {
 	{
 		typedef WebSocketT<TBase> This;
 		typedef TBase Base;
+	public:
+		typedef typename Base::RecvBuffer RecvBuffer;
+		typedef typename Base::SendBuffer SendBuffer;
 	protected:
 		friend WSBufferT<This>;
 		typedef WSBufferT<This> WSBuffer;
@@ -360,6 +371,17 @@ enum {
 	public:
 		WebSocketT():ws_buffer_(this)
 		{
+		}
+		~WebSocketT()
+		{
+
+		}
+
+		inline int Close()
+		{
+			int ret = Base::Close();
+			ws_buffer_.clear();
+			return ret;
 		}
 
 		inline void EnableWSCache(bool bCache) { ws_buffer_.EnableCache(bCache); }
