@@ -127,9 +127,9 @@ public:
 	}
 protected:
 	//
-	bool OnInit()
+	bool OnStart()
 	{
-		if(!Base::OnInit()) {
+		if(!Base::OnStart()) {
 			return false;
 		}
 	#if USE_UDP
@@ -194,13 +194,13 @@ protected:
 		return true;
 	}
 
-	void OnTerm()
+	void OnStop()
 	{
 		if (IsSocket()) {
 			ShutDown();
 			Close();
 		}
-		Base::OnTerm();
+		Base::OnStop();
 	}
 #endif//USE_MANAGER
 

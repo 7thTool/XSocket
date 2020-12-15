@@ -767,9 +767,9 @@ protected:
 		return wait_timeout_;
 	}
 
-	virtual bool OnInit();
+	virtual bool OnStart();
 
-	virtual void OnTerm()
+	virtual void OnStop()
 	{
 
 	}
@@ -796,7 +796,7 @@ protected:
 	
 	virtual void OnRun()
 	{
-		if(OnInit()) {
+		if(OnStart()) {
 			while (!IsStopFlag()) {
 				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
 				if(notify_flag_) {
@@ -837,7 +837,7 @@ protected:
 				}
 			}
 		}
-		OnTerm();
+		OnStop();
 	}
 };
 
@@ -2047,10 +2047,10 @@ protected:
 
 protected:
 	//
-	virtual void OnTerm()
+	virtual void OnStop()
 	{
-		//Service::OnTerm();
 		RemoveAllSocket(true);
+		Base::OnStop();
 	}
 
 	virtual void OnIdle()
@@ -2635,8 +2635,11 @@ public:
 
 protected:
 	//
-	virtual bool OnInit()
+	virtual bool OnStart()
 	{
+		if(!Base::OnStart()) {
+			return false;
+		}
 		if(port_ <= 0) {
 			return false;
 		}
@@ -2651,7 +2654,7 @@ protected:
 		return true;
 	}
 
-	virtual void OnTerm()
+	virtual void OnStop()
 	{
 		//服务结束运行，释放资源
 		if(Base::IsSocket()) {
@@ -2660,6 +2663,7 @@ protected:
 #endif
 			Base::Trigger(FD_CLOSE, 0);
 		}
+		Base::OnStop();
 	}
 
 	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) 

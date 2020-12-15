@@ -103,9 +103,9 @@ public:
 	}
 protected:
 	//
-	bool OnInit()
+	bool OnStart()
 	{
-		if(!Base::OnInit()) {
+		if(!Base::OnStart()) {
 			return false;
 		}
 		struct addrinfo hints = {0};
@@ -116,13 +116,13 @@ protected:
 		return true;
 	}
 
-	void OnTerm()
+	void OnStop()
 	{
 		if (IsSocket()) {
 			ShutDown();
 			Close();
 		}
-		Base::OnTerm();
+		Base::OnStop();
 	}
 
 	void OnResolve(struct addrinfo* result)
@@ -214,7 +214,7 @@ public:
 		
 	}
 
-	virtual bool OnInit()
+	virtual bool OnStart()
 	{
 		std::time_t tt = std::time(nullptr);
 		tt = std::mktime(std::localtime(&tt));
@@ -249,7 +249,7 @@ public:
 		return true;
 	}
 
-	virtual void OnTerm()
+	virtual void OnStop()
 	{
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{

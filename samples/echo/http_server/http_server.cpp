@@ -79,9 +79,12 @@ public:
 
 protected:
 	//
-	bool OnInit() override
+	bool OnStart() override
 	{
-		bool ret = Base::OnInit();
+		bool ret = Base::OnStart();
+		if(!ret) {
+			return false;
+		}
 		TaskID t = Post(3000, []{
 			std::cout << "WorkService dealy test" << std::endl;
 		});
@@ -208,9 +211,12 @@ public:
 
 protected:
 	//
-	bool OnInit() override
+	bool OnStart() override
 	{
-		bool ret = Base::OnInit();
+		bool ret = Base::OnStart();
+		if(!ret) {
+			return false;
+		}
 		TaskID t = Post(3000, []{
 			std::cout << "HttpHandler dealy test" << std::endl;
 		});

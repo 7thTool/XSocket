@@ -406,7 +406,7 @@ Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_ti
 	
 }
 
-bool Service::OnInit()
+bool Service::OnStart()
 {
 	s_thread_service_ = this;
 #ifdef _DEBUG

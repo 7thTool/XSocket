@@ -43,8 +43,8 @@ public:
 	// }
 protected:
 	//
-	virtual bool OnInit();
-	virtual void OnTerm();
+	virtual bool OnStart();
+	virtual void OnStop();
 	virtual void OnRecvBuf(Buffer& buf);
 };
 
@@ -187,9 +187,9 @@ public:
 
 	manager mgr(DEFAULT_MAX_FD_SETSIZE);
 
-	bool server::OnInit()
+	bool server::OnStart()
 	{
-		bool ret = Base::OnInit();
+		bool ret = Base::OnStart();
 		if(!ret) {
 			return false;
 		}
@@ -211,7 +211,7 @@ public:
 		return true;
 	}
 
-	void server::OnTerm()
+	void server::OnStop()
 	{
 		//服务结束运行，释放资源
 		if(Base::IsSocket()) {
@@ -220,6 +220,7 @@ public:
 #endif
 			Base::Trigger(FD_CLOSE, 0);
 		}
+		Base::OnStop();
 	}
 
 	void server::OnRecvBuf(Buffer& buf)

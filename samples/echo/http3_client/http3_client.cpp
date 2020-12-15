@@ -39,8 +39,8 @@ public:
 
 protected:
 	//
-	virtual bool OnInit();
-	virtual void OnTerm();
+	virtual bool OnStart();
+	virtual void OnStop();
   	virtual void OnRecvBuf(Buffer& buf);
 };
 
@@ -202,9 +202,9 @@ public:
 manager mgr(DEFAULT_FD_SETSIZE);
 
 
-	bool client::OnInit()
+	bool client::OnStart()
 	{
-		bool ret = Base::OnInit();
+		bool ret = Base::OnStart();
 		if(!ret) {
 			return false;
 		}
@@ -229,7 +229,7 @@ manager mgr(DEFAULT_FD_SETSIZE);
 		return true;
 	}
 
-	void client::OnTerm()
+	void client::OnStop()
 	{
 		//服务结束运行，释放资源
 		if(Base::IsSocket()) {
@@ -238,6 +238,7 @@ manager mgr(DEFAULT_FD_SETSIZE);
 #endif
 			Base::Trigger(FD_CLOSE, 0);
 		}
+		Base::OnStop();
 	}
 
   	void client::OnRecvBuf(Buffer& buf)

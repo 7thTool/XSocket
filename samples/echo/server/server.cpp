@@ -34,9 +34,9 @@ public:
 
 protected:
 	//
-	virtual bool OnInit()
+	virtual bool OnStart()
 	{
-		bool ret = Base::OnInit();
+		bool ret = Base::OnStart();
 		if(!ret) {
 			return false;
 		}
@@ -61,7 +61,7 @@ protected:
 		return true;
 	}
 
-	virtual void OnTerm()
+	virtual void OnStop()
 	{
 		//服务结束运行，释放资源
 		if(Base::IsSocket()) {
@@ -70,6 +70,7 @@ protected:
 #endif
 			Base::Trigger(FD_CLOSE, 0);
 		}
+		Base::OnStop();
 	}
 
 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, const SockAddrType & SockAddr)
@@ -300,8 +301,12 @@ public:
 #else
 protected:
 	//
-	virtual bool OnInit()
+	virtual bool OnStart()
 	{
+		if(!Base::OnStart()) {
+			return false;
+		}
+
 		if(port_ <= 0) {
 			return false;
 		}
@@ -312,7 +317,7 @@ protected:
 		return true;
 	}
 
-	virtual void OnTerm()
+	virtual void OnStop()
 	{
 		//服务结束运行，释放资源
 		if(Base::IsSocket()) {
@@ -321,6 +326,7 @@ protected:
 #endif
 			Base::Trigger(FD_CLOSE, 0);
 		}
+		Base::OnStop();
 	}
 #endif//
 };
