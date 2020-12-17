@@ -33,6 +33,36 @@
 
 namespace XSocket {
 
+///
+///Service
+///
+
+thread_local Service* s_thread_service_ = nullptr;
+
+Service* ServiceEx::service()
+{
+	return s_thread_service_;
+}
+
+// Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_timeout_(0)
+// {
+	
+// }
+
+bool ServiceEx::OnStart()
+{
+	bool rlt = Service::OnStart();
+	s_thread_service_ = this;
+#ifdef _DEBUG
+	PRINTF("thread id=%s, service=%p", tostr(std::this_thread::get_id()).c_str(), s_thread_service_);
+#endif
+	return rlt;
+}
+
+///
+///SocketEx
+///
+
 std::future<struct addrinfo*> SocketEx::AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints)
 {
 	return std::async( //std::launch::async|std::launch::deferred,
@@ -365,31 +395,6 @@ int SocketEx::Listen(int nConnectionBacklog)
 // 		PRINTF("(%p %p %u)::OnClose:%d %s", Service::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
 // 	}
 // }
-
-///
-///Service
-///
-
-thread_local Service* s_thread_service_ = nullptr;
-
-Service* Service::service()
-{
-	return s_thread_service_;
-}
-
-Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_timeout_(0)
-{
-	
-}
-
-bool Service::OnStart()
-{
-	s_thread_service_ = this;
-#ifdef _DEBUG
-	PRINTF("thread id=%s, service=%p", tostr(std::this_thread::get_id()).c_str(), s_thread_service_);
-#endif
-	return true;
-}
 
 }
 

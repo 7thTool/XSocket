@@ -223,6 +223,22 @@ enum
 
 
 /*!
+ *	@brief ServiceEx 定义.
+ *
+ *	封装ServiceEx，实现基本服务框架
+ */
+class ServiceEx : public Service 
+{
+public:
+	static Service* service();
+
+protected:
+	//
+	virtual bool OnStart();
+};
+
+
+/*!
  *	@brief 可伸缩的Socket封装.
  *
  *	SocketEx定义了可伸缩Socket的接口和基本实现
@@ -481,7 +497,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnReceive:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+				PRINTF("(%p %p %u)::OnReceive:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -489,14 +505,14 @@ protected:
 	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnReceive:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+			PRINTF("(%p %p %u)::OnReceive:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnReceiveFrom(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
+			PRINTF("(%p %p %u)::OnReceiveFrom(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	
@@ -514,7 +530,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnSend:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+				PRINTF("(%p %p %u)::OnSend:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -522,14 +538,14 @@ protected:
 	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnSend:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+			PRINTF("(%p %p %u)::OnSend:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnSendTo(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
+			PRINTF("(%p %p %u)::OnSendTo(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	
@@ -547,7 +563,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnOOB:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+				PRINTF("(%p %p %u)::OnOOB:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -555,7 +571,7 @@ protected:
 	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnOOB:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+			PRINTF("(%p %p %u)::OnOOB:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 
@@ -573,7 +589,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnAccept:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+				PRINTF("(%p %p %u)::OnAccept:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -582,7 +598,7 @@ protected:
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnAccept(%s):%u", Service::service(), this, (SOCKET)*this, lpSockAddr?SockAddr2Str(lpSockAddr,nSockAddrLen,str,64):"", Sock);
+			PRINTF("(%p %p %u)::OnAccept(%s):%u", ServiceEx::service(), this, (SOCKET)*this, lpSockAddr?SockAddr2Str(lpSockAddr,nSockAddrLen,str,64):"", Sock);
 		}
 	}
 
@@ -613,7 +629,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnConnect:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+				PRINTF("(%p %p %u)::OnConnect:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -634,7 +650,7 @@ protected:
 	virtual void OnClose(int nErrorCode)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnClose:%d %s", Service::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
+			PRINTF("(%p %p %u)::OnClose:%d %s", ServiceEx::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
 		}
 	}
 
@@ -696,7 +712,7 @@ public:
  *
  *	封装SocketService，实现套接字和事件服务框架关联，这里需要使用者继承自enable_shared_from_this将SocketService对象添加到SocketSet里
  */
-template<class TSocket, class TService = Service>
+template<class TSocket, class TService = ServiceEx>
 class SocketServiceT : public TSocket, public TService
 {
 public:
@@ -823,7 +839,7 @@ public:
  *
  *	封装EventService，实现事件服务接口
  */
-template<class TEvent, class TBase = Service>
+template<class TEvent, class TBase = ServiceEx>
 class EventServiceT : public TBase
 {
 	typedef TBase Base;
@@ -1511,7 +1527,7 @@ protected:
  *
  *	封装SelectServiceT
  */
-template<class TService = Service>
+template<class TService = ServiceEx>
 class SelectServiceT : public TService
 {
 	typedef TService Base;
@@ -1520,7 +1536,7 @@ public:
 public:
 };
 
-typedef ThreadServiceT<SelectServiceT<Service>> SelectService;
+typedef ThreadServiceT<SelectServiceT<ServiceEx>> SelectService;
 
 /*!
  *	@brief SelectSvrSocket 模板定义.

@@ -255,7 +255,7 @@ protected:
 	}
 };
 
-typedef ThreadServiceT<EPollServiceT<Service>> EPollService;
+typedef ThreadServiceT<EPollServiceT<ServiceEx>> EPollService;
 
 /*!
  *	@brief EPollSocketSet 模板定义.

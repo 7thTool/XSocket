@@ -551,7 +551,7 @@ protected:
 	}
 };
 
-typedef ThreadServiceT<CompletionPortServiceT<Service>> CompletionPortService;
+typedef ThreadServiceT<CompletionPortServiceT<ServiceEx>> CompletionPortService;
 
 /*!
  *	@brief CompletionPortSocketSet 模板定义.

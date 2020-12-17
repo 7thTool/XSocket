@@ -26,26 +26,26 @@ namespace XSocket {
 ///Service
 ///
 
-thread_local Service* s_thread_service_ = nullptr;
+// thread_local Service* s_thread_service_ = nullptr;
 
-Service* Service::service()
-{
-	return s_thread_service_;
-}
+// Service* Service::service()
+// {
+// 	return s_thread_service_;
+// }
 
-Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_timeout_(0)
-{
+// Service::Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_timeout_(0)
+// {
 	
-}
+// }
 
-bool Service::OnStart()
-{
-	s_thread_service_ = this;
-#ifdef _DEBUG
-	PRINTF("thread id="I64U", service=%p", std::this_thread::get_id(), s_thread_service_);
-#endif
-	return true;
-}
+// bool Service::OnStart()
+// {
+// 	s_thread_service_ = this;
+// #ifdef _DEBUG
+// 	PRINTF("thread id="I64U", service=%p", std::this_thread::get_id(), s_thread_service_);
+// #endif
+// 	return true;
+// }
 
 }
 

@@ -172,9 +172,12 @@ protected:
 	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
 	std::chrono::steady_clock::time_point timer_time_; //最短定时任务时间,0表示没有定时任务，非0表示最短定时任务
 public:
-	static Service* service();
+	//static Service* service();
 
-	Service();
+	Service():stop_flag_(true),idle_flag_(true),notify_flag_(false),wait_timeout_(0)
+	{
+
+	}
 
 	inline bool StartTest()
 	{
@@ -229,7 +232,10 @@ protected:
 		return wait_timeout_;
 	}
 
-	virtual bool OnStart();
+	virtual bool OnStart()
+	{
+		return true;
+	}
 
 	virtual void OnStop()
 	{
