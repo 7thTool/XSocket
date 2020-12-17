@@ -686,7 +686,7 @@ class SocketExT : public TBase
 	typedef TBase Base;
 public:
 	typedef TSocketSet SocketSet;
-	typedef TSocketSet Service;
+	//typedef TSocketSet Service;
 public:
 	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
 };
