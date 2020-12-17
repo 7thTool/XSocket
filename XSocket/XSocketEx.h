@@ -21,409 +21,13 @@
 #ifndef _H_XSOCKETEX_H_
 #define _H_XSOCKETEX_H_
 
-#include <atomic>
-#include <mutex>
-//#include <shared_mutex>
-#ifndef WIN32
-#include <condition_variable>
-#endif
-#include <thread>
-#include <future>
-#include <functional>
-#include <algorithm>
-#include <vector>
-#include <queue>
-#include <map>
-#include <set>
-#include <unordered_map>
-#include <unordered_set>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-#if USE_BOOST
-#include <boost/lockfree/queue.hpp>
-#endif
+#include "XService.h"
 #include "XSocket.h"
 #include "XStr.h"
 
 namespace XSocket {
 
 	class SocketEx;
-	class Service;
-
-/*!
- *	@brief Socket 角色定义.
- *
- *	定义Socket在网络中扮演的角色
- */
-enum
-{
-	SOCKET_ROLE_NONE = 0,		//!< 未知
-	SOCKET_ROLE_LISTEN,			//!< Server端监听Socket	
-	SOCKET_ROLE_WORK,			//!< Server端Accept到的Socket或者UDP套接字
-	SOCKET_ROLE_CONNECT,		//!< Client端连接Socket
-};
-
-
-/*!
- *	@brief Socket 标志定义.
- *
- *	给Socket增加标志位，一遍跟踪特定标志的Socket
- */
-enum
-{
-	SOCKET_FLAG_DEBUG = 0x01, //调试标志，如果设置会额外输出该Socket的调试信息
-	SOCKET_FLAG_USER1 = 0x02, //用户自定义标志1
-	SOCKET_ROLE_USER2 = 0x04, //用户自定义标志2
-	SOCKET_ROLE_USER3 = 0x08, //用户自定义标志3
-	SOCKET_ROLE_USER4 = 0x10, //用户自定义标志4
-};
-
-
-/*!
- *	@brief 可伸缩的Socket封装.
- *
- *	SocketEx定义了可伸缩Socket的接口和基本实现
- */
-class XSOCKET_API SocketEx : public Socket
-{
-	typedef Socket Base;
-public:
-	static std::future<struct addrinfo*> AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints);
-public:
-	SocketEx();
-	virtual ~SocketEx();
-
-	//只需重载Attach，因为Open和Detach都会调用Attach
-	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
-	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
-	SOCKET Detach();
-	inline bool IsOpen() { return IsSocket(); }
-	int ShutDown(int nHow = Both);
-	int Close();
-
-	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-	int Listen(int nConnectionBacklog = 5);
-	// SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
-
-	// int Send(const char* lpBuf, int nBufLen, int nFlags = 0);
-	// int Receive(char* lpBuf, int nBufLen, int nFlags = 0);
-	// int SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags = 0);
-	// int ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags = 0);
-
-	inline int Role() { return role_; }
-	inline bool IsNoneRole() { return	Role()==SOCKET_ROLE_NONE; }
-	inline bool IsConnectSocket() { return Role()==SOCKET_ROLE_CONNECT; }
-	inline bool IsListenSocket() { return Role()==SOCKET_ROLE_LISTEN; }
-	inline bool IsWorkSocket() { return Role()==SOCKET_ROLE_WORK; }
-
-	inline void SetFlags(int flags) { flags_ = flags; }
-	inline int Flags() { return flags_; }
-	inline bool IsDebug() { return flags_ & SOCKET_FLAG_DEBUG; }
-
-	inline void AttachService(Service* svr) { OnAttachService(svr); }
-	inline void DetachService(Service* svr) { OnDetachService(svr); }
-	
-	inline void Select(int lEvent) { event_ |= lEvent; }
-	inline void RemoveSelect(int lEvent) { event_ &= ~lEvent; }
-	inline bool IsSelect(int evt, bool all = false) {
-		if(all) {
-			return event_ & evt == evt;
-		} 
-		return event_ & evt;
-	}
-	inline bool IsSelectRead() { return IsSelect(FD_READ|FD_OOB|FD_ACCEPT); }
-	inline bool IsSelectWrite() { return IsSelect(FD_WRITE|FD_CONNECT); }
-
-	inline void Trigger(int evt, int nErrorCode) {
-		if(evt == FD_IDLE) {
-			OnIdle();
-		}
-		if(!IsSocket()) { 
-			return;
-		}
-		switch (evt)
-		{
-		case FD_READ:
-			OnReceive(nErrorCode);
-			break;
-		case FD_WRITE:
-			OnSend(nErrorCode);
-			break;
-		case FD_OOB:
-			OnOOB(nErrorCode);
-			break;
-		case FD_ACCEPT:
-			OnAccept(nErrorCode);
-			break;
-		case FD_CONNECT:
-			OnConnect(nErrorCode);
-			break;
-		case FD_CLOSE:
-			OnClose(nErrorCode);
-			break;
-		// case FD_IDLE:
-		// 	OnIdle();
-		// 	break;
-		default:
-			break;
-		}
-	}
-	
-	inline void Trigger(int evt, const char* lpBuf, int nBufLen, int nFlags) { 
-		if(!IsSocket()) { 
-			return;
-		}
-		switch (evt)
-		{
-		case FD_READ:
-			OnReceive(lpBuf, nBufLen, nFlags);
-			break;
-		case FD_WRITE:
-			OnSend(lpBuf, nBufLen, nFlags);
-			break;
-		case FD_OOB:
-			OnOOB(lpBuf, nBufLen, nFlags);
-			break;
-		case FD_ACCEPT:
-			break;
-		case FD_CONNECT:
-			break;
-		case FD_CLOSE:
-			break;
-		case FD_IDLE:
-			break;
-		default:
-			break;
-		}
-	}
-
-	inline void Trigger(int evt, SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) { 
-		if(!IsSocket()) { 
-			return;
-		}
-		switch (evt)
-		{
-		case FD_ACCEPT:
-			OnAccept(Sock, lpSockAddr, nSockAddrLen);
-			break;
-		case FD_CONNECT:
-			break;
-		case FD_CLOSE:
-			break;
-		case FD_IDLE:
-			break;
-		default:
-			break;
-		}
-	}
-
-	inline void Trigger(int evt, const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags) { 
-		if(!IsSocket()) { 
-			return;
-		}
-		switch (evt)
-		{
-		case FD_READ:
-			OnReceiveFrom(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
-			break;
-		case FD_WRITE:
-			OnSendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
-			break;
-		case FD_OOB:
-			break;
-		case FD_ACCEPT:
-			break;
-		case FD_CONNECT:
-			break;
-		case FD_CLOSE:
-			break;
-		case FD_IDLE:
-			break;
-		default:
-			break;
-		}
-	}
-
-protected:
-	/*!
-	 *	@brief 通知套接字扮演指定角色.
-	 *
-	 *	收到这个回调，说明Socket完成了初始化了，并开始进入指定角色
-	 *	@param nRole indicates this socket to play as a role (listen / accept/ connect)
-	 *	SOCKET_ROLE_NONE
-	 *	SOCKET_ROLE_LISTEN
-	 *	SOCKET_ROLE_WORK
-	 *	SOCKET_ROLE_CONNECT
-	 *	other value indecate unknown error.
-	 */
-	virtual void OnRole(int nRole);
-
-	/*!
-	 *	@brief 通知套接字绑定/解除绑定服务对象.
-	 *
-	 *	收到这个回调，说明Socket加入/离开了服务管理，接下来开始进入/退出Select事件通知处理了
-	 *	@param pSvr 服务对象指针
-	 */
-	virtual void OnAttachService(Service* pSvr);
-	virtual void OnDetachService(Service* pSvr);
-
-	/*!
-	 *	@brief 通知套接字无可操作状态，正在空闲或者等待中.
-	 *
-	 *	OnIdle函数是后台在计算空闲的情况，给SocketEx用于做一些空闲处理动作，比如检查超时
-	 *	、清理垃圾数据等等
-	 */
-	virtual void OnIdle();
-
-	/*!
-	 *	@brief 通知套接字有数据可以通过调用Receive读取.
-	 *
-	 *	
-	 *	Notifies a this socket that there is data to be retrieved by calling Receive.
-	 *	@param nErrorCode The most recent error on a socket. 
-	 *	The following error codes apply to the OnReceive member function:
-	 *	0					The function executed successfully.
-	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
-	 */
-	virtual void OnReceive(int nErrorCode);
-	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags);
-	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags);
-	
-	/*!
-	 *	@brief 通知套接字可以调用Send发送数据.
-	 *
-	 *	
-	 *	Notifies a socket that it can send data by calling Send.
-	 *	@param nErrorCode The most recent error on a socket. 
-	 *	The following error codes apply to the OnSend member function:
-	 *	0					The function executed successfully.
-	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
-	 */
-	virtual void OnSend(int nErrorCode);
-	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags);
-	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags);
-	
-	/*!
-	 *	@brief 通知正在接收数据的套接字有带外数据，通常是紧急数据 要读取.
-	 *
-	 *	
-	 *	Notifies a receiving socket that there is out-of-band data to be read on the socket, usually an urgent message.
-	 *	@param nErrorCode The most recent error on a socket. 
-	 *	The following error codes apply to the OnOutOfBandData member function:
-	 *	0					The function executed successfully.
-	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
-	 */
-	virtual void OnOOB(int nErrorCode);
-	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags);
-
-	/*!
-	 *	@brief 通知正在监听的服务器套接字有一个连接需要调用Accept接收连接.
-	 *
-	 *	
-	 *	Notifies a listening socket that it can accept pending connection requests by calling Accept.
-	 *	@param nErrorCode The most recent error on a socket. 
-	 *	The following error codes applies to the OnAccept member function:
-	 *	0					The function executed successfully.
-	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
-	 */
-	virtual void OnAccept(int nErrorCode);
-	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen);
-
-	/*!
-	 *	@brief 通知正在连接的客户端套接字连接建立完成，可能成功或者失败.
-	 *
-	 *	
-	 *	Notifies a connecting socket that the connection attempt is complete, whether successfully or in error.
-	 *	@param nErrorCode The most recent error on a socket. 
-	 *	The following error codes apply to the OnConnect member function:
-	 *	0					The function executed successfully.
-	 *	WSAEADDRINUSE		The specified address is already in use.
-	 *	WSAEADDRNOTAVAIL	The specified address is not available from the local machine.
-	 *	WSAEAFNOSUPPORT		Addresses in the specified family cannot be used with this socket.
-	 *	WSAECONNREFUSED		The attempt to connect was forcefully rejected.
-	 *	WSAEDESTADDRREQ		A destination address is required.
-	 *	WSAEFAULT			The lpSockAddrLen argument is incorrect.
-	 *	WSAEINVAL			The socket is already bound to an address.
-	 *	WSAEISCONN			The socket is already connected.
-	 *	WSAEMFILE			No more file descriptors are available.
-	 *	WSAENETUNREACH		The network cannot be reached from this host at this time.
-	 *	WSAENOBUFS			No buffer space is available. The socket cannot be connected.
-	 *	WSAENOTCONN			The socket is not connected.
-	 *	WSAENOTSOCK			The descriptor is a file, not a socket.
-	 *	WSAETIMEDOUT		The attempt to connect timed out without establishing a connection.
-	 */
-	virtual void OnConnect(int nErrorCode);
-
-	/*!
-	 *	@brief 通知套接字连接已经关闭.
-	 *
-	 *	
-	 *	Notifies a socket that the socket connected to it has closed.
-	 *	@param nErrorCode The most recent error on a socket. 
-	 *	The following error codes apply to the OnClose member function:
-	 *	0					The function executed successfully.
-	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
-	 *	WSAECONNRESET		The connection was reset by the remote side.
-	 *	WSAECONNABORTED		The connection was aborted due to timeout or other failure.
-	 */
-	virtual void OnClose(int nErrorCode);
-
-protected:
-	uint8_t role_:3;
-	uint8_t flags_:5;
-	uint8_t event_;
-
-private:
-	SocketEx(const SocketEx& Sock) {};
-	void operator=(const SocketEx& Sock) {};
-};
-
-/*!
- *	@brief SocketExT 模板定义.
- *
- *	封装SocketEx，一般用于SocketEx最终实现的包装
- */
-template<class TBase = SocketEx>
-class SocketExT : public TBase
-{
-	typedef TBase Base;
-protected:
-	//
-	virtual void OnClose(int nErrorCode)
-	{
-		Base::OnClose(nErrorCode);
-		Base::Close();
-	}
-};
-
-/*!
- *	@brief SocketExImpl 模板定义.
- *
- *	封装SocketEx，一般用于SocketEx最终实现的包装
- */
-template<class T, class TBase = SocketEx>
-class SocketExImpl : public TBase
-{
-	typedef TBase Base;
-public:
-	SocketExImpl():Base()
-	{
-
-	}
-
-protected:
-	//
-	virtual void OnClose(int nErrorCode)
-	{
-		T* pT = static_cast<T*>(this);
-
-		Base::OnClose(nErrorCode);
-
-		pT->Close();
-	}
-};
 
 /*!
  *	@brief ObjectPoolT 模板定义.
@@ -588,813 +192,496 @@ public:
 	}
 };
 
+
 /*!
- *	@brief IDGenerator 定义.
+ *	@brief Socket 角色定义.
  *
- *	封装IDGenerator，实现基本服务框架
+ *	定义Socket在网络中扮演的角色
  */
-template<typename _Ty>
-class IDGenerator 
+enum
 {
-public:
-	static IDGenerator<_Ty>& Inst() {
-		static IDGenerator<_Ty> _inst;
-		return _inst;
-	}
-	IDGenerator():id_(0) {}
-	_Ty get() {
-		return ++id_;
-	}
-private:
-	std::atomic<_Ty> id_;
+	SOCKET_ROLE_NONE = 0,		//!< 未知
+	SOCKET_ROLE_LISTEN,			//!< Server端监听Socket	
+	SOCKET_ROLE_WORK,			//!< Server端Accept到的Socket或者UDP套接字
+	SOCKET_ROLE_CONNECT,		//!< Client端连接Socket
 };
-// template<typename _Ty>
-// INLINE_GLOBAL IDGenerator<_Ty>::id_;
 
-// /*!
-//  *	@brief IDManager 定义.
-//  *
-//  *	封装IDManager，实现ID管理，判断ID是否存在
-//  */
-// template<typename _Kty, typename _Ty>
-// class IDManager
-// {
-// public:
-// 	static IDManager<_Kty, _Ty>& Inst() {
-// 		static IDManager<_Kty, _Ty> _inst;
-// 		return _inst;
-// 	}
-
-// 	inline void Add(const _Kty& id, const _Ty& val) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::unique_lock<std::shared_mutex> lock(mutex_);
-// 		map_id2vs_.emplace(id,val);
-// 	}
-// 	inline bool AddBidi(const _Kty& id, const _Ty& val) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::unique_lock<std::shared_mutex> lock(mutex_);
-// 		map_id2vs_.emplace(id,val);
-// 		map_v2id_.emplace(val,id);
-// 		return true;
-// 	}
-// 	inline void Remove(const _Kty& id) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::unique_lock<std::shared_mutex> lock(mutex_);
-// 		map_id2vs_.erase(id);
-// 	}
-// 	inline void RemoveBidi(const _Kty& id) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::unique_lock<std::shared_mutex> lock(mutex_);
-// 		auto pr = map_id2vs_.equal_range(id);
-// 		if(pr.first != map_id2vs_.end()) {
-// 			for(auto it = pr.first; it != pr.second; ++it)
-// 			{
-// 				map_v2id_.erase(it->second);
-// 			}
-// 			map_id2vs_.erase(pr.first,pr.second);
-// 		}
-// 	}
-// 	inline void RemoveByVal(const _Ty& val) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::unique_lock<std::shared_mutex> lock(mutex_);
-// 		auto it = map_v2id_.find(val);
-// 		if(it != map_v2id_.end()) {
-// 			auto itt = map_id2vs_.find(it->second);
-// 			while(itt != map_id2vs_.end()) {
-// 				if(itt->second == val) {
-// 					map_id2vs_.erase(itt);
-// 					break;
-// 				}
-// 				++itt;
-// 			}
-// 			map_v2id_.erase(it);
-// 		}
-// 	}
-// 	inline bool Find(const _Kty& id) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::shared_lock<std::shared_mutex> lock(mutex_);
-// 		auto it = map_id2vs_.find(id);
-// 		if(it != map_id2vs_.end()) {
-// 			return true;
-// 		}
-// 		return false;
-// 	}
-// 	inline bool FindByVal(const _Ty& val) {
-// 		//std::lock_guard<std::mutex> lock(mutex_);
-// 		std::shared_lock<std::shared_mutex> lock(mutex_);
-// 		auto it = map_v2id_.find(val);
-// 		if(it != map_v2id_.end()) {
-// 			return true;
-// 		}
-// 		return false;
-// 	}
-// private:
-// 	//std::mutex mutex_;
-// 	std::shared_mutex mutex_;
-// 	std::multimap<_Kty,_Ty> map_id2vs_;
-// 	std::unordered_map<_Ty,_Kty> map_v2id_;
-// };
 
 /*!
- *	@brief Service 定义.
+ *	@brief Socket 标志定义.
  *
- *	封装Service，实现基本服务框架
+ *	给Socket增加标志位，一遍跟踪特定标志的Socket
  */
-class Service 
+enum
 {
-protected:
-    //停止标记，默认停止状态，启动后停止状态为false
-    std::atomic<bool> stop_flag_;
-	uint32_t idle_flag_:1; //空闲处理标志,0表示不执行空闲任务，1表示执行空闲任务
-	uint32_t notify_flag_:1; //通知处理标志,0表示没有通知任务，1表示有通知任务
-	uint32_t wait_timeout_:30; //服务等待时间（毫秒）
-	std::chrono::steady_clock::time_point timer_time_; //最短定时任务时间,0表示没有定时任务，非0表示最短定时任务
+	SOCKET_FLAG_DEBUG = 0x01, //调试标志，如果设置会额外输出该Socket的调试信息
+	SOCKET_FLAG_USER1 = 0x02, //用户自定义标志1
+	SOCKET_ROLE_USER2 = 0x04, //用户自定义标志2
+	SOCKET_ROLE_USER3 = 0x08, //用户自定义标志3
+	SOCKET_ROLE_USER4 = 0x10, //用户自定义标志4
+};
+
+
+/*!
+ *	@brief 可伸缩的Socket封装.
+ *
+ *	SocketEx定义了可伸缩Socket的接口和基本实现
+ */
+class XSOCKET_API SocketEx : public Socket
+{
+	typedef Socket Base;
 public:
-	static Service* service();
+	static std::future<struct addrinfo*> AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints);
+public:
+	SocketEx();
+	virtual ~SocketEx();
 
-	Service();
+	//只需重载Attach，因为Open和Detach都会调用Attach
+	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
+	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
+	SOCKET Detach();
+	inline bool IsOpen() { return IsSocket(); }
+	int ShutDown(int nHow = Both);
+	int Close();
 
-	inline bool StartTest()
-	{
-		bool expected = true;
-		if (!stop_flag_.compare_exchange_strong(expected, false)) {
-			return false; //已经Start过了
-		}
-		return true;
-	}
-	inline void Start() { ASSERT(!IsStopFlag()); }
-	inline bool StopTest()
-	{
-		bool expected = false;
-		if (!stop_flag_.compare_exchange_strong(expected, true)) {
-			return false; //已经Stop过了
-		}
-		return true;
-	}
-	inline void Stop() { ASSERT(IsStopFlag()); }
-	inline bool IsStopFlag() { return stop_flag_; }
+	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
+	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
+	int Listen(int nConnectionBacklog = 5);
+	// SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 
-	inline void SetWaitTimeOut(size_t millis) { wait_timeout_ = millis; }
-	inline size_t GetWaitTimeOut() { return wait_timeout_; }
+	// int Send(const char* lpBuf, int nBufLen, int nFlags = 0);
+	// int Receive(char* lpBuf, int nBufLen, int nFlags = 0);
+	// int SendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags = 0);
+	// int ReceiveFrom(char* lpBuf, int nBufLen, SOCKADDR* lpSockAddr, int* lpSockAddrLen, int nFlags = 0);
+
+	inline int Role() { return role_; }
+	inline bool IsNoneRole() { return	Role()==SOCKET_ROLE_NONE; }
+	inline bool IsConnectSocket() { return Role()==SOCKET_ROLE_CONNECT; }
+	inline bool IsListenSocket() { return Role()==SOCKET_ROLE_LISTEN; }
+	inline bool IsWorkSocket() { return Role()==SOCKET_ROLE_WORK; }
+
+	inline void SetFlags(int flags) { flags_ = flags; }
+	inline int Flags() { return flags_; }
+	inline bool IsDebug() { return flags_ & SOCKET_FLAG_DEBUG; }
+
+	inline void AttachService(Service* svr) { OnAttachService(svr); }
+	inline void DetachService(Service* svr) { OnDetachService(svr); }
 	
-	inline void PostNotify() { notify_flag_ = true; idle_flag_ = false; }
-	inline void PostTimer(size_t millis) { 
-		std::chrono::steady_clock::time_point time = std::chrono::steady_clock::now() + std::chrono::milliseconds(millis);
-		if(!timer_time_.time_since_epoch().count()) {
-			timer_time_ = time;
-		} else if(timer_time_ > time) { 
-			timer_time_ = time; 
+	inline void Select(int lEvent) { event_ |= lEvent; }
+	inline void RemoveSelect(int lEvent) { event_ &= ~lEvent; }
+	inline bool IsSelect(int evt, bool all = false) {
+		if(all) {
+			return event_ & evt == evt;
 		} 
+		return event_ & evt;
 	}
-	
-protected:
-	//
-	inline size_t GetWaitingTimeOut()
+	inline bool IsSelectRead() { return IsSelect(FD_READ|FD_OOB|FD_ACCEPT); }
+	inline bool IsSelectWrite() { return IsSelect(FD_WRITE|FD_CONNECT); }
+
+	//NonBlock是正常错误
+	inline bool IsNonBlockError(int nErrorCode) 
 	{
-		if(notify_flag_) {
-			return 0;
-		}
-		if(timer_time_.time_since_epoch().count()) {
-			std::chrono::milliseconds span = std::chrono::duration_cast<std::chrono::milliseconds>(timer_time_ - std::chrono::steady_clock::now());
-			int64_t span_count = span.count();
-			if(span_count <= 0) {
-				return 0;
-			}
-			if(span_count < wait_timeout_) {
-				return span_count;
-			}
-		}
-		return wait_timeout_;
-	}
-
-	virtual bool OnStart();
-
-	virtual void OnStop()
-	{
-
-	}
-
-	virtual void OnNotify()
-	{
-
-	}
-
-	virtual void OnWait()
-	{
-
-	}
-	
-	virtual void OnTimer()
-	{
-
-	}
-
-	virtual void OnIdle()
-	{
-
-	}
-	
-	virtual void OnRun()
-	{
-		if(OnStart()) {
-			while (!IsStopFlag()) {
-				std::chrono::steady_clock::time_point tp = std::chrono::steady_clock::now();
-				if(notify_flag_) {
-					notify_flag_ = false;
-					idle_flag_ = true;
-					OnNotify();
-				}
-				if(IsStopFlag()) {
-					break;
-				}
-				OnWait();
-				if(IsStopFlag()) {
-					break;
-				}
-				if(timer_time_.time_since_epoch().count()) {
-					if(timer_time_ <= std::chrono::steady_clock::now()) {
-						timer_time_ = std::chrono::steady_clock::time_point();
-						OnTimer();
-					}
-				}
-				if(idle_flag_) {
-					if(IsStopFlag()) {
-						break;
-					}
-					OnIdle(/*std::chrono::duration_cast<std::chrono::milliseconds>(tp.time_since_epoch()).count()*/);
-					if(IsStopFlag()) {
-						break;
-					}
-					if(!wait_timeout_) {
-						static const std::chrono::microseconds max_span(200);
-						std::chrono::microseconds tp_span = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - tp);
-						if(tp_span < max_span) {
-							//std::this_thread::yield();
-							//std::this_thread::sleep_for(std::chrono::nanoseconds(1));
-							std::this_thread::sleep_for(max_span-tp_span);
-						}
-					}
-				}
-			}
-		}
-		OnStop();
-	}
-};
-
-/*!
- *	@brief TaskID 定义.
- *
- *	封装TaskID，实现Task唯一表示，和比较大小
- */
-struct TaskID
-{
-	TaskID() : id(0), time() {}
-	TaskID(size_t _delay) : id(IDGenerator<size_t>::Inst().get()), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {}
-
-	inline operator bool() const { return id != 0; }
-
-	inline bool operator<(const TaskID &o) const
-	{
-		if (time < o.time) {
+		switch (nErrorCode)
+		{
+		case 0:
 			return true;
-		} else if (time > o.time) {
-			return false;
-		}
-		return id < o.id;
-	}
-
-	const size_t id;
-	const std::chrono::steady_clock::time_point time;
-};
-
-/*!
- *	@brief TaskQue 模板定义.
- *
- *	封装TaskQue，任务池
- */
-class TaskQue
-{
-public:
-	inline void Push(const TaskID& key, std::function<void()> && task)
-	{
-		//std::lock_guard<std::mutex> lock(mutex_);
-		auto it = tasks_.emplace(key,std::move(task));
-		ASSERT(it.second);
-#ifdef _DEBUG
-		printf("task pool delay queue:");
-		for(auto& pr : tasks_) {
-			ssize_t delay = std::chrono::duration_cast<std::chrono::milliseconds>(pr.first.time-std::chrono::steady_clock::now()).count();
-			printf("%d ", (int)delay);
-		}
-		printf("\n");
-#endif//
-	}
-
-	inline void Push(std::function<void()> && task)
-	{		
-		// TaskID key;
-		// Post(key, std::move(task));
-		//std::lock_guard<std::mutex> lock(mutex_);
-		tasks_que_.emplace(std::move(task));
-	}
-
-	inline void Remove(const TaskID& t)
-	{
-		//std::unique_lock<std::mutex> lock(mutex_);
-		tasks_.erase(t);
-	}
-
-	inline size_t Count() { return tasks_que_.size() + tasks_.size(); }
-	inline bool IsEmpty() { return tasks_que_.empty() && tasks_.empty(); }
-
-	inline bool Pop(std::function<void()>& task, ssize_t* dealy)
-	{
-		if (!tasks_que_.empty()) {
-			task = std::move(tasks_que_.front());
-			tasks_que_.pop();
+			break;
+#ifdef WIN32
+		case WSAEWOULDBLOCK:
+		case WSA_IO_PENDING:
 			return true;
-		} else if(!tasks_.empty()) {
-			auto it = tasks_.begin();
-			if(IsActive(it->first, dealy)) {
-				task = std::move(it->second);
-				tasks_.erase(it);
-				return true;
-			}
+			break;
+#else
+		case EWOULDBLOCK:
+			return true;
+			break;
+		case EINTR:
+			return true;
+			break;
+#endif //
+		default:
+			break;
 		}
 		return false;
 	}
 
-protected:
-	inline bool IsActive(const TaskID& t, ssize_t* delay) {
-		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
-		if(delay) {
-			*delay = diff;
+	inline void Trigger(int evt, int nErrorCode) {
+		if(evt == FD_IDLE) {
+			OnIdle();
 		}
-		return diff <= 0;
+		if(!IsSocket()) { 
+			return;
+		}
+		switch (evt)
+		{
+		case FD_READ:
+			OnReceive(nErrorCode);
+			break;
+		case FD_WRITE:
+			OnSend(nErrorCode);
+			break;
+		case FD_OOB:
+			OnOOB(nErrorCode);
+			break;
+		case FD_ACCEPT:
+			OnAccept(nErrorCode);
+			break;
+		case FD_CONNECT:
+			OnConnect(nErrorCode);
+			break;
+		case FD_CLOSE:
+			OnClose(nErrorCode);
+			break;
+		// case FD_IDLE:
+		// 	OnIdle();
+		// 	break;
+		default:
+			break;
+		}
 	}
 	
-private:
-	std::map<TaskID,std::function<void()>> tasks_;
-	std::queue<std::function<void()>> tasks_que_;
-};
-
-/*!
- *	@brief ThreadPool 模板定义.
- *
- *	封装ThreadPool，线程池
- */
-class ThreadPool : public TaskQue
-{
-public:
-	static ThreadPool& Inst() {
-		static ThreadPool _inst(std::thread::hardware_concurrency() + 1);
-		return _inst;
-	}
-
-	ThreadPool() : stop_flag_(true)
-	{
-		
-	}
-	ThreadPool(size_t threads) : stop_flag_(true)
-	{
-		Start(threads);
-	}
-
-	~ThreadPool()
-	{
-		Stop();
-	}
-
-	inline bool IsStopFlag() {
-		return stop_flag_;
-	}
-
-	void Start(size_t threads)
-	{
-		bool expected = true;
-		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+	inline void Trigger(int evt, const char* lpBuf, int nBufLen, int nFlags) { 
+		if(!IsSocket()) { 
 			return;
 		}
-		for (size_t i = 0; i < threads; ++i) {
-			workers_.emplace_back(
-				[this] {
-					std::chrono::milliseconds timeout(3000);
-					for (;;)
-					{
-						std::function<void()> task;
-						{
-							std::unique_lock<std::mutex> lock(mutex_);
-							if(!cv_.wait_for(lock, timeout, [this] { return stop_flag_ || !TaskQue::IsEmpty(); })) {
-								continue;
-							}
-							if (stop_flag_)
-								break;
-							
-							ssize_t delay = 0;
-							TaskQue::Pop(task,&delay);
-							if(delay > 0) {
-								timeout = std::chrono::milliseconds(delay);
-							} else {
-								timeout = std::chrono::milliseconds(3000);
-							}
-							// if(!tasks_que_.empty()) {
-							// 	task = std::move(tasks_que_.front());
-							// 	tasks_que_.pop();
-							// } else {
-							// 	auto it = tasks_.begin();
-							// 	std::chrono::steady_clock::time_point tp_now = std::chrono::steady_clock::now();
-							// 	if(it->first.time > tp_now) {
-							// 		timeout = std::chrono::duration_cast<std::chrono::milliseconds>(it->first.time - tp_now);
-							// 		continue;
-							// 	} else {
-							// 		timeout = std::chrono::milliseconds(3000);
-							// 	}
-							// 	task = std::move(it->second);
-							// 	tasks_.erase(it);
-							// }
-						}
-						task();
-					}
-				});
+		switch (evt)
+		{
+		case FD_READ:
+			OnReceive(lpBuf, nBufLen, nFlags);
+			break;
+		case FD_WRITE:
+			OnSend(lpBuf, nBufLen, nFlags);
+			break;
+		case FD_OOB:
+			OnOOB(lpBuf, nBufLen, nFlags);
+			break;
+		case FD_ACCEPT:
+			break;
+		case FD_CONNECT:
+			break;
+		case FD_CLOSE:
+			break;
+		case FD_IDLE:
+			break;
+		default:
+			break;
 		}
-		//return true;
 	}
 
-	void Stop()
-	{
-		bool expected = false;
-		if (!stop_flag_.compare_exchange_strong(expected, true)) {
+	inline void Trigger(int evt, SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) { 
+		if(!IsSocket()) { 
 			return;
 		}
-		cv_.notify_all();
-		for (auto &worker : workers_) {
-			worker.join();
-		}
-		workers_.clear();
-	}
-
-	TaskID Post(const size_t delay, std::function<void()> && task)
-	{
-		TaskID key(delay);
-		std::lock_guard<std::mutex> lock(mutex_);
-		TaskQue::Push(key, std::move(task));
-		cv_.notify_one();
-		return key;
-	}
-
-	void Post(std::function<void()> && task)
-	{		
-		// TaskID key;
-		// Post(key, std::move(task));
-		std::lock_guard<std::mutex> lock(mutex_);
-		TaskQue::Push(std::move(task));
-		cv_.notify_one();
-	}
-
-	template<class F, class... Args>
-	auto Send(const size_t delay, F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
+		switch (evt)
 		{
-			Post(delay, [task](){ (*task)(); });
+		case FD_ACCEPT:
+			OnAccept(Sock, lpSockAddr, nSockAddrLen);
+			break;
+		case FD_CONNECT:
+			break;
+		case FD_CLOSE:
+			break;
+		case FD_IDLE:
+			break;
+		default:
+			break;
 		}
-		return res;
 	}
 
-	template<class F, class... Args>
-	auto Send(F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		// TaskID key;
-		// return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
-		{
-			Post([task](){ (*task)(); });
-		}
-		return res;
-	}
-
-	void Cancel(const TaskID& t)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		TaskQue::Remove(t);
-	}
-
-private:
-	std::atomic<bool> stop_flag_;
-	std::vector<std::thread> workers_;
-	// std::map<TaskID,std::function<void()>> tasks_;
-	// std::queue<std::function<void()>> tasks_que_;
-	std::mutex mutex_;
-	std::condition_variable cv_;
-};
-
-class ThreadGroupPool
-{
-public:
-	static ThreadGroupPool& Inst() {
-		static ThreadGroupPool _inst(std::thread::hardware_concurrency()+1);
-		return _inst;
-	}
-
-	ThreadGroupPool() : stop_flag_(true)
-	{
-		
-	}
-	ThreadGroupPool(size_t threads) : stop_flag_(true)
-	{
-		Start(threads);
-	}
-
-	~ThreadGroupPool()
-	{
-		Stop();
-	}
-
-	inline bool IsStopFlag() {
-		return stop_flag_;
-	}
-
-	void Start(size_t threads)
-	{
-		bool expected = true;
-		if (!stop_flag_.compare_exchange_strong(expected, false)) {
+	inline void Trigger(int evt, const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags) { 
+		if(!IsSocket()) { 
 			return;
 		}
-
-		for (size_t i = 0; i < threads; ++i) {
-			workers_.emplace_back(std::make_shared<ThreadPool>(1));
-		}
-	}
-
-	void Stop()
-	{
-		bool expected = false;
-		if (!stop_flag_.compare_exchange_strong(expected, true)) {
-			return;
-		}
-		for (auto &worker : workers_) {
-			worker->Stop();
-		}
-		workers_.clear();
-	}
-
-	ThreadPool& operator[](size_t n) {
-		n %= workers_.size();
-		return *workers_[n];
-	}
-	const ThreadPool& operator[](size_t n) const {
-		n %= workers_.size();
-		return *workers_[n];
-	}
-private:
-	std::atomic<bool> stop_flag_;
-	std::vector<std::shared_ptr<ThreadPool>> workers_;
-};
-
-/*!
- *	@brief TaskService 定义.
- *
- *	封装TaskService，实现简单事件服务
- */
-template<class TBase/* = Service*/>
-class TaskServiceT : public TBase, public TaskQue
-{
-	typedef TBase Base;
-public:
-	inline TaskID Post(const size_t delay, std::function<void()> && task)
-	{
-		TaskID key(delay);
- 		std::lock_guard<std::mutex> lock(mutex_);
-// 		auto it = tasks_.emplace(key,std::move(task));
-// 		ASSERT(it.second);
-// #ifdef _DEBUG
-// 		printf("task delay queue:");
-// 		for(auto& pr : tasks_) {
-// 			ssize_t delay = 0;
-// 			IsActive(pr.first,&delay);
-// 			printf("%d ", (int)delay);
-// 		}
-// 		printf("\n");
-// #endif//
-		TaskQue::Push(key, std::move(task));
-		if (!delay) {
-			Base::PostNotify();	
-		} else {
-			Base::PostTimer(delay);
-		}
-		return key;
-	}
-
-	inline void Post(std::function<void()> && task)
-	{
-		// TaskID key;
-		// Post(key, std::move(task));
-		std::lock_guard<std::mutex> lock(mutex_);
-		// tasks_que_.emplace(std::move(task));
-		TaskQue::Push(std::move(task));
-		Base::PostNotify();	
-	}
-
-	template<class F, class... Args>
-	auto Send(const size_t delay, F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
+		switch (evt)
 		{
-			Post(delay, [task](){ (*task)(); });
+		case FD_READ:
+			OnReceiveFrom(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+			break;
+		case FD_WRITE:
+			OnSendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+			break;
+		case FD_OOB:
+			break;
+		case FD_ACCEPT:
+			break;
+		case FD_CONNECT:
+			break;
+		case FD_CLOSE:
+			break;
+		case FD_IDLE:
+			break;
+		default:
+			break;
 		}
-		return res;
-	}
-
-	template<class F, class... Args>
-	inline auto Send(F&& f, Args&&... args) 
-		-> std::future<typename std::result_of<F(Args...)>::type>
-	{
-		// TaskID key;
-		// return Send(key, std::forward<F>(f), std::forward<Args>(args)...);
-		using return_type = typename std::result_of<F(Args...)>::type;
-
-		auto task = std::make_shared< std::packaged_task<return_type()> >(
-				std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-			);
-			
-		std::future<return_type> res = task->get_future();
-		{
-			Post([task](){ (*task)(); });
-		}
-		return res;
-	}
-
-	void Cancel(const TaskID& t)
-	{
-		std::unique_lock<std::mutex> lock(mutex_);
-		TaskQue::Remove(t);
-	}
-
-	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
-	{
-		//auto result = std::async(//std::launch::async|std::launch::deferred,
-		return ThreadPool::Inst().Post(
-			[this,hostname,service,hints,cb = std::move(cb)]() mutable {
-			struct addrinfo* res = nullptr;
-			XSocket::Socket::GetAddrInfo(hostname.c_str(),service.c_str(),&hints,&res);
-			Post([res,cb = std::move(cb)]() mutable {
-				cb(res);
-			});
-		});
 	}
 
 protected:
-	//
-	void DoTask()
+	/*!
+	 *	@brief 通知套接字扮演指定角色.
+	 *
+	 *	收到这个回调，说明Socket完成了初始化了，并开始进入指定角色
+	 *	@param nRole indicates this socket to play as a role (listen / accept/ connect)
+	 *	SOCKET_ROLE_NONE
+	 *	SOCKET_ROLE_LISTEN
+	 *	SOCKET_ROLE_WORK
+	 *	SOCKET_ROLE_CONNECT
+	 *	other value indecate unknown error.
+	 */
+	virtual void OnRole(int nRole)
 	{
-		// //从头开始消费
-		std::unique_lock<std::mutex> lock(mutex_);
-		
-		// size_t i = 0, j = tasks_que_.size();
-		// for(; i < j; i++)
-		// {
-		// 	auto task = std::move(tasks_que_.front());
-		// 	tasks_que_.pop();
-		// 	lock.unlock();
-		// 	task();
-		// 	lock.lock();
-		// 	if (tasks_que_.empty()) {
-		// 		break;
-		// 	}
-		// } 
+		if(IsDebug()) {
+			PRINTF("(%p %u)::OnRole role=%d-%d flags=%d event=%d", this, (SOCKET)*this, nRole, role_, flags_, event_);
+		}
+	}
 
-		// i = 0, j = tasks_.size();
-		// for(; i < j; i++)
-		// {
-		// 	auto it = tasks_.begin();
-		// 	ssize_t delay = 0;
-		// 	if (IsActive(it->first,&delay)) {
-		// 		auto task(std::move(it->second));
-		// 		tasks_.erase(it);
-		// 		lock.unlock();
-		// 		task();
-		// 		lock.lock();
-		// 	} else {
-		// 		Base::PostTimer(delay);
-		// 		break;
-		// 	}
-		// 	if (tasks_.empty()) {
-		// 		break;
-		// 	}
-		// }
-		
-		std::function<void()> task;
-		size_t i = 0, j = TaskQue::Count();
-		for(; i < j; i++) {
-			ssize_t delay = 0;
-			if(TaskQue::Pop(task,&delay)) {
-				lock.unlock();
-				task();
-				lock.lock();
-			} else {
-				if(delay > 0) {
-					Base::PostTimer(delay);
-				}
-				break;
+	/*!
+	 *	@brief 通知套接字绑定/解除绑定服务对象.
+	 *
+	 *	收到这个回调，说明Socket加入/离开了服务管理，接下来开始进入/退出Select事件通知处理了
+	 *	@param pSvr 服务对象指针
+	 */
+	virtual void OnAttachService(Service* pSvr)
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnAttachService", pSvr, this, (SOCKET)*this);
+		}
+	}
+
+	virtual void OnDetachService(Service* pSvr)
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnDetachService", pSvr, this, (SOCKET)*this);
+		}
+	}
+
+	/*!
+	 *	@brief 通知套接字无可操作状态，正在空闲或者等待中.
+	 *
+	 *	OnIdle函数是后台在计算空闲的情况，给SocketEx用于做一些空闲处理动作，比如检查超时
+	 *	、清理垃圾数据等等
+	 */
+	virtual void OnIdle()
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %u)::OnIdle", this, (SOCKET)*this);
+		}
+	}
+
+	/*!
+	 *	@brief 通知套接字有数据可以通过调用Receive读取.
+	 *
+	 *	
+	 *	Notifies a this socket that there is data to be retrieved by calling Receive.
+	 *	@param nErrorCode The most recent error on a socket. 
+	 *	The following error codes apply to the OnReceive member function:
+	 *	0					The function executed successfully.
+	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
+	 */
+	virtual void OnReceive(int nErrorCode)
+	{
+		if(!IsNonBlockError(nErrorCode)) {
+			if(IsDebug()) {
+				PRINTF("(%p %p %u)::OnReceive:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
 			}
+			Trigger(FD_CLOSE,nErrorCode);
+		}
+	}
+	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags)
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnReceive:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+		}
+	}
+	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	{
+		if(IsDebug()) {
+			char str[64] = {0};
+			PRINTF("(%p %p %u)::OnReceiveFrom(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	
-	// virtual void OnIdle()
-	// {
-	// 	DoTask();
-	// }
-	
-	virtual void OnNotify()
+	/*!
+	 *	@brief 通知套接字可以调用Send发送数据.
+	 *
+	 *	
+	 *	Notifies a socket that it can send data by calling Send.
+	 *	@param nErrorCode The most recent error on a socket. 
+	 *	The following error codes apply to the OnSend member function:
+	 *	0					The function executed successfully.
+	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
+	 */
+	virtual void OnSend(int nErrorCode)
 	{
-		DoTask();
+		if(!IsNonBlockError(nErrorCode)) {
+			if(IsDebug()) {
+				PRINTF("(%p %p %u)::OnSend:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+			}
+			Trigger(FD_CLOSE,nErrorCode);
+		}
+	}
+	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnSend:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+		}
+	}
+	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	{
+		if(IsDebug()) {
+			char str[64] = {0};
+			PRINTF("(%p %p %u)::OnSendTo(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
+		}
 	}
 	
-	virtual void OnTimer()
+	/*!
+	 *	@brief 通知正在接收数据的套接字有带外数据，通常是紧急数据 要读取.
+	 *
+	 *	
+	 *	Notifies a receiving socket that there is out-of-band data to be read on the socket, usually an urgent message.
+	 *	@param nErrorCode The most recent error on a socket. 
+	 *	The following error codes apply to the OnOutOfBandData member function:
+	 *	0					The function executed successfully.
+	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
+	 */
+	virtual void OnOOB(int nErrorCode)
 	{
-		DoTask();
+		if(!IsNonBlockError(nErrorCode)) {
+			if(IsDebug()) {
+				PRINTF("(%p %p %u)::OnOOB:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+			}
+			Trigger(FD_CLOSE,nErrorCode);
+		}
+	}
+	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags)
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnOOB:%d %.*s", Service::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+		}
 	}
 
+	/*!
+	 *	@brief 通知正在监听的服务器套接字有一个连接需要调用Accept接收连接.
+	 *
+	 *	
+	 *	Notifies a listening socket that it can accept pending connection requests by calling Accept.
+	 *	@param nErrorCode The most recent error on a socket. 
+	 *	The following error codes applies to the OnAccept member function:
+	 *	0					The function executed successfully.
+	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
+	 */
+	virtual void OnAccept(int nErrorCode)
+	{
+		if(!IsNonBlockError(nErrorCode)) {
+			if(IsDebug()) {
+				PRINTF("(%p %p %u)::OnAccept:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+			}
+			Trigger(FD_CLOSE,nErrorCode);
+		}
+	}
+	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
+	{
+		if(IsDebug()) {
+			char str[64] = {0};
+			PRINTF("(%p %p %u)::OnAccept(%s):%u", Service::service(), this, (SOCKET)*this, lpSockAddr?SockAddr2Str(lpSockAddr,nSockAddrLen,str,64):"", Sock);
+		}
+	}
+
+	/*!
+	 *	@brief 通知正在连接的客户端套接字连接建立完成，可能成功或者失败.
+	 *
+	 *	
+	 *	Notifies a connecting socket that the connection attempt is complete, whether successfully or in error.
+	 *	@param nErrorCode The most recent error on a socket. 
+	 *	The following error codes apply to the OnConnect member function:
+	 *	0					The function executed successfully.
+	 *	WSAEADDRINUSE		The specified address is already in use.
+	 *	WSAEADDRNOTAVAIL	The specified address is not available from the local machine.
+	 *	WSAEAFNOSUPPORT		Addresses in the specified family cannot be used with this socket.
+	 *	WSAECONNREFUSED		The attempt to connect was forcefully rejected.
+	 *	WSAEDESTADDRREQ		A destination address is required.
+	 *	WSAEFAULT			The lpSockAddrLen argument is incorrect.
+	 *	WSAEINVAL			The socket is already bound to an address.
+	 *	WSAEISCONN			The socket is already connected.
+	 *	WSAEMFILE			No more file descriptors are available.
+	 *	WSAENETUNREACH		The network cannot be reached from this host at this time.
+	 *	WSAENOBUFS			No buffer space is available. The socket cannot be connected.
+	 *	WSAENOTCONN			The socket is not connected.
+	 *	WSAENOTSOCK			The descriptor is a file, not a socket.
+	 *	WSAETIMEDOUT		The attempt to connect timed out without establishing a connection.
+	 */
+	virtual void OnConnect(int nErrorCode)
+	{
+		if(!IsNonBlockError(nErrorCode)) {
+			if(IsDebug()) {
+				PRINTF("(%p %p %u)::OnConnect:%d", Service::service(), this, (SOCKET)*this, nErrorCode);
+			}
+			Trigger(FD_CLOSE,nErrorCode);
+		}
+	}
+
+	/*!
+	 *	@brief 通知套接字连接已经关闭.
+	 *
+	 *	
+	 *	Notifies a socket that the socket connected to it has closed.
+	 *	@param nErrorCode The most recent error on a socket. 
+	 *	The following error codes apply to the OnClose member function:
+	 *	0					The function executed successfully.
+	 *	ENETDOWN			The Windows Sockets implementation detected that the network subsystem failed.
+	 *	WSAECONNRESET		The connection was reset by the remote side.
+	 *	WSAECONNABORTED		The connection was aborted due to timeout or other failure.
+	 */
+	virtual void OnClose(int nErrorCode)
+	{
+		if(IsDebug()) {
+			PRINTF("(%p %p %u)::OnClose:%d %s", Service::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
+		}
+	}
+
+protected:
+	uint8_t role_:3;
+	uint8_t flags_:5;
+	uint8_t event_;
+
 private:
-// 	inline bool IsActive(const TaskID& t, ssize_t* delay) {
-// 		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
-// 		if(delay) {
-// 			*delay = diff;
-// 		}
-// 		return diff <= 0;
-// 	}
-// 	std::map<TaskID,std::function<void()>> tasks_;
-// 	std::queue<std::function<void()>> tasks_que_;
-	std::mutex mutex_;
+	SocketEx(const SocketEx& Sock) {};
+	void operator=(const SocketEx& Sock) {};
 };
 
 /*!
- *	@brief CVServiceT 模板定义.
+ *	@brief SocketExImpl 模板定义.
  *
- *	封装CVServiceT，线程池
+ *	封装SocketEx，一般用于SocketEx最终实现的包装
  */
-template<class TBase = Service>
-class CVServiceT : public TBase
+template<class T, class TBase = SocketEx>
+class SocketExImpl : public TBase
 {
 	typedef TBase Base;
 public:
-
-	inline void Stop()
+	SocketExImpl():Base()
 	{
-		cv_.notify_one(); 
-		Base::Stop();
+
 	}
-	
-	inline void PostNotify() { 
-		//std::lock_guard<std::mutex> lock(mutex_);
-		Base::PostNotify();
-		cv_.notify_one(); 
-	}
-	
+
 protected:
 	//
-	virtual void OnWait()
+	virtual void OnClose(int nErrorCode)
 	{
-		size_t timeout = Base::GetWaitingTimeOut();
-		if (timeout) {
-			std::unique_lock<std::mutex> lock(mutex_);
-			cv_.wait_for(lock, std::chrono::milliseconds(timeout));
-		}
-	}
+		T* pT = static_cast<T*>(this);
 
-protected:
-	std::mutex mutex_;
-	std::condition_variable cv_;
+		Base::OnClose(nErrorCode);
+
+		pT->Close();
+	}
 };
 
 /*!
- *	@brief CVSocket 模板定义.
+ *	@brief SocketExT 模板定义.
  *
- *	封装CVSocket
+ *	封装SocketExT
  */
 template<class TSocketSet, class TBase = SocketEx>
-class CVSocketT : public TBase
+class SocketExT : public TBase
 {
 	typedef TBase Base;
 public:
@@ -1548,52 +835,6 @@ protected:
 	inline SocketEx* IsSocketEvent(Event& evt) { return nullptr; }
 	inline bool IsActive(Event& evt) { return true; }
 };
-
-/*!
- *	@brief ThreadServiceT 定义.
- *
- *	封装ThreadServiceT，实现线程服务服务
- */
-template<class TBase = Service>
-class ThreadServiceT : public TBase
-{
-	typedef ThreadServiceT<TBase> This;
-	typedef TBase Base;
-public:
-	bool Start()
-	{
-		Stop();
-		if(!Base::StartTest()) {
-			return true; //说明其他线程调用Start了，这里直接返回true
-		}
-		Base::Start();
-		//thread_ = std::thread(std::bind(&This::OnRun, this));
-		thread_ptr_ = std::make_shared<std::thread>(std::bind(&This::OnRun,this));
-		return true;
-	}
-
-	void Stop()
-	{
-		if(!Base::StopTest()) {
-			return; //说明其他线程调用Stop了，这里直接返回
-		}
-		//thread_.join();
-		if(thread_ptr_) {
-			thread_ptr_->join();
-			thread_ptr_.reset();
-		}
-		Base::Stop();
-	}
-
-protected:
-	//线程
-	//std::thread thread_;
-	std::shared_ptr<std::thread> thread_ptr_;
-};
-
-typedef ThreadServiceT<Service> ThreadService;
-typedef ThreadServiceT<CVServiceT<Service>> ThreadCVService;
-
 
 /*!
  *	@brief WorkSocketT 模板定义.
@@ -2416,14 +1657,10 @@ protected:
  *	封装SelectSocket
  */
 template<class TSocketSet, class TBase = SocketEx>
-class SelectSocketT : public TBase
+class SelectSocketT : public SocketExT<TSocketSet,TBase>
 {
-	typedef TBase Base;
+	typedef SocketExT<TSocketSet,TBase> Base;
 public:
-	typedef TSocketSet SocketSet;
-public:
-	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
-
 	SelectSocketT()
 	{
     	

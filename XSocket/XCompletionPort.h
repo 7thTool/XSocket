@@ -71,11 +71,9 @@ typedef struct _PER_IO_OPERATION_DATA
  *	封装CompletionPortSocket
  */
 template<class TSocketSet, class TBase = SocketEx>
-class CompletionPortSocketT : public TBase
+class CompletionPortSocketT : public SocketExT<TSocketSet,TBase>
 {
-	typedef TBase Base;
-public:
-	typedef TSocketSet SocketSet;
+	typedef SocketExT<TSocketSet,TBase> Base;
 protected:
 	//优化成区分WORK、CONNECT、LISTEN、UDP
 	union 
@@ -89,8 +87,6 @@ protected:
 		char receive_reserved_[sizeof(PER_IO_OPERATION_DATA)];
 	};
 public:
-	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
-
 	CompletionPortSocketT():Base()
 	{
 		memset(&send_reserved_,0,sizeof(send_reserved_));

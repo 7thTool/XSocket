@@ -34,16 +34,12 @@ namespace XSocket {
  *	封装EPollSocket
  */
 template<class TSocketSet, class TBase = SocketEx>
-class EPollSocketT : public TBase
+class EPollSocketT : public SocketExT<TSocketSet,TBase>
 {
-	typedef TBase Base;
-public:
-	typedef TSocketSet SocketSet;
+	typedef SocketExT<TSocketSet,TBase> Base;
 public:
 	u_short sock_pos_ = 0;
 public:
-	static SocketSet* service() { return dynamic_cast<SocketSet*>(SocketSet::service()); }
-
 	EPollSocketT():Base()
 	{
 		
