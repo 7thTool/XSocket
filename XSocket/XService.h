@@ -23,8 +23,9 @@
 
 #include <atomic>
 #include <mutex>
+#ifdef WIN32
 #include <shared_mutex>
-#ifndef WIN32
+#else
 #include <condition_variable>
 #endif
 #include <thread>
@@ -717,19 +718,6 @@ public:
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 		TaskQue::Remove(t);
-	}
-
-	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
-	{
-		//auto result = std::async(//std::launch::async|std::launch::deferred,
-		return ThreadPool::Inst().Post(
-			[this,hostname,service,hints,cb = std::move(cb)]() mutable {
-			struct addrinfo* res = nullptr;
-			XSocket::Socket::GetAddrInfo(hostname.c_str(),service.c_str(),&hints,&res);
-			Post([res,cb = std::move(cb)]() mutable {
-				cb(res);
-			});
-		});
 	}
 
 protected:

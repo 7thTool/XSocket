@@ -591,7 +591,7 @@ protected:
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnRecvBuf(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
+			PRINTF("(%p %p %u)::OnRecvBuf(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
 		}
 	}
 
@@ -606,7 +606,7 @@ protected:
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnSendBuf(%s):%d %.*s", Service::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
+			PRINTF("(%p %p %u)::OnSendBuf(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
 		}
 	}
 

@@ -192,6 +192,44 @@ public:
 	}
 };
 
+/*!
+ *	@brief ServiceEx 定义.
+ *
+ *	封装ServiceEx，实现基本服务框架
+ */
+class ServiceEx : public Service 
+{
+public:
+	static Service* service();
+
+protected:
+	//
+	virtual bool OnStart();
+};
+
+/*!
+ *	@brief TaskServiceExT 定义.
+ *
+ *	封装TaskServiceExT，实现简单事件服务
+ */
+template<class TBase = ServiceEx>
+class TaskServiceExT : public TaskServiceT<TBase>
+{
+	typedef TaskServiceT<TBase> Base;
+public:
+	inline void PostGetAddrInfo(const std::string& hostname, const std::string& service, const struct addrinfo& hints, std::function<void(struct addrinfo*)>&& cb)
+	{
+		//auto result = std::async(//std::launch::async|std::launch::deferred,
+		return ThreadPool::Inst().Post(
+			[this,hostname,service,hints,cb = std::move(cb)]() mutable {
+			struct addrinfo* res = nullptr;
+			XSocket::Socket::GetAddrInfo(hostname.c_str(),service.c_str(),&hints,&res);
+			Post([res,cb = std::move(cb)]() mutable {
+				cb(res);
+			});
+		});
+	}
+};
 
 /*!
  *	@brief Socket 角色定义.
@@ -219,22 +257,6 @@ enum
 	SOCKET_ROLE_USER2 = 0x04, //用户自定义标志2
 	SOCKET_ROLE_USER3 = 0x08, //用户自定义标志3
 	SOCKET_ROLE_USER4 = 0x10, //用户自定义标志4
-};
-
-
-/*!
- *	@brief ServiceEx 定义.
- *
- *	封装ServiceEx，实现基本服务框架
- */
-class ServiceEx : public Service 
-{
-public:
-	static Service* service();
-
-protected:
-	//
-	virtual bool OnStart();
 };
 
 
