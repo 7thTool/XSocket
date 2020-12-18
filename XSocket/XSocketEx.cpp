@@ -208,7 +208,8 @@ int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	ASSERT(IsSocket());
 	int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
 	if(IsDebug()) {
-		PRINTF("Bind Socket %p %u rlt=%s", this, (SOCKET)*this, GetErrorMessage(GetLastError()));
+		char str[260] = {0};
+		PRINTF("Bind Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
 	}
 	return rlt;
 }
@@ -223,7 +224,8 @@ int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
 	SetNonBlock();//设为非阻塞模式
 	int rlt = Base::Connect(lpSockAddr, nSockAddrLen);
 	if(IsDebug()) {
-		PRINTF("Connect Socket %p %u rlt=%s", this, (SOCKET)*this, GetErrorMessage(GetLastError()));
+		char str[260] = {0};
+		PRINTF("Connect Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
 	}
 	return rlt;
 }
@@ -238,7 +240,7 @@ int SocketEx::Listen(int nConnectionBacklog)
 	SetNonBlock();//设为非阻塞模式
 	int rlt = Base::Listen(nConnectionBacklog);
 	if(IsDebug()) {
-		PRINTF("Listen Socket %p %u rlt=%s", this, (SOCKET)*this, GetErrorMessage(GetLastError()));
+		PRINTF("Listen Socket %p %u cnt=%d rlt=%s", this, (SOCKET)*this, nConnectionBacklog, GetErrorMessage(GetLastError()));
 	}
 	return rlt;
 }
