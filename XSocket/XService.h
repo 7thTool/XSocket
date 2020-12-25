@@ -323,6 +323,12 @@ struct TaskID
 {
 	TaskID() : id(0), time() {}
 	TaskID(size_t _delay) : id(IDGenerator<size_t>::Inst().get()), time(std::chrono::steady_clock::now() + std::chrono::milliseconds(_delay)) {}
+	TaskID(const TaskID& o) : id(o.id), time(o.time) {}
+	TaskID& operator=(const TaskID& o) { id = o.id; time = o.time; return *this; }
+	TaskID(TaskID&& o) : id(o.id), time(o.time) {}
+	TaskID& operator=(TaskID&& o) { id = o.id; time = o.time; return *this; }
+
+	inline void reset() { id = 0, time = std::chrono::steady_clock::time_point(); }
 
 	inline operator bool() const { return id != 0; }
 
@@ -336,8 +342,8 @@ struct TaskID
 		return id < o.id;
 	}
 
-	const size_t id;
-	const std::chrono::steady_clock::time_point time;
+	size_t id;
+	std::chrono::steady_clock::time_point time;
 };
 
 /*!
