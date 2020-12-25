@@ -130,7 +130,7 @@ namespace XSocket {
 
 			void* Alloc()			//分配内存 
 			{ 
-				if(first_ptr_ == NULL) {
+				if(!first_ptr_) {
 					Block* pmb_first = new (init_num_, unit_size_)Block(init_num_, unit_size_);
 					first_ptr_ = pmb_first;
 				}
@@ -139,9 +139,9 @@ namespace XSocket {
 				while(block_ptr && block_ptr->free_num == 0)  { 
 					block_ptr = block_ptr->next_ptr; 
 				} 
-				if(block_ptr == NULL) {
+				if(!block_ptr) {
 					block_ptr = new (grow_num_, unit_size_)Block(grow_num_, unit_size_);
-					if(block_ptr != NULL) {
+					if(block_ptr) {
 						block_ptr->next_ptr = first_ptr_;
 						first_ptr_ = block_ptr;
 					}
@@ -153,7 +153,7 @@ namespace XSocket {
 					//PRINTF("New[%d]", block_ptr->free_num);
 					return (void*)pfree;
 				}
-				return NULL;
+				return nullptr;
 			} 
 
 			void Free(void* pfree)	//回收内存
@@ -165,12 +165,12 @@ namespace XSocket {
 						old_block_ptr = block_ptr;
 						block_ptr = block_ptr->next_ptr;
 				}
-				if (block_ptr != NULL) {
+				if (block_ptr) {
 					block_ptr->free_num++;
 					*((size_t*)pfree) = block_ptr->next_pos;
 					block_ptr->next_pos = (size_t)((char*)pfree - block_ptr->data)/unit_size_;//下一个可分配的内存位置
-					if(block_ptr->free_num * unit_size_ == block_ptr->total_size) {//如果该块已全部释放
-						if (old_block_ptr != NULL) {
+					if(block_ptr->free_num * unit_size_ >= block_ptr->total_size) {//如果该块已全部释放
+						if (old_block_ptr) {
 							old_block_ptr->next_ptr = block_ptr->next_ptr;
 							delete block_ptr;
 						} else {//只有这一块，释放了，所以first_ptr_ = nullptr
@@ -393,7 +393,7 @@ namespace XSocket {
 		public:
 			void* operator new(size_t size)
 			{
-				ASSERT(size==sizeof(This));
+				ASSERT(size == sizeof(This));
 				return MemoryPool::Inst().Alloc(size);
 			}
 
