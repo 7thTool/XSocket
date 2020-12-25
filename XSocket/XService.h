@@ -403,6 +403,13 @@ public:
 		return false;
 	}
 
+	inline void Clear() {
+		while (!tasks_que_.empty()) {
+			tasks_que_.pop();
+		}
+		tasks_.clear();
+	}
+
 protected:
 	inline bool IsActive(const TaskID& t, ssize_t* delay) {
 		ssize_t diff = std::chrono::duration_cast<std::chrono::milliseconds>(t.time-std::chrono::steady_clock::now()).count();
@@ -654,6 +661,7 @@ class TaskServiceT : public TBase, public TaskQue
 {
 	typedef TBase Base;
 public:
+
 	inline TaskID Post(const size_t delay, std::function<void()> && task)
 	{
 		TaskID key(delay);
@@ -732,6 +740,14 @@ public:
 
 protected:
 	//
+	//bool OnStart() override;
+	virtual void OnStop() override
+	{
+		ASSERT(TaskQue::IsEmpty());
+		TaskQue::Clear();
+		Base::OnStop();
+	}
+	
 	void DoTask()
 	{
 		// //从头开始消费
@@ -787,17 +803,17 @@ protected:
 		}
 	}
 	
-	// virtual void OnIdle()
+	// virtual void OnIdle() override
 	// {
 	// 	DoTask();
 	// }
 	
-	virtual void OnNotify()
+	virtual void OnNotify() override
 	{
 		DoTask();
 	}
 	
-	virtual void OnTimer()
+	virtual void OnTimer() override
 	{
 		DoTask();
 	}
