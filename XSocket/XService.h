@@ -179,6 +179,10 @@ public:
 	{
 
 	}
+	virtual ~Service() 
+	{
+		
+	}
 
 	inline bool StartTest()
 	{

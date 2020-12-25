@@ -514,7 +514,7 @@ public:
 
 		inline bool valid() const { return bufptr_?true:false; }
 		inline bool reinit(const char* lpBuf, int nBufLen, const SOCKADDR* lpAddr, int nAddrLen, int nFlags = 0) {
-			bufptr_ = UdpBufferPool::Inst().New();
+			bufptr_ = ObjectPool::make_shared<UdpBuffer>();
 #ifdef _DEBUG
 			PUDPBUF p = ptr();
 			char* str = data();

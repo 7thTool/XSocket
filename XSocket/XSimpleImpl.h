@@ -36,7 +36,7 @@ namespace XSocket {
  *
  *	封装CustomSocketT，实现自定义的快速发送/接收（写入/读取）网络架构
  */
-template<class TBase, class TSendBuffer>
+template<class TBase, class TSendBuffer = Buffer>
 class CustomSocketT : public TcpSocket<TBase>
 {
 	typedef TcpSocket<TBase> Base;

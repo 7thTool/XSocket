@@ -924,7 +924,7 @@ namespace XSocket {
 			 * persistent connections to work.
 			 */
 			/* Potentially add headers for unidentified content. */
-			if (is_response_needs_body(req, rsp)) {
+			if (this->is_response_needs_body(req, rsp)) {
 				bool chunked = rsp.is_chunked();
 				if(!chunked) {
 					if (!rsp.field("Content-Type")) {
@@ -1271,7 +1271,7 @@ namespace XSocket {
 				if(isval == 1) {
 					DoClose();
 				} else {
-					Select(FD_IDLE);
+					this->Select(FD_IDLE);
 				}
 			}
 		}
