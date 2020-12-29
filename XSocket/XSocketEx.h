@@ -30,6 +30,8 @@ namespace XSocket {
 
 	class SocketEx;
 
+	typedef std::basic_string<char, std::char_traits<char>, AllocatorT<char>> String;
+	//
 	typedef std::vector<char, AllocatorT<char>> Buffer;
 	// class BufferPool : public ObjectPoolT<BufferPool,Buffer>
 	// {
@@ -568,6 +570,187 @@ protected:
 
 		pT->Close();
 	}
+};
+
+/*!
+ *	@brief SocketBinder 模板定义.
+ *
+ *	封装SocketEx，一般用于SocketEx代理实现包装
+ */
+template<class TBase = SocketEx>
+class SocketBinder : public TBase
+{
+	typedef TBase Base;
+public:
+	using Base::Base;
+
+	inline void BindRole(std::function<void(int)>&& cb) { cb_role_ = std::move(cb); }
+
+	inline void BindAttachService(std::function<void(Service*)>&& cb) { cb_attach_service_ = std::move(cb); }
+	inline void BindDetachService(std::function<void(Service*)>&& cb) { cb_detach_service_ = std::move(cb); }
+
+	inline void BindIdle(std::function<void()>&& cb) { cb_idle_ = std::move(cb); }
+
+	inline void BindReceive(std::function<void(int)>&& cb) { cb_recv_ = std::move(cb); }
+	inline void BindReceive(std::function<void(const char*, int, int)>&& cb) { cb_recved_ = std::move(cb); }
+	inline void BindReceive(std::function<void(const char*, int, const SOCKADDR*, int, int)>&& cb) { cb_recved_from_ = std::move(cb); }
+
+	inline void BindSend(std::function<void(int)>&& cb) { cb_send_ = std::move(cb); }
+	inline void BindSend(std::function<void(const char*, int, int)>&& cb) { cb_sended_ = std::move(cb); }
+	inline void BindSend(std::function<void(const char*, int, const SOCKADDR*, int, int)>&& cb) { cb_sended_from_ = std::move(cb); }
+
+	inline void BindOOB(std::function<void(int)>&& cb) { cb_oob_ = std::move(cb); }
+	inline void BindOOB(std::function<void(const char*, int, int)>&& cb) { cb_oobed_ = std::move(cb); }
+
+	inline void BindAccept(std::function<void(int)>&& cb) { cb_accept_ = std::move(cb); }
+	inline void BindAccept(std::function<void(SOCKET, const SOCKADDR*, int)>&& cb) { cb_accepted_ = std::move(cb); }
+	
+	inline void BindConnect(std::function<void(int)>&& cb) { cb_connect_ = std::move(cb); }
+
+	inline void BindClose(std::function<void(int)>&& cb) { cb_close_ = std::move(cb); }
+
+protected:
+	//
+	virtual void OnRole(int nRole)
+	{
+		Base::OnRole(nRole);
+		if(cb_role_) {
+			cb_role_(nRole);
+		}
+	}
+
+	virtual void OnAttachService(Service* pSvr)
+	{
+		Base::OnAttachService(pSvr);
+		if(cb_attach_service_) {
+			cb_attach_service_(pSvr);
+		}
+	}
+
+	virtual void OnDetachService(Service* pSvr)
+	{
+		if(cb_detach_service_) {
+			cb_detach_service_(pSvr);
+		}
+		Base::OnDetachService(pSvr);
+	}
+
+	virtual void OnIdle()
+	{
+		Base::OnIdle();
+		if(cb_idle_) {
+			cb_idle_();
+		}
+	}
+
+	virtual void OnReceive(int nErrorCode)
+	{
+		Base::OnReceive(nErrorCode);
+		if(cb_recv_) {
+			cb_recv_(nErrorCode);
+		}
+	}
+	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags)
+	{
+		Base::OnReceive(lpBuf, nBufLen, nFlags);
+		if(cb_recved_) {
+			cb_recved_(lpBuf, nBufLen, nFlags);
+		}
+	}
+	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	{
+		Base::OnReceiveFrom(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		if(cb_recved_from_) {
+			cb_recved_from_(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		}
+	}
+
+	virtual void OnSend(int nErrorCode)
+	{
+		Base::OnSend(nErrorCode);
+		if(cb_send_) {
+			cb_send_(nErrorCode);
+		}
+	}
+	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
+	{
+		Base::OnSend(lpBuf, nBufLen, nFlags);
+		if(cb_sended_) {
+			cb_sended_(lpBuf, nBufLen, nFlags);
+		}
+	}
+	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
+	{
+		Base::OnSendTo(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		if(cb_sended_to_) {
+			cb_sended_to_(lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+		}
+	}
+	
+	virtual void OnOOB(int nErrorCode)
+	{
+		Base::OnOOB(nErrorCode);
+		if(cb_oob_) {
+			cb_oob_(nErrorCode);
+		}
+	}
+	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags)
+	{
+		Base::OnOOB(lpBuf, nBufLen, nFlags);
+		if(cb_oobed_) {
+			cb_oobed_(lpBuf, nBufLen, nFlags);
+		}
+	}
+
+	virtual void OnAccept(int nErrorCode)
+	{
+		Base::OnAccept(nErrorCode);
+		if(cb_accept_) {
+			cb_accept_(nErrorCode);
+		}
+	}
+
+	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen)
+	{
+		Base::OnAccept(Sock, lpSockAddr, nSockAddrLen);
+		if(cb_accepted_) {
+			cb_accepted_(Sock, lpSockAddr, nSockAddrLen);
+		}
+	}
+
+	virtual void OnConnect(int nErrorCode)
+	{
+		Base::OnConnect(nErrorCode);
+		if(cb_connect_) {
+			cb_connect_(nErrorCode);
+		}
+	}
+
+	virtual void OnClose(int nErrorCode)
+	{
+		if(cb_close_) {
+			cb_close_(nErrorCode);
+		}
+		Base::OnClose(nErrorCode);
+	}
+
+protected:
+	std::function<void(int)> cb_role_;
+	std::function<void(Service*)> cb_attach_service_;
+	std::function<void(Service*)> cb_detach_service_;
+	std::function<void()> cb_idle_;
+	std::function<void(int)> cb_recv_;
+	std::function<void(const char*, int, int)> cb_recved_;
+	std::function<void(const char*, int, const SOCKADDR*, int, int)> cb_recved_from_;
+	std::function<void(int)> cb_send_;
+	std::function<void(const char*, int, int)> cb_sended_;
+	std::function<void(const char*, int, const SOCKADDR*, int, int)> cb_sended_to_;
+	std::function<void(int)> cb_oob_;
+	std::function<void(const char*, int, int)> cb_oobed_;
+	std::function<void(int)> cb_accept_;
+	std::function<void(SOCKET, const SOCKADDR*, int)> cb_accepted_;
+	std::function<void(int)> cb_connect_;
+	std::function<void(int)> cb_close_;
 };
 
 /*!

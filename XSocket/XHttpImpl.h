@@ -1355,7 +1355,8 @@ namespace XSocket {
 
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			/*this_service()->*/Base::Post(std::bind(&This::SendHttpRequest, shared_from_this(), req));
+			T* pT = static_cast<T*>(this);
+			pT->Post(std::bind(&This::SendHttpRequest, shared_from_this(), req));
 		}
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1427,8 +1428,6 @@ namespace XSocket {
 
 		virtual void OnClose(int nErrorCode)
 		{
-			Base::OnClose(nErrorCode);
-
 			T* pT = static_cast<T*>(this);
 			if(!req_list_.empty()) {
 				std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
@@ -1458,6 +1457,8 @@ namespace XSocket {
 				req_list_.clear();
 				req_send_count_ = 0;
 			}
+
+			Base::OnClose(nErrorCode);
 		}
 	};
 	
@@ -1694,12 +1695,14 @@ namespace XSocket {
 
 		inline void PostHttpResponse(std::shared_ptr<HttpResponse> rsp)
 		{
-			/*this_service()->*/Base::Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, shared_from_this(), rsp));
+			T* pT = static_cast<T*>(this);
+			pT->Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, shared_from_this(), rsp));
 		}
 
 		inline void PostHttpChunk(std::shared_ptr<std::string> rsp)
 		{
-			/*this_service()->*/Base::Post(std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, shared_from_this(), rsp));
+			T* pT = static_cast<T*>(this);
+			pT->Post(std::bind((void (This::*)(std::shared_ptr<std::string>))&This::SendHttpChunk, shared_from_this(), rsp));
 		}
 
 		inline void SendHttpResponse(std::shared_ptr<HttpResponse> rsp)
@@ -1812,11 +1815,6 @@ namespace XSocket {
 				}
 			}
 		}
-
-		// virtual void OnClose(int nErrorCode)
-		// {
-		// 	Base::OnClose(nErrorCode);
-		// }
 	};
 }
 
