@@ -171,7 +171,7 @@ namespace XSocket {
 		}
 		static inline String tm2str(const std::tm* t, const char* format) {
 #ifdef WIN32
-			std::ostringstream ss;
+			OStringStream ss;
 			ss << std::put_time(t, format);
 			return ss.str();
 #else
@@ -183,7 +183,7 @@ namespace XSocket {
 		static inline std::tm str2tm(const char* time, const char* format) {
 			std::tm t;
 #ifdef WIN32
-			std::istringstream ss(time);
+			IStringStream ss(time);
 			ss >> std::get_time(&t, format);
 #else
 			strptime(time, format, &t);
@@ -1006,19 +1006,14 @@ namespace XSocket {
 			oss << std::hex << nBufLen << "\r\n";
 			String head = oss.str();
 			size_t len = buf.size();
-			if(!lpBuf || !nBufLen) {
-				buf.resize(len + head.size() + 2);
-				memcpy(&buf[len], head.data(), head.size());
-				memcpy(&buf[len + head.size()], "\r\n", 2);
-			} else {
-				buf.resize(len + head.size() + nBufLen + 2 + bLast?(3+2):0);
-				memcpy(&buf[len], head.data(), head.size());
-				memcpy(&buf[len + head.size()], lpBuf, nBufLen);
-				memcpy(&buf[len + head.size() + nBufLen], "\r\n", 2);
-				if(bLast) {
-					memcpy(&buf[len + head.size() + nBufLen + 2], "0\r\n", 3);
-					memcpy(&buf[len + head.size() + nBufLen + 2 + 3], "\r\n", 2);
-				}
+			size_t buflen = len + head.size() + nBufLen + 2 + (bLast?(3+2):0);
+			buf.resize(buflen);
+			memcpy(&buf[len], head.data(), head.size());
+			memcpy(&buf[len + head.size()], lpBuf, nBufLen);
+			memcpy(&buf[len + head.size() + nBufLen], "\r\n", 2);
+			if(bLast) {
+				memcpy(&buf[len + head.size() + nBufLen + 2], "0\r\n", 3);
+				memcpy(&buf[len + head.size() + nBufLen + 2 + 3], "\r\n", 2);
 			}
 		}
 
@@ -1368,7 +1363,7 @@ namespace XSocket {
 	public:
 		struct RequestInfo {
 			HttpRequest req_;
-			std::function<void(std::shared_ptr<HttpResponse>)> rsp_;
+			std::function<void(std::shared_ptr<HttpResponse>, bool)> rsp_;
 			//std::promise<std::shared_ptr<HttpResponse>> rsp_;
 		};
 	protected:
@@ -1442,7 +1437,7 @@ namespace XSocket {
 			auto req_info = req_list_[0];
 			std::shared_ptr<HttpResponse> rsp = std::static_pointer_cast<HttpResponse>(msg);
 			try {
-			req_info->rsp_(rsp);
+			req_info->rsp_(rsp, msg->is_done());
 			//req_info->rsp_.set_value(rsp);
 			} catch(std::future_error err) {
 				PRINTF("OnMessage %d %s", err.code(), err.what());
@@ -1495,7 +1490,7 @@ namespace XSocket {
 				{
 					auto req_info = req_list_[i];
 					try {
-						req_info->rsp_(rsp);
+						req_info->rsp_(rsp, true);
 						//req_info->rsp_.set_value(rsp);
 					} catch(std::future_error err) {
 						PRINTF("OnClose %d %s", err.code(), err.what());
@@ -1577,7 +1572,12 @@ namespace XSocket {
 				if(uri.empty() || uri == "/" || uri == "\\") {
 					return this;
 				}
-				return Find(uri, nullptr, nullptr);
+				HttpPath* parent = nullptr;
+				HttpPath* path = Find(uri, nullptr, &parent);
+				if(path) {
+					return path;
+				} 
+				return parent;
 			}
 
 			HttpPath& Path(const String& uri)
@@ -1767,7 +1767,7 @@ namespace XSocket {
 				pT->HandleHttpRequestDone();
 				pT->HandleNextHttpRequest();
 			} else {
-				Base::SetCloseIfTimeOut(IsShouldKeepAlive(*rsp_)*1000);
+				Base::SetCloseIfTimeOut(T::GetConnectionTimeout()*1000);
 			}
 		}
 
@@ -1777,14 +1777,8 @@ namespace XSocket {
 				return;
 			}
 			T* pT = static_cast<T*>(this);
-			ASSERT(rsp_); //first call SendHttpResponse,then call SendHttpChunk
-			if(rsp) {
-				Base::SendHttpChunk(rsp->data(), rsp->size(), last);
-			} else {
-				//last chunk: rsp is nullptr
-				last = true;
-				Base::SendHttpChunk(nullptr, 0, last);
-			}
+			ASSERT(rsp_ && rsp); //first call SendHttpResponse,then call SendHttpChunk
+			Base::SendHttpChunk(rsp->data(), rsp->size(), last);
 			if(last) {
 				pT->HandleHttpRequestDone();
 				pT->HandleNextHttpRequest();

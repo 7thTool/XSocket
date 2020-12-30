@@ -425,7 +425,9 @@ namespace XSocket {
 	template <class T>
 	class AllocatorT : public std::allocator<T>
 	{
-
+		typedef std::allocator<T> Base;
+	public:
+		using Base::Base;
 	};
 	/*!
 	 *	@brief ObjectPool 模板定义.

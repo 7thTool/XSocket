@@ -142,15 +142,15 @@ public:
 	//
 	inline void PostBuf(const SendBuffer& Buf)
 	{
-		//this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf](){ spWorker->SendBuf(Buf); }));
-		//this_service()->Post(3000, std::bind((void (worker::*)(const SendBuffer&))&worker::SendBuf, this, Buf));
+		this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf](){ spWorker->SendBuf(Buf); }));
+		this_service()->Post(3000, std::bind((void (worker::*)(const SendBuffer&))&worker::SendBuf, this, Buf));
 		//std::future<int> fu;
 		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf));
 	}
 	inline void PostBuf(const char* lpBuf, int nBufLen)
 	{
-		//auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
-		//this_service()->Post(std::function<void()>([this,buf](){ SendBuf(buf->c_str(), buf->size()); }));
+		auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
+		this_service()->Post(std::function<void()>([this,buf](){ SendBuf(buf->c_str(), buf->size()); }));
 		/*以下是bind，package、future使用方法
 		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen);
 		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen));
@@ -293,7 +293,6 @@ protected:
 			rsp->set_data(data);
 			http->PostHttpResponse(rsp);
 			http->PostHttpChunk(ObjectPool::make_shared<String>(std::move(data)), true);
-			//http->PostHttpChunk(nullptr);
 #else
 			rsp->set_field("Content-Length", tostr(data.size()));
 			rsp->set_data(std::move(data));
