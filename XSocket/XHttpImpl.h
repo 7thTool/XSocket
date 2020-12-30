@@ -1767,7 +1767,7 @@ namespace XSocket {
 				pT->HandleHttpRequestDone();
 				pT->HandleNextHttpRequest();
 			} else {
-				Base::SetCloseIfTimeOut(T::GetConnectionTimeout()*1000);
+				//Base::SetCloseIfTimeOut(T::GetConnectionTimeout()*1000);
 			}
 		}
 
@@ -1783,7 +1783,7 @@ namespace XSocket {
 				pT->HandleHttpRequestDone();
 				pT->HandleNextHttpRequest();
 			} else {
-				Base::SetCloseIfTimeOut(T::GetConnectionTimeout()*1000);
+				//Base::SetCloseIfTimeOut(T::GetConnectionTimeout()*1000);
 			}
 		}
 
