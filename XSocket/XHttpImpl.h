@@ -1329,7 +1329,7 @@ namespace XSocket {
 			auto isval = IsCloseIfTimeOut();
 			if(isval) {
 				if(isval == 1) {
-					Base::DoClose();
+					Base::Trigger(FD_CLOSE);
 				} else {
 					this->Select(FD_IDLE);
 				}
@@ -1446,7 +1446,7 @@ namespace XSocket {
 					Base::SetCloseIfTimeOut(timeout * 1000);
 				}
 				else {
-					Base::DoClose();
+					Base::Trigger(FD_CLOSE);
 				}
 			}
 			else {
@@ -1797,7 +1797,7 @@ namespace XSocket {
 			T* pT = static_cast<T*>(this);
 			auto timeout = IsShouldKeepAlive(*rsp_);
 			if(!timeout) {
-				Base::DoClose();
+				Base::Trigger(FD_CLOSE);
 			} else {
 				Base::SetCloseIfTimeOut(timeout*1000);
 			}

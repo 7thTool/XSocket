@@ -201,7 +201,7 @@ public:
 		return false;
 	}
 
-	inline void Trigger(int evt, int nErrorCode) {
+	inline void Trigger(int evt, int nErrorCode = 0) {
 		if(evt == FD_IDLE) {
 			OnIdle();
 		}

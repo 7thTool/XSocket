@@ -775,20 +775,43 @@ public:
 		return ret;
 	}
 
-protected:
-	//
-	inline void DoClose(int nErrorCode = 0)
-	{
-		if(!nErrorCode) {
-			close_if_send_size_ = Base::NotSendBufSize();
-			if (!close_if_send_size_) {
-				Base::ShutDown(Base::Sends);
+	inline void Trigger(int evt, int nErrorCode = 0) {
+		if(!IsSocket()) { 
+			Base::Trigger(evt, nErrorCode);
+			return;
+		}
+		switch (evt)
+		{
+		case FD_CLOSE: {
+			if(!nErrorCode) {
+				close_if_send_size_ = Base::NotSendBufSize();
+				if (!close_if_send_size_) {
+					Base::ShutDown(Base::Sends);
+				}
+			} else {
+				Base::Trigger(FD_CLOSE, nErrorCode);
 			}
-		} else {
-			Base::Trigger(FD_CLOSE, nErrorCode);
+		} break;
+		default: {
+			Base::Trigger(evt, nErrorCode);
+		} break;
 		}
 	}
 
+	inline void Trigger(int evt, const char* lpBuf, int nBufLen, int nFlags) { 
+		Base::Trigger(evt, lpBuf, nBufLen, nFlags);
+	}
+
+	inline void Trigger(int evt, SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) { 
+		Base::Trigger(evt, Sock, lpSockAddr, nSockAddrLen);
+	}
+
+	inline void Trigger(int evt, const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags) { 
+		Base::Trigger(evt, lpBuf, nBufLen, lpSockAddr, nSockAddrLen, nFlags);
+	}
+
+protected:
+	//
 	virtual void OnSendBuf(const char *lpBuf, int nBufLen)
 	{
 		Base::OnSendBuf(lpBuf, nBufLen);
