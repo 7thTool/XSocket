@@ -1246,9 +1246,7 @@ namespace XSocket {
 		{
 #if USE_WEBSOCKET
 			//升级到了WebSocket，就不用超时关闭了，需要维持长连接
-			if(IsCloseIfTimeOut()) {
-				StopCloseIfTimeOut();
-			}
+			StopCloseIfTimeOut();
 			if(Base::IsConnectSocket()) {
 				//收到接受升级到WEBSOCKET消息
 			} else {
@@ -1322,7 +1320,7 @@ namespace XSocket {
 		virtual void OnRole(int nRole)
 		{
 			Base::OnRole(nRole);
-			//使用ShutDown(Sends);可以不用设置Linger
+			//使用ShutDown(Base::Sends);可以不用设置Linger
 			//Base::SetLinger(0, 0); //保证数据发完，才关闭套接字
 		}
 
@@ -1331,13 +1329,13 @@ namespace XSocket {
 			auto isval = IsCloseIfTimeOut();
 			if(isval) {
 				if(isval == 1) {
-					ShutDown(Sends);
+					Base::DoClose();
 				} else {
 					this->Select(FD_IDLE);
 				}
 			}
 		}
-
+		
 		virtual void OnClose(int nErrorCode)
 		{
 			http_buffer_.clear();
@@ -1448,7 +1446,7 @@ namespace XSocket {
 					Base::SetCloseIfTimeOut(timeout * 1000);
 				}
 				else {
-					ShutDown(Sends);
+					Base::DoClose();
 				}
 			}
 			else {
@@ -1714,7 +1712,6 @@ namespace XSocket {
 		std::queue<std::shared_ptr<HttpRequest>> req_list_;
 		std::shared_ptr<HttpRequest> req_; //当前处理请求
 		std::shared_ptr<HttpResponse> rsp_; //当前请求回应
-		size_t close_if_send_size_ = 0;	//等待发送完指定size数据后，关闭连接
 	public:
 		static HttpRouter& Router() { static HttpRouter _router; return _router; }
 
@@ -1735,7 +1732,6 @@ namespace XSocket {
 			}
 			req_.reset();
 			rsp_.reset();
-			close_if_send_size_ = 0;
 			return ret;
 		}
 
@@ -1801,10 +1797,7 @@ namespace XSocket {
 			T* pT = static_cast<T*>(this);
 			auto timeout = IsShouldKeepAlive(*rsp_);
 			if(!timeout) {
-				close_if_send_size_ = Base::NotSendBufSize();
-				if(!close_if_send_size_) {
-					ShutDown(Sends);
-				}
+				Base::DoClose();
 			} else {
 				Base::SetCloseIfTimeOut(timeout*1000);
 			}
@@ -1846,23 +1839,6 @@ namespace XSocket {
 				pT->HandleHttpRequest();
 			} else {
 				req_list_.emplace(std::static_pointer_cast<HttpRequest>(msg));
-			}
-		}
-
-		virtual void OnSendBuf(const char* lpBuf, int nBufLen)
-		{
-			Base::OnSendBuf(lpBuf, nBufLen);
-			if(close_if_send_size_) {
-				bool close_flag = close_if_send_size_ < nBufLen;
-				if(!close_flag) {
-					close_if_send_size_ -= nBufLen;
-					close_flag = !close_if_send_size_;
-				} else {
-					close_if_send_size_ = 0;
-				}
-				if(close_flag) {
-					ShutDown(Sends);
-				}
 			}
 		}
 	};

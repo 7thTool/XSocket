@@ -754,6 +754,60 @@ protected:
 //};
 
 /*!
+ *	@brief GracefulSocketT 定义.
+ *
+ *	封装GracefulSocketT，实现优雅的关闭连接，即保证数据收发完整
+ */
+template<class TBase = SocketEx>
+class GracefulSocketT : public TBase
+{
+	typedef TBase Base;
+protected:
+	size_t close_if_send_size_ = 0;	//等待发送完指定size数据后，关闭连接
+
+public:
+	using Base::Base;
+
+	inline int Close()
+	{
+		int ret = Base::Close();
+		close_if_send_size_ = 0;
+		return ret;
+	}
+
+protected:
+	//
+	inline void DoClose(int nErrorCode = 0)
+	{
+		if(!nErrorCode) {
+			close_if_send_size_ = Base::NotSendBufSize();
+			if (!close_if_send_size_) {
+				Base::ShutDown(Base::Sends);
+			}
+		} else {
+			Base::Trigger(FD_CLOSE, nErrorCode);
+		}
+	}
+
+	virtual void OnSendBuf(const char *lpBuf, int nBufLen)
+	{
+		Base::OnSendBuf(lpBuf, nBufLen);
+		if (close_if_send_size_) {
+			bool close_flag = close_if_send_size_ < nBufLen;
+			if (!close_flag) {
+				close_if_send_size_ -= nBufLen;
+				close_flag = !close_if_send_size_;
+			} else {
+				close_if_send_size_ = 0;
+			}
+			if (close_flag) {
+				ShutDown(Base::Sends);
+			}
+		}
+	}
+};
+
+/*!
  *	@brief SocketT 定义.
  *
  *	封装BasicSocketT，增加服务对象，实现简单的流式发送/接收（写入/读取）网络架构
@@ -767,7 +821,8 @@ public:
 protected:
 	SocketSet* service_ptr_ = nullptr;
 public:
-	//
+	using Base::Base;
+
 	inline SocketSet* this_service() { return service_ptr_; }
 
 protected:
@@ -777,6 +832,7 @@ protected:
 		Base::OnAttachService(pSvr);
 		service_ptr_ = dynamic_cast<SocketSet*>(pSvr);
 	}
+
 	virtual void OnDeatchService(Service* pSvr)
 	{
 		service_ptr_ = nullptr;
@@ -856,6 +912,7 @@ class TaskSocketT : public BasicSocketT<TBase>
 public:
 	typedef typename Base::SocketSet TaskSocketSet;
 public:
+	using Base::Base;
 	
 	inline TaskID Post(const size_t delay, std::function<void()> && task)
 	{
@@ -1097,6 +1154,7 @@ public:
 	typedef typename Base::SocketSet EvtSocketSet;
 	typedef typename EvtSocketSet::Event Event;
 public:
+	using Base::Base;
 
 	inline void Post(const Event& evt) {
 		// if(!evt.dst) {

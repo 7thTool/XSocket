@@ -116,15 +116,15 @@ typedef SelectSocketT<WorkSocketSet,SocketEx> WorkSocket;
 
 class worker
 #if USE_OPENSSL
-	: public HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>
+	: public HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<GracefulSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>>
 #else
-	: public HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>
+	: public HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<GracefulSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>>
 #endif
 {
 #if USE_OPENSSL
-	typedef HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>> Base;
+	typedef HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<GracefulSocketT<SSLWorkSocketT<SimpleSocketT<WorkSocketT<SSLSocketT<WorkSocket>>>>>>>> Base;
 #else
-	typedef HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>> Base;
+	typedef HttpRspSocketImpl<worker,TaskSocketT<HttpSocketT<GracefulSocketT<SimpleSocketT<WorkSocketT<WorkSocket>>>>>> Base;
 #endif
 public:
 	worker()

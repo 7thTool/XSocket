@@ -445,7 +445,7 @@ namespace XSocket {
 		}
 		virtual void OnWSClose()
 		{
-			ShutDown(Sends);
+			ShutDown(Base::Sends);
 		}
 		virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 		{

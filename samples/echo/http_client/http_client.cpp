@@ -61,9 +61,9 @@ class client;
 typedef TaskServiceExT<SelectService> ClientService;
 
 #if USE_OPENSSL
-typedef BasicSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>>>> ClientSocket;
+typedef BasicSocketT<GracefulSocketT<SSLConnectSocketT<SimpleSocketT<SSLSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>>>>> ClientSocket;
 #else 
-typedef BasicSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>> ClientSocket;
+typedef BasicSocketT<GracefulSocketT<SimpleSocketT<ConnectSocketExT<SelectSocketT<ClientService,SocketEx>>>>> ClientSocket;
 #endif
 class client
 #if USE_OPENSSL
