@@ -219,7 +219,7 @@ public:
 		std::time_t tt = std::time(nullptr);
 		tt = std::mktime(std::localtime(&tt));
 		tt = HttpMessage::gm2localtime(HttpMessage::local2gmtime(tt));
-		std::string strgmt = HttpMessage::gmtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT"); //0时区
+		auto strgmt = HttpMessage::gmtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT"); //0时区
 		PRINTF("%s",strgmt.c_str());
 		PRINTF("%s",HttpMessage::localtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT").c_str()); //8时区
 		PRINTF("%s",HttpMessage::httptime2str(HttpMessage::str2httptime(strgmt.c_str())).c_str());

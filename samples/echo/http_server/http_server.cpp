@@ -16,6 +16,8 @@
 using namespace XSocket;
 #include <random>
 #include <iostream>
+#include <algorithm>
+#include <fstream>
 
 
 #ifdef _WIN32
@@ -140,15 +142,15 @@ public:
 	//
 	inline void PostBuf(const SendBuffer& Buf)
 	{
-		this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf](){ spWorker->SendBuf(Buf); }));
-		this_service()->Post(3000, std::bind((void (worker::*)(const SendBuffer&))&worker::SendBuf, this, Buf));
+		//this_service()->Post(std::function<void()>([spWorker = shared_from_this(),Buf](){ spWorker->SendBuf(Buf); }));
+		//this_service()->Post(3000, std::bind((void (worker::*)(const SendBuffer&))&worker::SendBuf, this, Buf));
 		//std::future<int> fu;
 		//this_service()->Post(this_service()->Package(fu, (int (worker::*)(const std::string&, int ))&worker::SendBuf, this, Buf));
 	}
 	inline void PostBuf(const char* lpBuf, int nBufLen)
 	{
-		auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
-		this_service()->Post(std::function<void()>([this,buf](){ SendBuf(buf->c_str(), buf->size()); }));
+		//auto buf = std::make_shared<std::string>(lpBuf,nBufLen);
+		//this_service()->Post(std::function<void()>([this,buf](){ SendBuf(buf->c_str(), buf->size()); }));
 		/*以下是bind，package、future使用方法
 		//auto task = std::bind((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen);
 		this_service()->Post(this_service()->Package((int (worker::*)(const char*, int, int ))&worker::SendBuf, this, lpBuf, nBufLen));
@@ -194,6 +196,46 @@ protected:
 	}
 #endif
 };
+// Return a reasonable mime type based on the extension of a file.
+    const char* mime_type(const char* str, int len)
+    {
+        if(str && len) {
+            const char* ext = nullptr;
+            const char* p = str + len - 1;
+            while(p != str) { 
+                if(*p == '.') {
+                    ext = p;
+                    break;
+                }
+                --p;
+            }
+            if(ext) {
+                if(strcmp(ext, ".htm") == 0)  return "text/html";
+                if(strcmp(ext, ".html") == 0) return "text/html";
+                if(strcmp(ext, ".php") == 0)  return "text/html";
+                if(strcmp(ext, ".css") == 0)  return "text/css";
+                if(strcmp(ext, ".txt") == 0)  return "text/plain";
+                if(strcmp(ext, ".js") == 0)   return "application/javascript";
+                if(strcmp(ext, ".json") == 0) return "application/json";
+                if(strcmp(ext, ".xml") == 0)  return "application/xml";
+                if(strcmp(ext, ".swf") == 0)  return "application/x-shockwave-flash";
+                if(strcmp(ext, ".flv") == 0)  return "video/x-flv";
+                if(strcmp(ext, ".png") == 0)  return "image/png";
+                if(strcmp(ext, ".jpe") == 0)  return "image/jpeg";
+                if(strcmp(ext, ".jpeg") == 0) return "image/jpeg";
+                if(strcmp(ext, ".jpg") == 0)  return "image/jpeg";
+                if(strcmp(ext, ".gif") == 0)  return "image/gif";
+                if(strcmp(ext, ".bmp") == 0)  return "image/bmp";
+                if(strcmp(ext, ".ico") == 0)  return "image/vnd.microsoft.icon";
+                if(strcmp(ext, ".tiff") == 0) return "image/tiff";
+                if(strcmp(ext, ".tif") == 0)  return "image/tiff";
+                if(strcmp(ext, ".svg") == 0)  return "image/svg+xml";
+                if(strcmp(ext, ".svgz") == 0) return "image/svg+xml";
+                return "application/octet-stream";
+            }
+        }
+        return "application/text";
+    }
 
 class HttpHandler : public TaskServiceT<ThreadCVService>
 {
@@ -207,6 +249,8 @@ public:
 		worker::Router().GET("test/multicast/hello",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
 		worker::Router().GET("test/echo/hello",std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
 		worker::Router().ROOT(HTTP_POST).Path("test").Path("echo").Path("hello").Set(std::bind(&HttpHandler::OnMessage,this,std::placeholders::_1, std::placeholders::_2));
+		
+		worker::Router().GET("/rdi",std::bind(&HttpHandler::OnChunkTest,this,std::placeholders::_1, std::placeholders::_2));
 	}
 
 protected:
@@ -238,7 +282,7 @@ protected:
 			[http,req] {
 			if(req->size())
 				PRINTF("%.19s", req->data());
-			std::string data = req->to_string();
+			auto data = req->to_string();
 			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
 			rsp->set_code(200);
 			//msg.field("Content-type")
@@ -248,8 +292,8 @@ protected:
 			rsp->set_chunked();
 			rsp->set_data(data);
 			http->PostHttpResponse(rsp);
-			http->PostHttpChunk(std::make_shared<std::string>(std::move(data)));
-			http->PostHttpChunk(nullptr);
+			http->PostHttpChunk(ObjectPool::make_shared<String>(std::move(data)), true);
+			//http->PostHttpChunk(nullptr);
 #else
 			rsp->set_field("Content-Length", tostr(data.size()));
 			rsp->set_data(std::move(data));
@@ -257,6 +301,142 @@ protected:
 #endif
 		});
 	}
+
+	void OnChunkTest(std::shared_ptr<worker> ep, std::shared_ptr<HttpRequest> req)
+    {
+        //ThreadPool::Inst().Post([this,ep,req](){
+
+        // Returns a Not Modified response
+        auto const not_modified =
+        [&ep, &req](const String& target)
+        {
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+            rsp->set_code(304);
+			//rsp->set_field("Content-type", "text/html");
+			rsp->set_field("Connection", req->field("Connection", "close"));
+			rsp->set_field("Server", "http_server");
+            //rsp->set_data("The resource '" + target + "' was not modified.");
+			ep->PostHttpResponse(rsp);
+        };
+
+        // Returns a bad request response
+        auto const bad_request =
+        [&ep, &req](const String& why)
+        {
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+            rsp->set_code(400);
+			rsp->set_field("Content-type", "text/html");
+			rsp->set_field("Connection", req->field("Connection", "close"));
+			rsp->set_field("Server", "http_server");
+            rsp->set_data(why);
+			ep->PostHttpResponse(rsp);
+        };
+
+        // Returns a not found response
+        auto const not_found =
+        [&ep, &req](const String& target)
+        {
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+            rsp->set_code(404);
+			rsp->set_field("Content-type", "text/html");
+			rsp->set_field("Connection", req->field("Connection", "close"));
+			rsp->set_field("Server", "http_server");
+            rsp->set_data("The resource '" + target + "' was not found.");
+			ep->PostHttpResponse(rsp);
+        };
+
+        // Returns a server error response
+        auto const server_error =
+        [&ep, &req](const String& what)
+        {
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+            rsp->set_code(500);
+			rsp->set_field("Content-type", "text/html");
+			rsp->set_field("Connection", req->field("Connection", "close"));
+			rsp->set_field("Server", "http_server");
+            rsp->set_data("An error occurred: '" + what + "'");
+			ep->PostHttpResponse(rsp);
+        };
+
+        printf("%s\n", req->to_string().c_str());
+
+        // Make sure we can handle the method
+        if( req->method() != HTTP_GET &&
+            req->method() != HTTP_HEAD) {
+            bad_request("Unknown HTTP-method");
+            return;
+        }
+
+        // Request path must be absolute and not contain "..".
+        size_t urllen = 0;
+        auto url = req->url(&urllen);
+        if( !urllen || url[0] != '/' || strnstr(url, urllen, "..")) {
+            bad_request("Illegal request-target");
+            return;
+        }
+
+        //try  {
+            std::ifstream file(std::string(".")+url, ios::in | ios::binary);
+            file.seekg(0, file.end);
+            size_t total_size = file.tellg();
+            file.seekg(0, file.beg);
+
+			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
+            rsp->set_code(200);
+            rsp->set_field("Date", HttpMessage::httptime2str());
+            //rsp->set_field("Last-Modified", last_modified);
+            //rsp->set_field("Etag", rdi_etag_);
+            //rsp->set_field("Accept-Ranges", "bytes");
+            //rsp->set_field("Content-Range", "bytes 0-2000/4932");
+            //rsp->set_field("Content-Encoding", "");
+			rsp->set_field("Content-type", mime_type(url, urllen));
+			rsp->set_field("Connection", req->field("Connection", "close"));
+			rsp->set_field("Server", "http_server");
+            if(req->method() == HTTP_GET)  {
+                String body;
+                auto not_send_size = total_size;
+                body.resize(std::min<>(not_send_size, (size_t)4096));
+                if(body.size() == file.read((char*)body.data(), body.size()).gcount()) {
+                    rsp->set_data(body);
+                    if(body.size() < not_send_size) {
+                        not_send_size -= body.size();
+                        rsp->set_chunked();
+                        ep->PostHttpResponse(rsp);
+                        do {
+                            auto chunk = ObjectPool::make_shared<String>();
+                            chunk->resize(std::min<>(not_send_size, (size_t)4096));
+                            if(chunk->size() == file.read((char*)chunk->data(), chunk->size()).gcount()) {
+                                bool last = chunk->size() >= not_send_size;
+                                ep->PostHttpChunk(chunk, last);
+                                if(!last) {
+                                    not_send_size -= chunk->size();
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                ep->Post([ep](){ 
+                                    ep->Close(); 
+                                });
+                                break;
+                            }
+                        } while(true);
+                    } else {
+                        ep->PostHttpResponse(rsp);
+                    }
+                } else {
+                    ep->Post([ep](){ 
+                        ep->Close(); 
+                    });
+                }
+            } else {
+			    ep->PostHttpResponse(rsp);
+            }
+        //} catch (const std::exception &e) {
+        //    server_error(e.what());
+        //}
+
+        //});
+    }
 };
 
 class server 

@@ -517,6 +517,8 @@ public:
 			worker.join();
 		}
 		workers_.clear();
+		ASSERT(TaskQue::IsEmpty());
+		TaskQue::Clear();
 	}
 
 	TaskID Post(const size_t delay, std::function<void()> && task)

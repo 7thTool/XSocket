@@ -49,6 +49,7 @@
 
 namespace XSocket {
 
+#if 0
 	/*!
 	 *	@brief MemoryPool 模板定义.
 	 *
@@ -70,8 +71,7 @@ namespace XSocket {
 				char data[1];
 
 				//num : 是指内存单元的个数， unit_size : 是指单个内存单元大小
-				void* operator new(size_t, const size_t& num, const size_t& unit_size) { 
-					PRINTF("void* operator new(size_t, num = %ld, unit_size = %ld)", num, unit_size);
+				void* operator new(size_t, const size_t& num, const size_t& unit_size) {
 					return ::operator new(sizeof(Block) + num * unit_size);
 				}
 
@@ -80,18 +80,20 @@ namespace XSocket {
 				}
 
 				//num : 是指内存单元的个数， unit_size : 是指单个内存单元大小
-				Block(const size_t& num, const size_t& unit_size)
-					:total_size(num*unit_size),free_num(num),next_pos(0),next_ptr(0) {
-						//初始都是自由内存，让它们记住自己被分配后，下一个可分配内存的位置,形成位置环路，0指向位置1，最后指向位置0
-						char* p = data;
-						for(size_t i=1; i<num; i++) {
-							*reinterpret_cast<size_t*>(p) = i;
-							p += unit_size;
-						}
-						*reinterpret_cast<size_t*>(p) = 0;
+				Block(const size_t& num, const size_t& unit_size):total_size(num*unit_size),free_num(num),next_pos(0),next_ptr(0) {
+					PRINTF("Block(size_t num = %ld, unit_size = %ld)", num, unit_size);
+					//初始都是自由内存，让它们记住自己被分配后，下一个可分配内存的位置,形成位置环路，0指向位置1，最后指向位置0
+					char* p = data;
+					for(size_t i=1; i<num; i++) {
+						*reinterpret_cast<size_t*>(p) = i;
+						p += unit_size;
+					}
+					*reinterpret_cast<size_t*>(p) = 0;
 				} 
 
-				~Block(){} 
+				~Block(){
+					PRINTF("~Block(size_t num = %ld, unit_size = %ld)", free_num, total_size/free_num);
+				} 
 			}; 
 		private: 
 			size_t unit_size_;		//一个可分配单元的大小
@@ -418,6 +420,28 @@ namespace XSocket {
 			});
 		}
 	};
+
+#else
+	template <class T>
+	class AllocatorT : public std::allocator<T>
+	{
+
+	};
+	/*!
+	 *	@brief ObjectPool 模板定义.
+	 *
+	 *	封装ObjectPool，对象池
+	 */
+	class ObjectPool
+	{
+	public:
+		template<class _Ty, class... _Types> inline
+		static std::shared_ptr<_Ty> make_shared(_Types&&... _Args)
+		{	// make a shared_ptr
+			return std::make_shared<_Ty>(std::forward<_Types>(_Args)...);
+		}
+	};
+#endif
 
 	/*!
 	 *	@brief ObjectPoolT 模板定义.

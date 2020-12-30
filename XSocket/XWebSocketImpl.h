@@ -79,20 +79,20 @@ namespace XSocket {
 		const char* data_ = nullptr;
 		size_t datalen_ = 0;
 				
-		static inline void decode(char * dst, const char * src, uint64_t len, const char mask[4]) {
+		inline static void decode(char * dst, const char * src, uint64_t len, const char mask[4]) {
 			uint8_t mask_offset = 0;
 			for(uint64_t i = 0; i < len; i++) {
 				dst[i] = src[i] ^ mask[(i + mask_offset) % 4];
 			}
 		}
-		static inline void encode(char * dst, const char * src, uint64_t len, const char mask[4]) {
+		inline static void encode(char * dst, const char * src, uint64_t len, const char mask[4]) {
 			uint8_t mask_offset = 0;
 			for(uint64_t i = 0; i < len; i++) {
 				dst[i] = src[i] ^ mask[(i + mask_offset) % 4];
 			}
 		}
 		
-		static inline uint64_t calc_size(int flags, uint64_t data_len) {
+		inline static uint64_t calc_size(int flags, uint64_t data_len) {
 			uint64_t size = data_len + 2; // body + 2 bytes of head
 			if(data_len >= 126) {
 				if(data_len > 0xFFFF) {
@@ -108,7 +108,7 @@ namespace XSocket {
 			return size;
 		}
 
-		static inline uint64_t build_header(char * frame, int flags, const char mask[4], uint64_t data_len) {
+		inline static uint64_t build_header(char * frame, int flags, const char mask[4], uint64_t data_len) {
 			uint64_t body_offset = 0;
 			frame[0] = 0;
 			frame[1] = 0;
@@ -147,7 +147,7 @@ namespace XSocket {
 			return body_offset;
 		}
 
-		static inline uint64_t build(char * frame, int flags, const char mask[4], const char * data, uint64_t data_len) {
+		inline static uint64_t build(char * frame, int flags, const char mask[4], const char * data, uint64_t data_len) {
 			uint64_t body_offset = build_header(frame, flags, mask, data_len);
 			if(flags & WS_HAS_MASK) {
 				encode(&frame[body_offset], data, data_len, &frame[body_offset-4]);
@@ -389,7 +389,7 @@ namespace XSocket {
 
 		//构建数据包
 		template<typename TBuffer>
-		static inline void BuildWSBuf(TBuffer& out, const char* lpBody, int nBodyLen
+		inline static void BuildWSBuf(TBuffer& out, const char* lpBody, int nBodyLen
 		, int nFlags =  SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL, uint32_t mask = 0)
 		{
 			WSBuffer::BuildBuf(out, lpBody, nBodyLen, nFlags, mask);

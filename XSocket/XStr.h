@@ -22,6 +22,7 @@
 #define _H_XSTR_H_
 
 #include "XSocketDef.h"
+#include "XMemory.h"
 
 namespace XSocket {
 
@@ -1652,38 +1653,19 @@ inline const wchar_t* wcsnrbrk(const wchar_t* string, int rlen, const wchar_t* s
 // #define _tcsnrbrk strnrbrk
 // #endif//
 
+	typedef std::basic_string<char, std::char_traits<char>, AllocatorT<char>> String;
+	typedef std::basic_istringstream<char, std::char_traits<char>, AllocatorT<char>> IStringStream;
+	typedef std::basic_ostringstream<char, std::char_traits<char>, AllocatorT<char>> OStringStream;
+	typedef std::basic_stringstream<char, std::char_traits<char>, AllocatorT<char>> StringStream;
+
 	template<typename Target>
-	inline Target strto(const std::string& arg, const Target& def = Target())
+	inline Target strto(const String& arg, const Target& def = Target())
 	{
 		if (!arg.empty()) {
 			try
 			{
 				Target o;
-				std::stringstream ss;
-				ss << arg;
-				ss >> o;
-				return o;
-			}
-			catch(std::exception& e)
-			{
-
-			}
-			catch (...)
-			{
-
-			}
-		}
-		return def;
-	}
-
-	template<typename Target>
-	inline Target wcsto(const std::wstring& arg, const Target& def = Target())
-	{
-		if (!arg.empty()) {
-			try 
-			{
-				Target o;
-				std::wstringstream ss;
+				StringStream ss;
 				ss << arg;
 				ss >> o;
 				return o;
@@ -1701,25 +1683,17 @@ inline const wchar_t* wcsnrbrk(const wchar_t* string, int rlen, const wchar_t* s
 	}
 
 	template<typename Source>
-	inline std::string tostr(const Source& arg)
+	inline String tostr(const Source& arg)
 	{
-		std::ostringstream ss;
+		OStringStream ss;
 		ss << arg;
 		return ss.str();
 	}
 
 	template<typename Source>
-	inline std::wstring towcs(const Source& arg)
+	inline String tostrex(const Source& arg, int p = -1, int w = -1, char c = '0')
 	{
-		std::wostringstream ss;
-		ss << arg;
-		return ss.str();
-	}
-
-	template<typename Source>
-	inline std::string tostrex(const Source& arg, int p = -1, int w = -1, char c = '0')
-	{
-		std::ostringstream ss;
+		OStringStream ss;
 		if (p>=0) {
 			ss.setf(std::ios::fixed);
 			ss.precision(p);
@@ -1731,23 +1705,6 @@ inline const wchar_t* wcsnrbrk(const wchar_t* string, int rlen, const wchar_t* s
 		ss << arg;
 		return ss.str();
 	}
-
-	template<typename Source>
-	inline std::wstring towcsex(const Source& arg, int p = -1, int w = -1, wchar_t c = '0')
-	{
-		std::wostringstream ss;
-		if (p>=0) {
-			ss.setf(std::ios::fixed);
-			ss.precision(p);
-		}
-		if (w>=0) {
-			ss.width(w);
-			ss.fill(c);
-		}
-		ss << arg;
-		return ss.str();
-	}
-
 }
 
 #endif//_H_XSTR_H_

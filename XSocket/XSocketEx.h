@@ -30,7 +30,6 @@ namespace XSocket {
 
 	class SocketEx;
 
-	typedef std::basic_string<char, std::char_traits<char>, AllocatorT<char>> String;
 	//
 	typedef std::vector<char, AllocatorT<char>> Buffer;
 	// class BufferPool : public ObjectPoolT<BufferPool,Buffer>
@@ -597,7 +596,7 @@ public:
 
 	inline void BindSend(std::function<void(int)>&& cb) { cb_send_ = std::move(cb); }
 	inline void BindSend(std::function<void(const char*, int, int)>&& cb) { cb_sended_ = std::move(cb); }
-	inline void BindSend(std::function<void(const char*, int, const SOCKADDR*, int, int)>&& cb) { cb_sended_from_ = std::move(cb); }
+	inline void BindSend(std::function<void(const char*, int, const SOCKADDR*, int, int)>&& cb) { cb_sended_to_ = std::move(cb); }
 
 	inline void BindOOB(std::function<void(int)>&& cb) { cb_oob_ = std::move(cb); }
 	inline void BindOOB(std::function<void(const char*, int, int)>&& cb) { cb_oobed_ = std::move(cb); }
