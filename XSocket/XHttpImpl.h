@@ -1227,11 +1227,6 @@ namespace XSocket {
 			return 0;
 		}
 
-		inline void DoClose()
-		{
-			Base::Trigger(FD_CLOSE, 0); //关闭连接
-		}
-
 		inline bool IsUpgrade() { return http_buffer_.upgrade(); }
 
 		//解析数据包
@@ -1327,7 +1322,8 @@ namespace XSocket {
 		virtual void OnRole(int nRole)
 		{
 			Base::OnRole(nRole);
-			Base::SetLinger(0, 0); //保证数据发完，才关闭套接字
+			//使用ShutDown(Sends);可以不用设置Linger
+			//Base::SetLinger(0, 0); //保证数据发完，才关闭套接字
 		}
 
 		virtual void OnIdle()
@@ -1335,7 +1331,7 @@ namespace XSocket {
 			auto isval = IsCloseIfTimeOut();
 			if(isval) {
 				if(isval == 1) {
-					DoClose();
+					ShutDown(Sends);
 				} else {
 					this->Select(FD_IDLE);
 				}
@@ -1427,7 +1423,7 @@ namespace XSocket {
 					auto& req_info = req_list_[req_send_count_++];
 					Base::SendHttpRequest(req_info->req_);
 				} while(req_send_count_ < req_list_.size());
-				Base::SetCloseIfTimeOut(pT->GetConnectionTimeout()*1000);
+				//Base::SetCloseIfTimeOut(pT->GetConnectionTimeout()*1000);
 			}
 		}
 
@@ -1444,19 +1440,19 @@ namespace XSocket {
 			} catch(...) {
 				//
 			}
-			auto timeout = IsShouldKeepAlive(*rsp);
 			if(msg->is_done()) {
+				auto timeout = IsShouldKeepAlive(*rsp);
 				req_list_.erase(req_list_.begin());
 				req_send_count_--;
-				if(msg->is_done()) {
-					if(!timeout) {
-						Base::DoClose();
-						return;
-					}
-				} 
+				if (timeout) {
+					Base::SetCloseIfTimeOut(timeout * 1000);
+				}
+				else {
+					ShutDown(Sends);
+				}
 			}
-			if(timeout) {
-				SetCloseIfTimeOut(timeout*1000);
+			else {
+				//Base::SetCloseIfTimeOut(T::GetConnectionTimeout() * 1000);
 			}
 		}
 		
@@ -1807,7 +1803,7 @@ namespace XSocket {
 			if(!timeout) {
 				close_if_send_size_ = Base::NotSendBufSize();
 				if(!close_if_send_size_) {
-					Base::DoClose();
+					ShutDown(Sends);
 				}
 			} else {
 				Base::SetCloseIfTimeOut(timeout*1000);
@@ -1865,13 +1861,7 @@ namespace XSocket {
 					close_if_send_size_ = 0;
 				}
 				if(close_flag) {
-#ifdef WIN32
-					//Win下发现直接关闭，还是会有数据发布出去
-					//std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-					Base::SetCloseIfTimeOut(1);
-#else
-					Base::DoClose();
-#endif//
+					ShutDown(Sends);
 				}
 			}
 		}
