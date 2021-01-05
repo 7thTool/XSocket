@@ -49,7 +49,8 @@
 
 namespace XSocket {
 
-#if 0
+#if USE_MEMORY_POOL
+
 	/*!
 	 *	@brief MemoryPool 模板定义.
 	 *
@@ -204,9 +205,10 @@ namespace XSocket {
 			}
 		};
 	protected:
-		bool use_free_ = false;
-		std::mutex mutex_;
-		std::vector<size_t*> free_;
+		size_t use_free_ = 0; //最大使用free内存大小
+		std::mutex mutex_; //free内存锁
+		std::vector<size_t*> free_; //当前使用free内存列表
+		size_t free_size_ = 0; //当前使用free内存总大小
 		//
 		std::map<size_t,MemoryMt*> pool_;
 	public:
@@ -227,6 +229,7 @@ namespace XSocket {
 					free(pfree);
 				}
 				free_.clear();
+				free_size_ = 0;
 			}
 			for(auto& pr : pool_)
 			{
@@ -235,7 +238,7 @@ namespace XSocket {
 			pool_.clear();
 		}
 
-		inline void UseFree() { use_free_ = true; }
+		inline void UseFree(size_t max_size = (size_t)-1) { use_free_ = max_size; }
 
 		inline void AddAllocator(const size_t& unit_size, const size_t& init_num = 1024, const size_t& grow_num = 1024)
 		{
@@ -252,8 +255,8 @@ namespace XSocket {
 			AddAllocator(64);
 			AddAllocator(256);
 			AddAllocator(1024);
-			AddAllocator(2048);
-			AddAllocator(8192);
+			AddAllocator(4096);
+			AddAllocator(4096*4);
 		}
 
 		void* Alloc(size_t size) 
@@ -261,7 +264,8 @@ namespace XSocket {
 			auto it_pool = pool_.rbegin();
 			if(it_pool == pool_.rend() || size > it_pool->first) {
 				if(use_free_) {
-					if(!free_.empty()) {
+					if(free_size_ > size) {
+						ASSERT(!free_.empty());
 						std::lock_guard<std::mutex> lock(mutex_);
 						auto it_free = std::lower_bound(free_.begin(), free_.end(), &size, [this](size_t* x, size_t* y) {
 							return *x < *y;
@@ -270,6 +274,7 @@ namespace XSocket {
 							auto pfree = *it_free;
 							if(*pfree >= size) {
 								free_.erase(it_free);
+								free_size_ -= *pfree;
 								return pfree + 1;
 								break;
 							}
@@ -315,12 +320,17 @@ namespace XSocket {
 			if(it_pool == pool_.rend() || size > it_pool->first) {
 				if(use_free_) {
 					auto pfree = (size_t*)ptr - 1;
-					ASSERT(*pfree == size);
-					std::lock_guard<std::mutex> lock(mutex_);
-					auto it_free = std::lower_bound(free_.begin(), free_.end(), pfree, [this](size_t* x, size_t* y) {
-						return *x < *y;
-					});
-					free_.insert(it_free, pfree);
+					ASSERT(*pfree >= size);
+					if((free_size_ + size) < use_free_) {
+						std::lock_guard<std::mutex> lock(mutex_);
+						auto it_free = std::lower_bound(free_.begin(), free_.end(), pfree, [this](size_t* x, size_t* y) {
+							return *x < *y;
+						});
+						free_.insert(it_free, pfree);
+						free_size_ += *pfree;
+					} else {
+						free(pfree);
+					}
 				} else {
 					free(ptr);
 				}
@@ -328,11 +338,12 @@ namespace XSocket {
 				auto it_larger = it_pool++;
 				while(it_pool != pool_.rend()) {
 					if (size > it_pool->first) {
-						return it_larger->second->Free(ptr);
+						it_larger->second->Free(ptr);
+						return;
 					} 
 					it_larger = it_pool++;
 				}
-				return it_larger->second->Free(ptr);
+				it_larger->second->Free(ptr);
 			}
 		}
 
@@ -345,10 +356,11 @@ namespace XSocket {
 					free(pfree);
 				}
 				free_.clear();
+				free_size_ = 0;
 			}
 		}
 	};
-
+	
 	template <class T>
 	class AllocatorT : public std::allocator<T>
 	{
@@ -379,6 +391,13 @@ namespace XSocket {
 		}
 	};
 
+#else
+
+	template <class T>
+	using AllocatorT = std::allocator<T>;
+
+#endif//
+
 	/*!
 	 *	@brief ObjectPool 模板定义.
 	 *
@@ -387,12 +406,15 @@ namespace XSocket {
 	class ObjectPool
 	{
 	public:
+#if USE_MEMORY_POOL
 		template<class TBase>
 		class ObjectNewT : public TBase
 		{
 			typedef ObjectNewT<TBase> This;
 			typedef TBase Base;
 		public:
+			using Base::Base;
+
 			void* operator new(size_t size)
 			{
 				ASSERT(size == sizeof(This));
@@ -414,36 +436,20 @@ namespace XSocket {
 		template<class _Ty, class... _Types> inline
 		static std::shared_ptr<_Ty> make_shared(_Types&&... _Args)
 		{	// make a shared_ptr
-			return std::shared_ptr<_Ty>(make_new<_Ty>(std::forward<_Types>(_Args)...),[](_Ty* ptr) { 
-				auto obj = (ObjectNewT<_Ty>*)ptr;
-				delete obj;
+			_Ty* p = MemoryPool::Inst().Alloc(sizeof(_Ty));
+			::new ((void *)p) _Ty(std::forward<_Types>(_Args)...);
+			return std::shared_ptr<_Ty>(p,[](_Ty* p) {
+				MemoryPool::Inst().Free(p, sizeof(_Ty));
 			});
 		}
-	};
-
 #else
-	template <class T>
-	class AllocatorT : public std::allocator<T>
-	{
-		typedef std::allocator<T> Base;
-	public:
-		using Base::Base;
-	};
-	/*!
-	 *	@brief ObjectPool 模板定义.
-	 *
-	 *	封装ObjectPool，对象池
-	 */
-	class ObjectPool
-	{
-	public:
 		template<class _Ty, class... _Types> inline
 		static std::shared_ptr<_Ty> make_shared(_Types&&... _Args)
 		{	// make a shared_ptr
 			return std::make_shared<_Ty>(std::forward<_Types>(_Args)...);
 		}
+#endif//
 	};
-#endif
 
 	/*!
 	 *	@brief ObjectPoolT 模板定义.

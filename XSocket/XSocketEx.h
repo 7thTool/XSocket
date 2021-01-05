@@ -1341,7 +1341,13 @@ protected:
 				sock_ptrs_[i].reset();
 				if (sock_ptr->IsSocket()) {
 					if (bClose) {
-						sock_ptr->Trigger(FD_CLOSE, 0);
+						sock_ptr->Trigger(FD_CLOSE
+#ifdef WIN32
+						, WSAECONNABORTED
+#else
+						, ECONNABORTED
+#endif//
+						);
 					}
 				}
 				sock_ptr->DetachService(this);
@@ -1982,22 +1988,28 @@ protected:
 
 	virtual void OnAccept(SOCKET Sock, const SOCKADDR* lpSockAddr, int nSockAddrLen) 
 	{
-				//测试下还能不能再接收SOCKET
-				if(SockManager::AddSocket(NULL) < 0) {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
-					XSocket::Socket::Close(Sock);
-					return;
-				}
-				std::shared_ptr<Socket> sock_ptr = std::make_shared<Socket>();
-				sock_ptr->Attach(Sock,SOCKET_ROLE_WORK);
-				sock_ptr->SetNonBlock();//设为非阻塞模式
-				int pos = SockManager::AddSocket(sock_ptr, FD_READ|FD_OOB);
-				if(pos >= 0) {
-					//
-				} else {
-					PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
-					sock_ptr->Trigger(FD_CLOSE, 0);
-				}
+		//测试下还能不能再接收SOCKET
+		if (SockManager::AddSocket(NULL) < 0) {
+			PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
+			XSocket::Socket::Close(Sock);
+			return;
+		}
+		std::shared_ptr<Socket> sock_ptr = std::make_shared<Socket>();
+		sock_ptr->Attach(Sock, SOCKET_ROLE_WORK);
+		sock_ptr->SetNonBlock(); //设为非阻塞模式
+		int pos = SockManager::AddSocket(sock_ptr, FD_READ | FD_OOB);
+		if (pos >= 0) {
+			//
+		} else {
+			PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
+			sock_ptr->Trigger(FD_CLOSE
+#ifdef WIN32
+							  , WSAECONNABORTED
+#else
+							  , ECONNABORTED
+#endif //
+			);
+		}
 	}
 };
 

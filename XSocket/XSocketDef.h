@@ -267,6 +267,10 @@ typedef unsigned char byte;
 #endif
 #endif//
 
+#ifndef USE_MEMORY_POOL
+#define USE_MEMORY_POOL 0
+#endif
+
 #ifndef USE_ZLIB
 #define USE_ZLIB 1
 #endif

@@ -1162,19 +1162,19 @@ namespace XSocket {
 			char buf[1024] = {0};
 			int buflen = sprintf(buf, "%.*s%s", key_len, key, WEBSOCKET_UUID);
 			//String ws_key = String(key,key_len) + WEBSOCKET_UUID;
-			SHA1_HASH hash_key = {0};
-			SHA1(buf, buflen, &hash_key);
+			char hash_key[SHA1_HASH_SIZE] = {0};
+			SHA1(buf, buflen, hash_key);
 #if USE_OPENSSL
-			int buflen = base64_encode((char*)hash_key.bytes, SHA1_HASH_SIZE, buf, buflen);
+			buflen = base64_encode(hash_key, SHA1_HASH_SIZE, buf, buflen);
 			if (buflen < 0) {
 				ASSERT(0);
 				return;
 			}
 #else
-			//buflen = Base64EncodeGetRequiredLength(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
-			//Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, &buflen, BASE64_FLAG_NOCRLF);
+			//buflen = en64len(SHA1_HASH_SIZE, BASE64_FLAG_NOCRLF);
+			//buflen = Base64Encode((const byte*)hash_key.bytes, SHA1_HASH_SIZE, (char*)buf, buflen, BASE64_FLAG_NOCRLF);
 			//buf[buflen] = 0;
-			en64((const byte*)hash_key.bytes, (byte*)buf, SHA1_HASH_SIZE);
+			en64(hash_key, (unsigned char*)buf, SHA1_HASH_SIZE);
 #endif
 			auto& send_buf = Base::SendBuf();int send_len = send_buf.size();
 			send_buf.resize(send_len + 1024);
@@ -1346,11 +1346,11 @@ namespace XSocket {
 	};
 
 	template<class T, class TBase>
-	class HttpReqSocketImpl : public SocketExImpl<T,TBase>, public std::enable_shared_from_this<T>
+	class HttpReqSocketImpl : public TaskSocketImpl<T,TBase>
 	{
 	public:
 		typedef HttpReqSocketImpl<T, TBase> This;
-		typedef SocketExImpl<T,TBase> Base;
+		typedef TaskSocketImpl<T,TBase> Base;
 	//protected:
 		typedef typename Base::Message Message;
 		typedef typename Base::HttpBuffer HttpBuffer;
@@ -1383,7 +1383,7 @@ namespace XSocket {
 		void PostHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
 			T* pT = static_cast<T*>(this);
-			pT->Post(std::bind(&This::SendHttpRequest, shared_from_this(), req));
+			pT->Post(std::bind(&This::SendHttpRequest, pT->shared_from_this(), req));
 		}
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
@@ -1520,10 +1520,10 @@ namespace XSocket {
 	};
 
 	template<class T, class TBase>
-	class HttpRspSocketImpl : public SocketExImpl<T,TBase>, public std::enable_shared_from_this<T>
+	class HttpRspSocketImpl : public TaskSocketImpl<T,TBase>
 	{
 		typedef HttpRspSocketImpl<T,TBase> This;
-		typedef SocketExImpl<T,TBase> Base;
+		typedef TaskSocketImpl<T,TBase> Base;
 	protected:
 		typedef typename Base::Message Message;
 		typedef typename Base::HttpBuffer HttpBuffer;
@@ -1738,13 +1738,13 @@ namespace XSocket {
 		inline void PostHttpResponse(std::shared_ptr<HttpResponse> rsp)
 		{
 			T* pT = static_cast<T*>(this);
-			pT->Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, shared_from_this(), rsp));
+			pT->Post(std::bind((void (This::*)(std::shared_ptr<HttpResponse>))&This::SendHttpResponse, pT->shared_from_this(), rsp));
 		}
 
 		inline void PostHttpChunk(std::shared_ptr<String> rsp, bool last)
 		{
 			T* pT = static_cast<T*>(this);
-			pT->Post(std::bind((void (This::*)(std::shared_ptr<String>,bool))&This::SendHttpChunk, shared_from_this(), rsp, last));
+			pT->Post(std::bind((void (This::*)(std::shared_ptr<String>,bool))&This::SendHttpChunk, pT->shared_from_this(), rsp, last));
 		}
 
 		inline void SendHttpResponse(std::shared_ptr<HttpResponse> rsp)
@@ -1818,7 +1818,7 @@ namespace XSocket {
 		{
 			T* pT = static_cast<T*>(this);
 			auto handler = Router().Find(*req_);
-			if(handler && (*handler)(shared_from_this(), req_)) {
+			if(handler && (*handler)(pT->shared_from_this(), req_)) {
 				//;
 			} else {
 				HttpResponse rsp;

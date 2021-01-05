@@ -1,6 +1,8 @@
 #ifndef _H_SAMPLES_H_
 #define _H_SAMPLES_H_
 
+#define USE_MEMORY_POOL 1
+
 #define USE_ZLIB 1
 #define USE_OPENSSL 0
 #define USE_WEBSOCKET 0

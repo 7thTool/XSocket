@@ -303,7 +303,7 @@ protected:
 
 	void OnChunkTest(std::shared_ptr<worker> ep, std::shared_ptr<HttpRequest> req)
     {
-        //ThreadPool::Inst().Post([this,ep,req](){
+        ThreadPool::Inst().Post([this,ep,req](){
 
         // Returns a Not Modified response
         auto const not_modified =
@@ -374,7 +374,7 @@ protected:
             return;
         }
 
-        //try  {
+        try  {
             std::ifstream file(std::string(".")+url, ios::in | ios::binary);
             file.seekg(0, file.end);
             size_t total_size = file.tellg();
@@ -430,11 +430,11 @@ protected:
             } else {
 			    ep->PostHttpResponse(rsp);
             }
-        //} catch (const std::exception &e) {
-        //    server_error(e.what());
-        //}
+        } catch (const std::exception &e) {
+            server_error(e.what());
+        }
 
-        //});
+        });
     }
 };
 
@@ -521,6 +521,8 @@ int main()
 {
 	test();
 
+	MemoryPool::Inst().UseFree();
+	//MemoryPool::Inst().AddDefaultAllocator();
 	worker::Init();
 #if USE_OPENSSL
 	TLSContextConfig tls_ctx_config = {0};

@@ -972,6 +972,15 @@ public:
 	}
 };
 
+	template<class T, class TBase>
+	class TaskSocketImpl : public SocketExImpl<T,TBase>, public std::enable_shared_from_this<T>
+	{
+		typedef TaskSocketImpl<T,TBase> This;
+		typedef SocketExImpl<T,TBase> Base;
+	public:
+		//
+	};
+
 /*!
  *	@brief TaskSocketService 定义.
  *
