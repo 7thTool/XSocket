@@ -186,7 +186,7 @@ namespace XSocket {
 
     inline int en64len(
         int nSrcLen,
-        size_t dwFlags = BASE64_FLAG_NONE)
+        size_t dwFlags)
     {
         int64_t nSrcLen4=static_cast<int64_t>(nSrcLen)*4;
         ENSURE(nSrcLen4 <= INT_MAX);
@@ -218,7 +218,7 @@ namespace XSocket {
         int nSrcLen,
         char* szDest,
         int nDestLen,
-        size_t dwFlags = BASE64_FLAG_NONE)
+        size_t dwFlags)
     {
         static const char s_chBase64EncodingTable[64] = {
             'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',

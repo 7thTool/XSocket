@@ -436,9 +436,9 @@ namespace XSocket {
 		template<class _Ty, class... _Types> inline
 		static std::shared_ptr<_Ty> make_shared(_Types&&... _Args)
 		{	// make a shared_ptr
-			_Ty* p = MemoryPool::Inst().Alloc(sizeof(_Ty));
-			::new ((void *)p) _Ty(std::forward<_Types>(_Args)...);
-			return std::shared_ptr<_Ty>(p,[](_Ty* p) {
+			void* p = MemoryPool::Inst().Alloc(sizeof(_Ty));
+			::new (p) _Ty(std::forward<_Types>(_Args)...);
+			return std::shared_ptr<_Ty>((_Ty*)p,[](_Ty* p) {
 				MemoryPool::Inst().Free(p, sizeof(_Ty));
 			});
 		}
