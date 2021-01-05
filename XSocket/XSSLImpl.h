@@ -21,7 +21,6 @@
 #pragma once
 
 #include "XSocketImpl.h"
-#include "XStr.h"
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>

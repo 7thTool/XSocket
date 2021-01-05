@@ -22,7 +22,6 @@
 #define _H_XPROXY_IMPL_H_
 
 #include "XSocketImpl.h"
-#include "XStr.h"
 #include "XCodec.h"
 
 namespace XSocket {

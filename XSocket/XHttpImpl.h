@@ -26,7 +26,7 @@
 #if USE_WEBSOCKET
 #include "XWebSocketImpl.h"
 #endif//
-#include "XStr.h"
+#include "XString.h"
 #include "XCodec.h"
 #include <tuple>
 #include <sstream>
@@ -1162,7 +1162,7 @@ namespace XSocket {
 			char buf[1024] = {0};
 			int buflen = sprintf(buf, "%.*s%s", key_len, key, WEBSOCKET_UUID);
 			//String ws_key = String(key,key_len) + WEBSOCKET_UUID;
-			char hash_key[SHA1_HASH_SIZE] = {0};
+			unsigned char hash_key[SHA1_HASH_SIZE] = {0};
 			SHA1(buf, buflen, hash_key);
 #if USE_OPENSSL
 			buflen = base64_encode(hash_key, SHA1_HASH_SIZE, buf, buflen);

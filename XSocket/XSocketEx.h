@@ -22,9 +22,9 @@
 #define _H_XSOCKETEX_H_
 
 #include "XMemory.h"
+#include "XString.h"
 #include "XService.h"
 #include "XSocket.h"
-#include "XStr.h"
 
 namespace XSocket {
 

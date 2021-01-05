@@ -18,8 +18,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _H_XSERVICE_H_
-#define _H_XSERVICE_H_
+#ifndef _H_XSOCKET_SERVICE_H_
+#define _H_XSOCKET_SERVICE_H_
 
 #include <atomic>
 #include <mutex>
@@ -919,4 +919,4 @@ typedef ThreadServiceT<CVServiceT<Service>> ThreadCVService;
 
 }
 
-#endif//_H_XSERVICE_H_
+#endif//_H_XSOCKET_SERVICE_H_

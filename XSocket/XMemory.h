@@ -18,8 +18,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _H_XMEMORY_H_
-#define _H_XMEMORY_H_
+#ifndef _H_XSOCKET_MEMORY_H_
+#define _H_XSOCKET_MEMORY_H_
 
 #include <atomic>
 #include <mutex>
@@ -590,4 +590,4 @@ namespace XSocket {
 	};
 }
 
-#endif//_H_XMEMORY_H_
+#endif//_H_XSOCKET_MEMORY_H_

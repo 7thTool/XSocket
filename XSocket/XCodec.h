@@ -18,8 +18,8 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _H_XCODEC_H_
-#define _H_XCODEC_H_
+#ifndef _H_XSOCKET_CODEC_H_
+#define _H_XSOCKET_CODEC_H_
 
 #include "XSocketDef.h"
 #include <limits.h>
@@ -103,4 +103,4 @@ namespace XSocket {
 
 }
 
-#endif//_H_XCODEC_H_
+#endif//_H_XSOCKET_CODEC_H_

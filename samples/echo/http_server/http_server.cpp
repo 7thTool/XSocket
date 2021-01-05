@@ -59,6 +59,26 @@ static const struct table_entry {
 	{ NULL, NULL },
 };
 
+	inline const char* memmem(const char * src, size_t srclen, const char * dst, size_t dstlen)
+	{
+		if (src == NULL || dst == NULL || srclen < dstlen) {
+			return (0);
+		}
+		else if (srclen == dstlen) {
+			return (memcmp(src, dst, dstlen) == 0 ? (char*)src : 0);
+		}
+		else {
+			for (int i = 0, j = srclen - dstlen; i <= j; i++)
+			{
+				if (memcmp(src + i, dst, dstlen) == 0) {
+					return (src + i);
+				}
+			}
+			return (0);
+		}
+		return 0;
+	}
+
 class worker;
 
 class WorkService : public
@@ -369,7 +389,7 @@ protected:
         // Request path must be absolute and not contain "..".
         size_t urllen = 0;
         auto url = req->url(&urllen);
-        if( !urllen || url[0] != '/' || strnstr(url, urllen, "..")) {
+        if( !urllen || url[0] != '/' || memmem(url, urllen, "..", 2)) {
             bad_request("Illegal request-target");
             return;
         }
