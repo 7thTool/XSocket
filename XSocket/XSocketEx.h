@@ -126,23 +126,79 @@ enum
 class XSOCKET_API SocketEx : public Socket
 {
 	typedef Socket Base;
-public:
-	static std::future<struct addrinfo*> AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints);
+// public:
+// 	static std::future<struct addrinfo*> AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints);
 public:
 	SocketEx();
 	virtual ~SocketEx();
 
 	//只需重载Attach，因为Open和Detach都会调用Attach
 	SOCKET Open(int nSockAf = AF_INET, int nSockType = SOCK_STREAM, int nSockProtocol = 0);
-	SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE);
-	SOCKET Detach();
+	inline SOCKET Attach(SOCKET Sock, int Role = SOCKET_ROLE_NONE)
+	{
+		SOCKET oSock = Base::Attach(Sock);
+		if(Role != SOCKET_ROLE_NONE) {
+			OnRole(Role);
+		}
+		role_ = Role;
+		return oSock;
+	}
+	inline SOCKET Detach() { return Attach(INVALID_SOCKET,SOCKET_ROLE_NONE); }
 	inline bool IsOpen() { return IsSocket(); }
-	int ShutDown(int nHow = Both);
-	int Close();
+	//int ShutDown(int nHow = Both);
+	inline int Close() 
+	{
+		if(IsSocket()) {
+			if(IsDebug()) {
+				LOG4I("Close Socket %p %u", this, (SOCKET)*this);
+			}
+			event_ = 0;
+			return Base::Close(Detach());
+		}
+		return 0;
+	}
 
-	int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-	int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen);
-	int Listen(int nConnectionBacklog = 5);
+	inline int Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+	{
+		//SectionLocker Lock(&m_Section);
+		ASSERT(IsSocket());
+		int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
+		if(IsDebug()) {
+			char str[260] = {0};
+			LOG4I("Bind Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
+		}
+		return rlt;
+	}
+
+	inline int Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+	{
+		//SectionLocker Lock(&m_Section);
+		ASSERT(IsSocket());
+		OnRole(SOCKET_ROLE_CONNECT);
+		role_ = SOCKET_ROLE_CONNECT;
+		event_ |= FD_CONNECT;
+		SetNonBlock();//设为非阻塞模式
+		int rlt = Base::Connect(lpSockAddr, nSockAddrLen);
+		if(IsDebug()) {
+			char str[260] = {0};
+			LOG4I("Connect Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
+		}
+		return rlt;
+	}
+
+	inline int Listen(int nConnectionBacklog = 5)
+	{
+		ASSERT(IsSocket());
+		OnRole(SOCKET_ROLE_LISTEN);
+		role_ = SOCKET_ROLE_LISTEN;
+		event_ |= FD_ACCEPT;
+		SetNonBlock();//设为非阻塞模式
+		int rlt = Base::Listen(nConnectionBacklog);
+		if(IsDebug()) {
+			LOG4I("Listen Socket %p %u cnt=%d rlt=%s", this, (SOCKET)*this, nConnectionBacklog, GetErrorMessage(GetLastError()));
+		}
+		return rlt;
+	}
 	// SOCKET Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen);
 
 	// int Send(const char* lpBuf, int nBufLen, int nFlags = 0);
@@ -326,7 +382,7 @@ protected:
 	virtual void OnRole(int nRole)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %u)::OnRole role=%d-%d flags=%d event=%d", this, (SOCKET)*this, nRole, role_, flags_, event_);
+			LOG4I("(%p %u)::OnRole role=%d-%d flags=%d event=%d", this, (SOCKET)*this, nRole, role_, flags_, event_);
 		}
 	}
 
@@ -339,14 +395,14 @@ protected:
 	virtual void OnAttachService(Service* pSvr)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnAttachService", pSvr, this, (SOCKET)*this);
+			LOG4I("(%p %p %u)::OnAttachService", pSvr, this, (SOCKET)*this);
 		}
 	}
 
 	virtual void OnDetachService(Service* pSvr)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnDetachService", pSvr, this, (SOCKET)*this);
+			LOG4I("(%p %p %u)::OnDetachService", pSvr, this, (SOCKET)*this);
 		}
 	}
 
@@ -359,7 +415,7 @@ protected:
 	virtual void OnIdle()
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %u)::OnIdle", this, (SOCKET)*this);
+			LOG4I("(%p %u)::OnIdle", this, (SOCKET)*this);
 		}
 	}
 
@@ -377,7 +433,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnReceive:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
+				LOG4I("(%p %p %u)::OnReceive:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -385,14 +441,14 @@ protected:
 	virtual void OnReceive(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnReceive:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+			LOG4I("(%p %p %u)::OnReceive:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	virtual void OnReceiveFrom(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnReceiveFrom(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
+			LOG4I("(%p %p %u)::OnReceiveFrom(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	
@@ -410,7 +466,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnSend:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
+				LOG4I("(%p %p %u)::OnSend:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -418,14 +474,14 @@ protected:
 	virtual void OnSend(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnSend:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+			LOG4I("(%p %p %u)::OnSend:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	virtual void OnSendTo(const char* lpBuf, int nBufLen, const SOCKADDR* lpSockAddr, int nSockAddrLen, int nFlags)
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnSendTo(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
+			LOG4I("(%p %p %u)::OnSendTo(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen,str,64), nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 	
@@ -443,7 +499,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnOOB:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
+				LOG4I("(%p %p %u)::OnOOB:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -451,7 +507,7 @@ protected:
 	virtual void OnOOB(const char* lpBuf, int nBufLen, int nFlags)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnOOB:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
+			LOG4I("(%p %p %u)::OnOOB:%d %.*s", ServiceEx::service(), this, (SOCKET)*this, nBufLen, std::min<>(nBufLen,19), lpBuf);
 		}
 	}
 
@@ -469,7 +525,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnAccept:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
+				LOG4I("(%p %p %u)::OnAccept:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -478,7 +534,7 @@ protected:
 	{
 		if(IsDebug()) {
 			char str[64] = {0};
-			PRINTF("(%p %p %u)::OnAccept(%s):%u", ServiceEx::service(), this, (SOCKET)*this, lpSockAddr?SockAddr2Str(lpSockAddr,nSockAddrLen,str,64):"", Sock);
+			LOG4I("(%p %p %u)::OnAccept(%s):%u", ServiceEx::service(), this, (SOCKET)*this, lpSockAddr?SockAddr2Str(lpSockAddr,nSockAddrLen,str,64):"", Sock);
 		}
 	}
 
@@ -509,7 +565,7 @@ protected:
 	{
 		if(!IsNonBlockError(nErrorCode)) {
 			if(IsDebug()) {
-				PRINTF("(%p %p %u)::OnConnect:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
+				LOG4I("(%p %p %u)::OnConnect:%d", ServiceEx::service(), this, (SOCKET)*this, nErrorCode);
 			}
 			Trigger(FD_CLOSE,nErrorCode);
 		}
@@ -530,7 +586,7 @@ protected:
 	virtual void OnClose(int nErrorCode)
 	{
 		if(IsDebug()) {
-			PRINTF("(%p %p %u)::OnClose:%d %s", ServiceEx::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
+			LOG4I("(%p %p %u)::OnClose:%d %s", ServiceEx::service(), this, (SOCKET)*this, nErrorCode, GetErrorMessage(nErrorCode));
 		}
 	}
 
@@ -862,7 +918,7 @@ public:
 	} 
 
 	inline bool IsActive(uint32_t* millis = nullptr) const {
-		//PRINTF("IsActive delay=%d repeat=%d", delay.count(), repeat);
+		//LOG4D("IsActive delay=%d repeat=%d", delay.count(), repeat);
 		if(delay > 0 && repeat >= 0) {
 			uint32_t elapse = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-time).count();
 			if(elapse > delay) {
@@ -1110,10 +1166,10 @@ public:
 		hints.ai_socktype = nSockType;
 		hints.ai_flags = AI_PASSIVE;
 		struct addrinfo* result = nullptr;
-		int ret = XSocket::Socket::GetAddrInfo(lpszHostAddress, nullptr, &hints, &result);
+		int ret = this->GetAddrInfo(lpszHostAddress, nullptr, &hints, &result);
 		if(ret) {
-			int nErrorCode = GetLastError();
-			PRINTF("%s Error=%d:%s", "GetAddrInfo", nErrorCode, GetErrorMessage(nErrorCode));
+			int nErrorCode = this->GetLastError();
+			LOG4D("%s Error=%d:%s", "GetAddrInfo", nErrorCode, this->GetErrorMessage(nErrorCode));
 			return INVALID_SOCKET;
 		}
 		return Open(result);
@@ -1127,7 +1183,7 @@ public:
 			for(addrinfo* ai_next = ai_current_; ai_next; ai_next = ai_next->ai_next)
 			{
 				char buf[64] = {0};
-				PRINTF("%s", XSocket::Socket::SockAddr2IpStr(ai_next->ai_addr, ai_next->ai_addrlen, buf, 64));
+				LOG4D("%s", XSocket::Socket::SockAddr2IpStr(ai_next->ai_addr, ai_next->ai_addrlen, buf, 64));
 			}
 #endif
 			return Base::Open(ai_current_->ai_family, ai_current_->ai_socktype, ai_current_->ai_protocol);
@@ -1990,7 +2046,7 @@ protected:
 	{
 		//测试下还能不能再接收SOCKET
 		if (SockManager::AddSocket(NULL) < 0) {
-			PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
+			LOG4E("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
 			XSocket::Socket::Close(Sock);
 			return;
 		}
@@ -2001,7 +2057,7 @@ protected:
 		if (pos >= 0) {
 			//
 		} else {
-			PRINTF("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
+			LOG4E("The connection was refused by the computer running select server because the maximum number of sessions has been exceeded.");
 			sock_ptr->Trigger(FD_CLOSE
 #ifdef WIN32
 							  , WSAECONNABORTED

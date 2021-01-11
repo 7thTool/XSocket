@@ -172,13 +172,13 @@ public:
 #if USE_UDP
 	inline void PostBuf(const char* lpBuf, int nBufLen, const SockAddrType& addr, int nFlags = 0)
 	{
-		PRINTF("PostBuf:%.*s", nBufLen, lpBuf);
+		LOG4D("PostBuf:%.*s", nBufLen, lpBuf);
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,addr,nFlags));
 	}
 #else
 	inline void PostBuf(const char* lpBuf, int nBufLen, int nFlags = 0)
 	{
-		PRINTF("PostBuf:%.*s", nBufLen, lpBuf);
+		LOG4D("PostBuf:%.*s", nBufLen, lpBuf);
 		Post(Event(this,FD_WRITE,lpBuf,nBufLen,nFlags));
 	}
 #endif
@@ -189,7 +189,7 @@ public:
 			if(!IsSocket()) {
 				return;
 			}
-			PRINTF("SendBuf:%.*s", evt.buf.size(), evt.buf.c_str());
+			LOG4D("SendBuf:%.*s", evt.buf.size(), evt.buf.c_str());
 #if USE_UDP
 			SendBuf(evt.buf.c_str(),evt.buf.size(),evt.addr);
 #else

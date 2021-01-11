@@ -338,11 +338,11 @@ int Socket::WritePair(SOCKET Sock, const char* lpBuf, int nBufLen)
 
 SOCKET Socket::Create(int nSockAf /* =AF_INET */, int nSockType /* = SOCK_STREAM */, int nSockProtocol /* = 0 */)
 {
-#if 1
+#ifdef _DEBUG
 	SOCKET Sock = socket(nSockAf, nSockType, nSockProtocol);
 	if(!IsSocket(Sock)) {
 			int nErrorCode = GetLastError();
-			PRINTF("%s Error=%d:%s", "socket", nErrorCode, GetErrorMessage(nErrorCode));
+			LOG4D("%s Error=%d:%s", "socket", nErrorCode, GetErrorMessage(nErrorCode));
 	}
 	return Sock;
 #else

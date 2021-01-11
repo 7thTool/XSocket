@@ -225,34 +225,34 @@ typedef unsigned char byte;
 
 //DATE TIME [日志级别] [标识] 内容
 
-#ifndef XSOCKET_LOGOUT
-#define XSOCKET_LOGOUT(format,...) printf(format "\n", ##__VA_ARGS__)
+#ifndef LOGOUT
+#define LOGOUT(format,...) printf(format "\n", ##__VA_ARGS__)
 #endif//
 
-#ifndef XSOCKET_LOG4E 
-#define XSOCKET_LOG4E(format,...) XSOCKET_LOGOUT("[ERROR] [%s:%d] " format, __FILE__, __LINE__, ##__VA_ARGS__)
+#ifndef LOG4E 
+#define LOG4E(format,...) LOGOUT("[ERROR] [%s:%d] " format, __FILE__, __LINE__, ##__VA_ARGS__)
 #endif//
 
-#ifndef XSOCKET_LOG4W 
-#define XSOCKET_LOG4W(format,...) XSOCKET_LOGOUT("[WARN] " format, ##__VA_ARGS__)
+#ifndef LOG4W 
+#define LOG4W(format,...) LOGOUT("[WARN] " format, ##__VA_ARGS__)
 #endif//
 
-#ifndef XSOCKET_LOG4I 
-#define XSOCKET_LOG4I(format,...) XSOCKET_LOGOUT("[INFO] " format, ##__VA_ARGS__)
+#ifndef LOG4I 
+#define LOG4I(format,...) LOGOUT("[INFO] " format, ##__VA_ARGS__)
 #endif//
 
-#ifndef XSOCKET_LOG4D 
-#define XSOCKET_LOG4D(format,...) XSOCKET_LOGOUT("[DEBUG] [%s] " format, __FUNCTION__, ##__VA_ARGS__)
+#ifndef LOG4D 
+#ifdef _DEBUG
+#define LOG4D(format,...) LOGOUT("[DEBUG] [%s] " format, __FUNCTION__, ##__VA_ARGS__)
+#else 
+#define LOG4D(format,...) 
 #endif//
-
-#ifndef PRINTF
-#define PRINTF XSOCKET_LOG4D
 #endif//
 
 #ifndef ASSERT
 #include <assert.h>
 #ifdef _DEBUG
-#define ASSERT(exp) do { if(!(exp)) { XSOCKET_LOG4E("ASSERT"); } assert(exp); } while(0)
+#define ASSERT(exp) do { if(!(exp)) { LOG4E("ASSERT"); } assert(exp); } while(0)
 #else
 #define ASSERT(exp) 
 #endif
@@ -261,7 +261,7 @@ typedef unsigned char byte;
 #ifndef ENSURE
 #ifdef _DEBUG
 #include <assert.h>
-#define ENSURE(exp) do { if(!(exp)) { XSOCKET_LOG4E("ENSURE"); } assert(exp); } while(0)
+#define ENSURE(exp) do { if(!(exp)) { LOG4E("ENSURE"); } assert(exp); } while(0)
 #else
 #define ENSURE(exp) 
 #endif

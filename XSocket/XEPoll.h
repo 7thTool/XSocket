@@ -113,7 +113,7 @@ public:
 		if(epfd_) {
 			evfd_ = eventfd(0, EFD_NONBLOCK);
 			if(!evfd_) {
-        		PRINTF("create event fd failed, errno(%d): %s\n", errno, strerror(errno));
+        		LOG4E("create event fd failed, errno(%d): %s\n", errno, strerror(errno));
 			} else {
 				struct epoll_event event = {0};
 				event.data.u64 = EPOLL_EVENT_POS_EVENT;
@@ -123,7 +123,7 @@ public:
 			//if(socketpair(AF_UNIX, SOCK_STREAM, 0, evfd_pair_) == -1) { //OK
 			if(pipe(evfd_pair_) == -1) { //OK
 			//if(Socket::CreatePair(AF_UNIX, SOCK_STREAM, 0, evfd_pair_) == -1) { //OK
-        		PRINTF("create fd pair failed, errno(%d): %s\n", errno, strerror(errno));
+        		LOG4E("create fd pair failed, errno(%d): %s\n", errno, strerror(errno));
     		} else {
 				struct epoll_event event = {0};
 				event.data.u64 = EPOLL_EVENT_POS_PAIR;
@@ -132,7 +132,7 @@ public:
 			}
 			timerfd_ = timerfd_create(CLOCK_REALTIME, O_NONBLOCK);
 			if(timerfd_ == -1) {
-				PRINTF("timerfd_create failed, errno(%d): %s\n", errno, strerror(errno));
+				LOG4E("timerfd_create failed, errno(%d): %s\n", errno, strerror(errno));
 			} else {
 				struct epoll_event event = {0};
 				event.data.u64 = EPOLL_EVENT_POS_TIMER;
@@ -211,7 +211,7 @@ protected:
 	//
 	virtual void OnNotifyData(void* data)
 	{
-		//PRINTF("OnNotifyData %p", data);
+		//LOG4D("OnNotifyData %p", data);
 	}
 
 	virtual void OnEPollEvent(const epoll_event& event)
@@ -231,7 +231,7 @@ protected:
 				if(EPOLL_EVENT_POS_EVENT == event.data.u64) {
 					size_t data = 0;
 					if(sizeof(size_t) == read(evfd_, &data, sizeof(data))) {
-						//PRINTF("OnNotify %u", data);
+						//LOG4D("OnNotify %u", data);
 						OnNotify();
 					}
 				} else if(EPOLL_EVENT_POS_PAIR == event.data.u64) {
@@ -242,7 +242,7 @@ protected:
 				} else if(EPOLL_EVENT_POS_TIMER == event.data.u64) {
 					uint64_t data = 0;
 					if(sizeof(uint64_t) == read(timerfd_, &data, sizeof(data))) {
-						//PRINTF("OnTimer %u", data);
+						//LOG4D("OnTimer %u", data);
 						OnTimer();
 					}
 				} else {
@@ -346,7 +346,7 @@ public:
 					if (SOCKET_ERROR != epoll_ctl(Base::epfd_, EPOLL_CTL_ADD, fd, &event)) {
 						//return i;
 					} else {
-						PRINTF("epoll_ctl err:%d", XSocket::Socket::GetLastError());
+						LOG4E("epoll_ctl err:%d", Socket::GetLastError());
 					}
 				}
 				break;
@@ -408,7 +408,7 @@ protected:
 		int nErrorCode = 0;
 #ifdef _DEBUG
 		if (evt & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) {
-			PRINTF("epoll_wait error: fd=%d event=%u", fd, evt);
+			LOG4D("epoll_wait error: fd=%d event=%u", fd, evt);
 		}
 #endif
 		if ((evt & (EPOLLRDHUP | EPOLLERR | EPOLLHUP)) && (evt & (EPOLLIN | EPOLLOUT)) == 0) {

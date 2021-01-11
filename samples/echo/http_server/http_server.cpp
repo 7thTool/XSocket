@@ -187,7 +187,7 @@ protected:
 	/*virtual void OnMessage(const HttpBufferMessage& msg)
 	{
 		if(msg.size())
-			PRINTF("%.19s", msg.data());
+			LOG4D("%.19s", msg.data());
 		HttpResponse rsp;
 		rsp.set_code(200);
 		//msg.field("Content-type")
@@ -301,7 +301,7 @@ protected:
 		ThreadPool::Inst().Post(
 			[http,req] {
 			if(req->size())
-				PRINTF("%.19s", req->data());
+				LOG4D("%.19s", req->data());
 			auto data = req->to_string();
 			std::shared_ptr<HttpResponse> rsp = std::make_shared<HttpResponse>();
 			rsp->set_code(200);
@@ -487,12 +487,12 @@ public:
 
 void test(int & i)
 {
-	PRINTF("test(int & i)");
+	LOG4D("test(int & i)");
 }
 
 void test(int && i)
 {
-	PRINTF("test(int && i)");
+	LOG4D("test(int && i)");
 }
 
 void test_right(int&& i)
@@ -512,9 +512,9 @@ void test_rbtree()
 	//intset.erase(it);//删除后it无效，会抛出异常
 	it = intset.erase(it); //指向下一个有效it
 	if(it != intset.end()) {
-		PRINTF("test_rbtree %d", *it);
+		LOG4D("test_rbtree %d", *it);
 	} else {
-		PRINTF("test_rbtree end");
+		LOG4D("test_rbtree end");
 	}
 }
 
@@ -523,13 +523,13 @@ void test()
 	std::string str("abc");
 	std::ostringstream oss(str, std::ios_base::app);
 	oss << "123";
-	PRINTF("oss=%s str=%s", oss.str().c_str(), str.c_str());
+	LOG4D("oss=%s str=%s", oss.str().c_str(), str.c_str());
 	int i = 10000;
 	test_right(std::move(i));
 	test(-i);
 	test_rbtree();
 	ThreadPool::Inst().Post([]{
-		PRINTF("ThreadPool test");
+		LOG4D("ThreadPool test");
 	});
 }
 

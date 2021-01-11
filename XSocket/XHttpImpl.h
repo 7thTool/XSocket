@@ -1266,7 +1266,7 @@ namespace XSocket {
 
 // 	virtual void OnRecvBuf(const char* lpBuf, int nBufLen, int nFlags)
 // 	{
-// 		//PRINTF("%-79s", lpBuf);
+// 		//LOG4D("%-79s", lpBuf);
 // 		if (IsHttpParseUpgrade()) {
 // #if USE_WEBSOCKET
 // 			if(!IsWSParseDone()) {
@@ -1434,7 +1434,7 @@ namespace XSocket {
 			req_info->rsp_(rsp, msg->is_done());
 			//req_info->rsp_.set_value(rsp);
 			} catch(std::future_error err) {
-				PRINTF("OnMessage %d %s", err.code(), err.what());
+				LOG4W("OnMessage %d %s", err.code(), err.what());
 			} catch(...) {
 				//
 			}
@@ -1487,7 +1487,7 @@ namespace XSocket {
 						req_info->rsp_(rsp, true);
 						//req_info->rsp_.set_value(rsp);
 					} catch(std::future_error err) {
-						PRINTF("OnClose %d %s", err.code(), err.what());
+						LOG4W("OnClose %d %s", err.code(), err.what());
 					} catch(...) {
 						//
 					}

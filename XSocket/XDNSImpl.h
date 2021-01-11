@@ -328,7 +328,7 @@ struct opt_t {
                 qrinfo_t info;
                 ret = readQR(buff,info);
                 if (ret < 0) {
-                    PRINTF("decode Questions failed.");
+                    LOG4D("decode Questions failed.");
                     return -1;
                 }
                 qrs_.emplace_back(info);
@@ -338,7 +338,7 @@ struct opt_t {
                 rrinfo_t info;
                 ret = readRR(buff,info);
                 if (ret < 0) {
-                    PRINTF("decode AnswerRRs failed.");
+                    LOG4D("decode AnswerRRs failed.");
                     return -1;
                 }
                 rrs_[RR_AN].emplace_back(info);
@@ -348,7 +348,7 @@ struct opt_t {
                 rrinfo_t info;
                 ret = readRR(buff,info);
                 if (ret < 0) {
-                    PRINTF("decode AuthorityRRs failed.");
+                    LOG4D("decode AuthorityRRs failed.");
                     return -1;
                 }
                 rrs_[RR_NS].emplace_back(info);
@@ -358,7 +358,7 @@ struct opt_t {
                 rrinfo_t info;
                 ret = readRR(buff,info);
                 if (ret < 0) {
-                    PRINTF("decode AdditionalRRs failed.");
+                    LOG4D("decode AdditionalRRs failed.");
                     return -1;
                 }
                 rrs_[RR_AD].emplace_back(info);
@@ -387,7 +387,7 @@ struct opt_t {
                 const qrinfo_t& info = qrs_[i];
                 ret = writeQR(buff,info);
                 if (ret < 0) {
-                    PRINTF("encode Questions failed.");
+                    LOG4D("encode Questions failed.");
                     return -1;
                 }
             }
@@ -395,7 +395,7 @@ struct opt_t {
                 const rrinfo_t& info = rrs_[RR_AN][i];
                 ret = writeRR(buff,info);
                 if (ret < 0) {
-                    PRINTF("encode AnswerRRs failed.");
+                    LOG4D("encode AnswerRRs failed.");
                     return -1;
                 }
             }
@@ -403,7 +403,7 @@ struct opt_t {
                 const rrinfo_t& info = rrs_[RR_NS][i];
                 ret = writeRR(buff,info);
                 if (ret < 0) {
-                    PRINTF("encode AuthorityRRs failed.");
+                    LOG4D("encode AuthorityRRs failed.");
                     return -1;
                 }
             }
@@ -411,7 +411,7 @@ struct opt_t {
                 const rrinfo_t& info = rrs_[RR_AD][i];
                 ret = writeRR(buff,info);
                 if (ret < 0) {
-                    PRINTF("encode AdditionalRRs failed.");
+                    LOG4D("encode AdditionalRRs failed.");
                     return -1;
                 }
             }
@@ -467,7 +467,7 @@ struct opt_t {
                     }
                     buff.reset(offset);
                     if (!buff.readable()) {
-                        PRINTF("length is not enough");
+                        LOG4D("length is not enough");
                         return -1;
                     }
                     is_compressed = 1;
@@ -485,7 +485,7 @@ struct opt_t {
                 }
 
                 if (buff.readable() < len) {
-                    PRINTF("length is not enough");
+                    LOG4D("length is not enough");
                     return -1;
                 }
 
@@ -493,7 +493,7 @@ struct opt_t {
                     /* copy sub string */
                     copy_len = (len < size - output_len) ? len : size - 1 - output_len;
                     if (copy_len > buff.readable()) {
-                        PRINTF("length is not enough");
+                        LOG4D("length is not enough");
                         return -1;
                     }
                     buff.read(output, copy_len);
@@ -595,7 +595,7 @@ struct opt_t {
             uint8_t *start = (uint8_t*)buff.reader();
 
             if (ercode != 0) {
-                PRINTF("extend rcode invalid.");
+                LOG4D("extend rcode invalid.");
                 return -1;
             }
 
@@ -607,7 +607,7 @@ struct opt_t {
                 opt_len = buff.readInt16();
 
                 if (buff.readable() < opt_len) {
-                    PRINTF("read opt data failed, opt_code = %d, opt_le = %d", opt_code, opt_len);
+                    LOG4D("read opt data failed, opt_code = %d, opt_le = %d", opt_code, opt_len);
                     return -1;
                 }
 
@@ -631,8 +631,8 @@ struct opt_t {
 
                     buff.read((char*)ecs.addr, len);
 
-                    PRINTF("ECS: family:%d, source_prefix:%d, scope_prefix:%d, len:%d", ecs.family, ecs.source_prefix, ecs.scope_prefix, len);
-                    PRINTF("%d.%d.%d.%d", ecs.addr[0], ecs.addr[1], ecs.addr[2], ecs.addr[3]);
+                    LOG4D("ECS: family:%d, source_prefix:%d, scope_prefix:%d, len:%d", ecs.family, ecs.source_prefix, ecs.scope_prefix, len);
+                    LOG4D("%d.%d.%d.%d", ecs.addr[0], ecs.addr[1], ecs.addr[2], ecs.addr[3]);
 
                     size_t old_len = out.data_.size();
                     out.data_.resize(old_len+sizeof(ecs));
@@ -640,7 +640,7 @@ struct opt_t {
                 } break;
                 default: {
                     buff.retrieve(opt_len);
-                    PRINTF("DNS opt type = %d not supported", opt_code);
+                    LOG4D("DNS opt type = %d not supported", opt_code);
                 } break;
                 }
             }
@@ -667,12 +667,12 @@ struct opt_t {
             */
             ret = readDomain(buff, out.name_);
             if (ret < 0) {
-                PRINTF("readDomain failed.");
+                LOG4D("readDomain failed.");
                 return -1;
             }
 
             if (buff.readable() < 4) {
-                PRINTF("left length is not enough, %s.", out.name_.c_str());
+                LOG4D("left length is not enough, %s.", out.name_.c_str());
                 return -1;
             }
 
@@ -700,12 +700,12 @@ struct opt_t {
             readQR(buff, out);
             size_t left = buff.readable();
             if (left < 0) {
-                PRINTF("decode qr head failed.");
+                LOG4D("decode qr head failed.");
                 return -1;
             }
 
             if (left < 4) {
-                PRINTF("left length is not enough.");
+                LOG4D("left length is not enough.");
                 return -1;
             }
             out.ttl_ = buff.readInt32();
@@ -729,12 +729,12 @@ struct opt_t {
                 return -1;
             }
             if(buff.readable() <  2) {
-                 PRINTF("decode data length failed");
+                 LOG4D("decode data length failed");
                 return -1;
             }
             size_t data_len = buff.readInt16();
             if(buff.readable() < data_len) {
-                PRINTF("decode data failed");
+                LOG4D("decode data failed");
                 return -1;
             }
 	        uint8_t *start = (uint8_t*)buff.reader();
@@ -784,12 +784,12 @@ struct opt_t {
                 uint8_t *opt_start = (uint8_t*)buff.reader();
                 ret = readOpt(buff, out, data_len);
                 if (ret < 0) {
-                    PRINTF("decode opt failed");
+                    LOG4D("decode opt failed");
                     return -1;
                 }
 
                 if ((uint8_t*)buff.reader() - opt_start != data_len) {
-                    PRINTF("opt length mismatch");
+                    LOG4D("opt length mismatch");
                     return -1;
                 }
 
@@ -806,7 +806,7 @@ struct opt_t {
             }
 
             if ((uint8_t*)buff.reader() - start != data_len) {
-                PRINTF("length mismatch");
+                LOG4D("length mismatch");
                 return -1;
             }
 
@@ -924,7 +924,7 @@ protected:
     {
         /* not answer, return error */
         if (msg.Head().QR != DNS::QR_RESPONSE) {
-            PRINTF("message type error.");
+            LOG4D("message type error.");
             return;
         }
     }

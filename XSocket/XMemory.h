@@ -82,7 +82,7 @@ namespace XSocket {
 
 				//num : 是指内存单元的个数， unit_size : 是指单个内存单元大小
 				Block(const size_t& num, const size_t& unit_size):total_size(num*unit_size),free_num(num),next_pos(0),next_ptr(0) {
-					PRINTF("Block(size_t num = %ld, unit_size = %ld)", num, unit_size);
+					LOG4D("Block(size_t num = %ld, unit_size = %ld)", num, unit_size);
 					//初始都是自由内存，让它们记住自己被分配后，下一个可分配内存的位置,形成位置环路，0指向位置1，最后指向位置0
 					char* p = data;
 					for(size_t i=1; i<num; i++) {
@@ -93,7 +93,7 @@ namespace XSocket {
 				} 
 
 				~Block(){
-					PRINTF("~Block(size_t num = %ld, unit_size = %ld)", free_num, total_size/free_num);
+					LOG4D("~Block(size_t num = %ld, unit_size = %ld)", free_num, total_size/free_num);
 				} 
 			}; 
 		private: 
@@ -104,7 +104,7 @@ namespace XSocket {
 
 			void FreeBlock()//销毁内存
 			{ 
-				//PRINTF("FreeBlock");
+				//LOG4D("FreeBlock");
 				Block* block_ptr = first_ptr_;
 				while(block_ptr)  {
 					first_ptr_ = block_ptr->next_ptr;
@@ -123,7 +123,7 @@ namespace XSocket {
 				} else {
 					unit_size_ = MEMPOOL_ALIGNMENT;
 				}
-				PRINTF("Memory(unit_size_=%d, init_num_=%d, grow_num_=%d", unit_size_, init_num_, grow_num_);
+				LOG4D("Memory(unit_size_=%d, init_num_=%d, grow_num_=%d", unit_size_, init_num_, grow_num_);
 			} 
 
 			~Memory()
@@ -153,7 +153,7 @@ namespace XSocket {
 					char* pfree = block_ptr->data + (block_ptr->next_pos * unit_size_);
 					block_ptr->next_pos = *((size_t*)pfree);	//下一个可分配的内存位置
 					block_ptr->free_num--;
-					//PRINTF("New[%d]", block_ptr->free_num);
+					//LOG4D("New[%d]", block_ptr->free_num);
 					return (void*)pfree;
 				}
 				return nullptr;
@@ -181,7 +181,7 @@ namespace XSocket {
 							//保留最后一块内存块,这样也能避免后面有重新new内存块
 						}
 					}
-					//PRINTF("Delete[%d]", block_ptr->free_num);
+					//LOG4D("Delete[%d]", block_ptr->free_num);
 				} else {
 					ASSERT(0);
 				}

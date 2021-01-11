@@ -54,7 +54,7 @@ bool ServiceEx::OnStart()
 	bool rlt = Service::OnStart();
 	s_thread_service_ = this;
 #ifdef _DEBUG
-	PRINTF("thread id=%s, service=%p", tostr(std::this_thread::get_id()).c_str(), s_thread_service_);
+	LOG4D("thread id=%s, service=%p", tostr(std::this_thread::get_id()).c_str(), s_thread_service_);
 #endif
 	return rlt;
 }
@@ -63,39 +63,39 @@ bool ServiceEx::OnStart()
 ///SocketEx
 ///
 
-std::future<struct addrinfo*> SocketEx::AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints)
-{
-	return std::async( //std::launch::async|std::launch::deferred,
-	//return ThreadPool::Inst().Post(
-		[hostname, service, hints] {
-			struct addrinfo *res = nullptr;
-			GetAddrInfo(hostname, service, hints, &res);
-			return res;
-		});
-#if 0
-		std::future_status status;
-		do {
-			status = result.wait_for(std::chrono::milliseconds(10));
-			switch (status)
-			{
-			case std::future_status::ready:
-				PRINTF("AsyncGetAddrInfo Ready...");
-				break;
-			case std::future_status::timeout:
-				PRINTF("AsyncGetAddrInfo Wait...");
-				break;
-			case std::future_status::deferred:
-				PRINTF("AsyncGetAddrInfo Deferred...");
-				break;
-			default:
-				break;
-			}
+// std::future<struct addrinfo*> SocketEx::AsyncGetAddrInfo( const char *hostname, const char *service, const struct addrinfo *hints)
+// {
+// 	return std::async( //std::launch::async|std::launch::deferred,
+// 	//return ThreadPool::Inst().Post(
+// 		[hostname, service, hints] {
+// 			struct addrinfo *res = nullptr;
+// 			GetAddrInfo(hostname, service, hints, &res);
+// 			return res;
+// 		});
+// #if 0
+// 		std::future_status status;
+// 		do {
+// 			status = result.wait_for(std::chrono::milliseconds(10));
+// 			switch (status)
+// 			{
+// 			case std::future_status::ready:
+// 				PRINTF("AsyncGetAddrInfo Ready...");
+// 				break;
+// 			case std::future_status::timeout:
+// 				PRINTF("AsyncGetAddrInfo Wait...");
+// 				break;
+// 			case std::future_status::deferred:
+// 				PRINTF("AsyncGetAddrInfo Deferred...");
+// 				break;
+// 			default:
+// 				break;
+// 			}
 
-		} while (status != std::future_status::ready);
-		struct addrinfo *ai_result = result.get();
-#endif //
-	   //return result;
-}
+// 		} while (status != std::future_status::ready);
+// 		struct addrinfo *ai_result = result.get();
+// #endif //
+// 	   //return result;
+// }
 
 SocketEx::SocketEx()
 :Base()
@@ -103,12 +103,12 @@ SocketEx::SocketEx()
 #ifdef _DEBUG
 ,flags_(SOCKET_FLAG_DEBUG)
 #else
-,flags_(SOCKET_FLAG_DEBUG)
+,flags_(0)
 #endif
 ,event_(0)
 {
 #ifdef _DEBUG
-	PRINTF("new Socket %p", this);
+	LOG4D("new Socket %p", this);
 #endif
 }
 
@@ -116,7 +116,7 @@ SocketEx::~SocketEx()
 {
 	ASSERT(!IsSocket());
 #ifdef _DEBUG
-	PRINTF("delete Socket %p %u", this, sock_);
+	LOG4D("delete Socket %p %u", this, sock_);
 	role_ = SOCKET_ROLE_NONE;
 	event_ = 0;
 #endif
@@ -144,7 +144,7 @@ SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 			if (EWOULDBLOCK == err) {
 				
 			} else {
-				PRINTF("WSAIoctl(SIO_UDP_CONNRESET) Error: %d", err);
+				LOG4D("WSAIoctl(SIO_UDP_CONNRESET) Error: %d", err);
 			}
 		}
 #endif//
@@ -153,37 +153,37 @@ SOCKET SocketEx::Open(int nSockAf, int nSockType, int nSockProtocol)
 	return Sock;
 }
 
-SOCKET SocketEx::Attach(SOCKET Sock, int Role)
-{
-	SOCKET oSock = Base::Attach(Sock);
-	if(Role != SOCKET_ROLE_NONE) {
-		OnRole(Role);
-	}
-	role_ = Role;
-	return oSock;
-}
+// SOCKET SocketEx::Attach(SOCKET Sock, int Role)
+// {
+// 	SOCKET oSock = Base::Attach(Sock);
+// 	if(Role != SOCKET_ROLE_NONE) {
+// 		OnRole(Role);
+// 	}
+// 	role_ = Role;
+// 	return oSock;
+// }
 
-SOCKET SocketEx::Detach()
-{
-	return Attach(INVALID_SOCKET,SOCKET_ROLE_NONE);
-}
+// SOCKET SocketEx::Detach()
+// {
+// 	return Attach(INVALID_SOCKET,SOCKET_ROLE_NONE);
+// }
 
-int SocketEx::ShutDown(int nHow)
-{
-	return Base::ShutDown(nHow);
-}
+// int SocketEx::ShutDown(int nHow)
+// {
+// 	return Base::ShutDown(nHow);
+// }
 
-int SocketEx::Close()
-{
-	if(IsSocket()) {
-		if(IsDebug()) {
-			PRINTF("Close Socket %p %u", this, (SOCKET)*this);
-		}
-		event_ = 0;
-		return Base::Close(Detach());
-	}
-	return 0;
-}
+// int SocketEx::Close()
+// {
+// 	if(IsSocket()) {
+// 		if(IsDebug()) {
+// 			LOG4I("Close Socket %p %u", this, (SOCKET)*this);
+// 		}
+// 		event_ = 0;
+// 		return Base::Close(Detach());
+// 	}
+// 	return 0;
+// }
 
 // int SocketEx::Bind(const char* lpszHostAddress, unsigned short nHostPort)
 // {
@@ -202,48 +202,48 @@ int SocketEx::Close()
 // 	return Bind((SOCKADDR*)&sockAddr, sizeof(sockAddr));
 // }
 
-int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
-{
-	//SectionLocker Lock(&m_Section);
-	ASSERT(IsSocket());
-	int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
-	if(IsDebug()) {
-		char str[260] = {0};
-		PRINTF("Bind Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
-	}
-	return rlt;
-}
+// int SocketEx::Bind(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+// {
+// 	//SectionLocker Lock(&m_Section);
+// 	ASSERT(IsSocket());
+// 	int rlt = Base::Bind(lpSockAddr,nSockAddrLen);
+// 	if(IsDebug()) {
+// 		char str[260] = {0};
+// 		LOG4I("Bind Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
+// 	}
+// 	return rlt;
+// }
 
-int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
-{
-	//SectionLocker Lock(&m_Section);
-	ASSERT(IsSocket());
-	OnRole(SOCKET_ROLE_CONNECT);
-	role_ = SOCKET_ROLE_CONNECT;
-	event_ |= FD_CONNECT;
-	SetNonBlock();//设为非阻塞模式
-	int rlt = Base::Connect(lpSockAddr, nSockAddrLen);
-	if(IsDebug()) {
-		char str[260] = {0};
-		PRINTF("Connect Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
-	}
-	return rlt;
-}
+// int SocketEx::Connect(const SOCKADDR* lpSockAddr, int nSockAddrLen)
+// {
+// 	//SectionLocker Lock(&m_Section);
+// 	ASSERT(IsSocket());
+// 	OnRole(SOCKET_ROLE_CONNECT);
+// 	role_ = SOCKET_ROLE_CONNECT;
+// 	event_ |= FD_CONNECT;
+// 	SetNonBlock();//设为非阻塞模式
+// 	int rlt = Base::Connect(lpSockAddr, nSockAddrLen);
+// 	if(IsDebug()) {
+// 		char str[260] = {0};
+// 		LOG4I("Connect Socket %p %u addr=%s rlt=%s", this, (SOCKET)*this, SockAddr2Str(lpSockAddr,nSockAddrLen, str, 260), GetErrorMessage(GetLastError()));
+// 	}
+// 	return rlt;
+// }
 
-int SocketEx::Listen(int nConnectionBacklog)
-{
-	//SectionLocker Lock(&m_Section);
-	ASSERT(IsSocket());
-	OnRole(SOCKET_ROLE_LISTEN);
-	role_ = SOCKET_ROLE_LISTEN;
-	event_ |= FD_ACCEPT;
-	SetNonBlock();//设为非阻塞模式
-	int rlt = Base::Listen(nConnectionBacklog);
-	if(IsDebug()) {
-		PRINTF("Listen Socket %p %u cnt=%d rlt=%s", this, (SOCKET)*this, nConnectionBacklog, GetErrorMessage(GetLastError()));
-	}
-	return rlt;
-}
+// int SocketEx::Listen(int nConnectionBacklog)
+// {
+// 	//SectionLocker Lock(&m_Section);
+// 	ASSERT(IsSocket());
+// 	OnRole(SOCKET_ROLE_LISTEN);
+// 	role_ = SOCKET_ROLE_LISTEN;
+// 	event_ |= FD_ACCEPT;
+// 	SetNonBlock();//设为非阻塞模式
+// 	int rlt = Base::Listen(nConnectionBacklog);
+// 	if(IsDebug()) {
+// 		LOG4I("Listen Socket %p %u cnt=%d rlt=%s", this, (SOCKET)*this, nConnectionBacklog, GetErrorMessage(GetLastError()));
+// 	}
+// 	return rlt;
+// }
 
 // SOCKET SocketEx::Accept(SOCKADDR* lpSockAddr, int* lpSockAddrLen)
 // {

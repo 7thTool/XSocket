@@ -141,7 +141,7 @@ protected:
 	virtual void OnMessage(const std::shared_ptr<Message>& msg)
 	{
 		// if(msg->size())
-		// 	PRINTF("%.19s", msg->data());
+		// 	LOG4D("%.19s", msg->data());
 		Base::OnMessage(msg);
 	}
 
@@ -155,7 +155,7 @@ protected:
 #if USE_WEBSOCKET
 	virtual void OnWSMessage(const char* lpBuf, int nBufLen, int nFlags)
 	{
-		PRINTF("%d %.19s", nBufLen, lpBuf);
+		LOG4D("%d %.19s", nBufLen, lpBuf);
 		SendWSBuf("hello.", 6, SOCKET_PACKET_OP_TEXT|SOCKET_PACKET_FLAG_FINAL);
 	}
 #endif
@@ -166,7 +166,7 @@ protected:
 #if USE_WEBSOCKET
 		SendWSUpgrade("localhost");
 #else
-		//PRINTF("%s",http_get_raw.c_str());
+		//LOG4D("%s",http_get_raw.c_str());
 		//SendBuf(http_get_raw.c_str(),http_get_raw.size(),0);
 #endif
 	}
@@ -182,7 +182,7 @@ protected:
 #if USE_WEBSOCKET
 		SendWSUpgrade("localhost");
 #else
-		/*PRINTF("%s",http_get_raw.c_str());
+		/*LOG4D("%s",http_get_raw.c_str());
 		HttpParser parser;
 		int nParseLen = http_get_raw.size();
 		parser.ParseBuf(http_get_raw.c_str(),nParseLen);
@@ -220,9 +220,9 @@ public:
 		tt = std::mktime(std::localtime(&tt));
 		tt = HttpMessage::gm2localtime(HttpMessage::local2gmtime(tt));
 		auto strgmt = HttpMessage::gmtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT"); //0时区
-		PRINTF("%s",strgmt.c_str());
-		PRINTF("%s",HttpMessage::localtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT").c_str()); //8时区
-		PRINTF("%s",HttpMessage::httptime2str(HttpMessage::str2httptime(strgmt.c_str())).c_str());
+		LOG4D("%s",strgmt.c_str());
+		LOG4D("%s",HttpMessage::localtime2str(tt, "%a, %d %b %Y %H:%M:%S GMT").c_str()); //8时区
+		LOG4D("%s",HttpMessage::httptime2str(HttpMessage::str2httptime(strgmt.c_str())).c_str());
 		c.resize(DEFAULT_CLIENT_COUNT);
 		for(int i=0;i<DEFAULT_CLIENT_COUNT;i++)
 		{
@@ -241,7 +241,7 @@ public:
 			req_info->req_.set_url("/test/echo");
 			req_info->req_.set_field("Accept-Encoding", "gzip");
 			req_info->rsp_ = [] (std::shared_ptr<HttpResponse> rsp, bool last) {
-				PRINTF("%s",rsp->to_string().c_str());
+				LOG4D("%s",rsp->to_string().c_str());
 			};
 			c[i]->PostHttpRequest(req_info);
 #endif
