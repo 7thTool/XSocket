@@ -109,7 +109,7 @@ public:
 		// 	if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
 		// 					&GuidAcceptEx, sizeof(GuidAcceptEx),
 		// 					&lpfnAcceptEx, sizeof(lpfnAcceptEx), &dwBytes, NULL, NULL)) {
-		// 		PRINTF("WSAIoctl AcceptEx is failed. Error=%d", GetLastError());
+		// 		LOG4D("WSAIoctl AcceptEx is failed. Error=%d", GetLastError());
 		// 		break;
 		// 	}
 		// 	// 获取GetAcceptExSockAddrs函数指针
@@ -118,7 +118,7 @@ public:
 		// 	if (0 != WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
 		// 					&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
 		// 					&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
-		// 		PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d", GetLastError());
+		// 		LOG4D("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d", GetLastError());
 		// 		break;
 		// 	}
 		// 	//获得ConnectEx 函数的指针
@@ -127,7 +127,7 @@ public:
 		// 	if (SOCKET_ERROR == WSAIoctl(Sock, SIO_GET_EXTENSION_FUNCTION_POINTER,
 		// 		&GuidConnectEx, sizeof(GuidConnectEx ),
 		// 		&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
-		// 		PRINTF("WSAIoctl ConnectEx is failed. Error=%d", GetLastError());
+		// 		LOG4D("WSAIoctl ConnectEx is failed. Error=%d", GetLastError());
 		// 		break;
 		// 	}
 		// } while(false);
@@ -190,7 +190,7 @@ public:
 				int nError = GetLastError();
 				char szErrorMessage[1024] = {0};
 				GetErrorMessage(nError, szErrorMessage, 1024);
-				PRINTF("WSAConnectByName is failed. Error=%d:%s", nError, szErrorMessage);
+				LOG4D("WSAConnectByName is failed. Error=%d:%s", nError, szErrorMessage);
 				return SOCKET_ERROR;
 			}
 		}
@@ -206,7 +206,7 @@ public:
 				if (SOCKET_ERROR == WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
 					&GuidConnectEx, sizeof(GuidConnectEx ),
 					&lpfnConnectEx, sizeof (lpfnConnectEx), &dwBytes, 0, 0)) {
-					PRINTF("WSAIoctl ConnectEx is failed. Error=%d", GetLastError());
+					LOG4E("WSAIoctl ConnectEx is failed. Error=%d", GetLastError());
 					break;
 				}
 			} while(false);
@@ -261,7 +261,7 @@ public:
 				return 0;
 			} else {
 				int nErrorCode = GetLastError();
-				PRINTF("ConnectEx is failed %d %s", nErrorCode, GetErrorMessage(nErrorCode));
+				LOG4W("ConnectEx is failed %d %s", nErrorCode, GetErrorMessage(nErrorCode));
 				return SOCKET_ERROR;
 			}
 		}
@@ -288,7 +288,7 @@ public:
 			if (0 != WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
 							&GuidAcceptEx, sizeof(GuidAcceptEx),
 							&lpfnAcceptEx, sizeof(lpfnAcceptEx), &dwBytes, NULL, NULL)) {
-				PRINTF("WSAIoctl AcceptEx is failed. Error=%d", GetLastError());
+				LOG4E("WSAIoctl AcceptEx is failed. Error=%d", GetLastError());
 				break;
 			}
 		} while(false);
@@ -319,7 +319,7 @@ public:
 		if(nAccept == 0) {
 			if(WSAGetLastError() != ERROR_IO_PENDING) {
 				DWORD dwError =  GetLastError();
-				PRINTF("AcceptEx is failed. Error=%d",dwError);
+				LOG4E("AcceptEx is failed. Error=%d",dwError);
 				XSocket::Socket::Close(Sock);
 				SetLastError(dwError);
 				return INVALID_SOCKET;
@@ -531,11 +531,11 @@ protected:
 			if (WAIT_TIMEOUT == dwErr) {
 				break;
 			} else {
-				PRINTF("GetQueuedCompletionStatus Error:%s ", Socket::GetErrorMessage(dwErr));
+				LOG4E("GetQueuedCompletionStatus Error:%s ", Socket::GetErrorMessage(dwErr));
 			}
 		} 
 		if (dwTransfer == IOCP_OPERATION_EXIT) { //
-			PRINTF("GetQueuedCompletionStatus Eixt");
+			LOG4I("GetQueuedCompletionStatus Eixt");
 			return;
 		}
 		else if (dwTransfer == IOCP_OPERATION_NOTIFY) { //
@@ -607,10 +607,10 @@ public:
 					ASSERT(hIocp);
 					if (hIocp != INVALID_HANDLE_VALUE) {
 #ifdef _DEBUG
-						PRINTF("CreateIoCompletionPort: %ld by %ld", hIocp, hIocp_);
+						LOG4D("CreateIoCompletionPort: %ld by %ld", hIocp, hIocp_);
 #endif
 					} else {
-						PRINTF("CreateIoCompletionPort Error:%d", ::GetLastError());
+						LOG4E("CreateIoCompletionPort Error:%d", ::GetLastError());
 					}
 					// if (family == AF_INET6) {
 					// 	//uv_tcp_non_ifs_lsp_ipv6 = 1表示IPPROTO_IP协议使用真正地操作系统句柄，没有lsp封装
@@ -706,7 +706,7 @@ protected:
 					return true;
 				}
 				if (!bStatus || !lpOverlapped) {
-					PRINTF("GetQueuedCompletionStatus bStatus=%d lpOverlapped=%p", bStatus, lpOverlapped);
+					LOG4D("GetQueuedCompletionStatus bStatus=%d lpOverlapped=%p", bStatus, lpOverlapped);
 					if (sock_ptr->IsListenSocket()) {
 						int nErrorCode = sock_ptr->GetLastError();
 						sock_ptr->Trigger(FD_ACCEPT, nErrorCode);
@@ -739,7 +739,7 @@ protected:
 							// 	if (0 != WSAIoctl((SOCKET)*this, SIO_GET_EXTENSION_FUNCTION_POINTER,
 							// 					&GuidGetAcceptExSockaddrs, sizeof(GuidGetAcceptExSockaddrs),
 							// 					&lpfnGetAcceptExSockaddrs, sizeof(lpfnGetAcceptExSockaddrs), &dwBytes, NULL, NULL)) {
-							// 		PRINTF("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d", GetLastError());
+							// 		LOG4D("WSAIoctl GetAcceptExSockaddrs is failed. Error=%d", GetLastError());
 							// 		break;
 							// 	}
 							// } while(false);
@@ -791,7 +791,7 @@ protected:
 							}
 						} else {
 							DWORD dwError = WSAGetLastError();
-							PRINTF("GetQueuedCompletionStatus Recv WSAError:%d", dwError);
+							LOG4D("GetQueuedCompletionStatus Recv WSAError:%d", dwError);
 							sock_ptr->Trigger(FD_CLOSE, dwError);
 						}
 					}
@@ -810,7 +810,7 @@ protected:
 							}
 						} else {
 							DWORD dwError = WSAGetLastError();
-							PRINTF("GetQueuedCompletionStatus Send WSAError:%d", dwError);
+							LOG4D("GetQueuedCompletionStatus Send WSAError:%d", dwError);
 							sock_ptr->Trigger(FD_CLOSE, dwError);
 						}
 					}

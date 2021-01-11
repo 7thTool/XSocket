@@ -116,7 +116,7 @@ protected:
 		});
 		TaskID t3 = Post(2000, [this,t2]{
 			Cancel(t2);
-			std::cout << "WorkServicecancel cancel test" << std::endl;
+			std::cout << "WorkService cancel cancel test" << std::endl;
 		});
 		return ret;
 	}
