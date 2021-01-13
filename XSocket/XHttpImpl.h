@@ -792,7 +792,7 @@ namespace XSocket {
 		inline Message& Msg(bool New = false) 
 		{ 
 			if(New) {
-				msg_ = std::make_shared<Message>();
+				msg_ = ObjectPool::make_shared<Message>();
 			}
 			return *msg_;
 		}
@@ -874,11 +874,13 @@ namespace XSocket {
 
 		inline void on_message ()
 		{
+			auto msg = msg_;
+			ASSERT(msg);
 			if(upgrade()) {
 				//收到升级到WEBSOCKET消息
-				holder_->OnUpgrade(msg_);
+				holder_->OnUpgrade(msg);
 			} else {
-				holder_->OnMessage(msg_);
+				holder_->OnMessage(msg);
 			}
 		}
 		
