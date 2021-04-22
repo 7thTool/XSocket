@@ -523,6 +523,7 @@ public:
 			flag(nFlags);
 			addr(lpAddr,nAddrLen);
 			write(lpBuf,nBufLen);
+			return true;
 		}
 		inline void reset() { bufptr_.reset(); }
 
@@ -589,7 +590,7 @@ protected:
 	//接收完整一个包
 	virtual void OnRecvBuf(Buffer& buf)
 	{
-		if(IsDebug()) {
+		if(this->IsDebug()) {
 			char str[64] = {0};
 			PRINTF("(%p %p %u)::OnRecvBuf(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
 		}
@@ -604,7 +605,7 @@ protected:
 	//发送完整一个包
 	virtual void OnSendBuf(Buffer& buf)
 	{
-		if(IsDebug()) {
+		if(this->IsDebug()) {
 			char str[64] = {0};
 			PRINTF("(%p %p %u)::OnSendBuf(%s):%d %.*s", ServiceEx::service(), this, (SOCKET)*this, SockAddr2Str(buf.addr(),buf.addrlen(),str,64), buf.size(), std::min<int>(buf.size(),19), buf.data());
 		}
@@ -776,7 +777,7 @@ public:
 	}
 
 	inline void Trigger(int evt, int nErrorCode = 0) {
-		if(!IsSocket()) { 
+		if(!this->IsSocket()) { 
 			Base::Trigger(evt, nErrorCode);
 			return;
 		}

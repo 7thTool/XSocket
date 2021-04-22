@@ -223,7 +223,7 @@ public:
 	inline void RemoveSelect(int lEvent) { event_ &= ~lEvent; }
 	inline bool IsSelect(int evt, bool all = false) {
 		if(all) {
-			return event_ & evt == evt;
+			return (event_ & evt) == evt;
 		} 
 		return event_ & evt;
 	}
@@ -1204,7 +1204,7 @@ public:
 
 	inline bool IsAddrLast() { return ai_current_ && ai_current_->ai_next ? false : true; }
 
-	inline int GetAddrType() { ai_current_?ai_current_->ai_family:Base::GetAddrType(); }
+	inline int GetAddrType() { return ai_current_?ai_current_->ai_family:Base::GetAddrType(); }
 };
 
 /*!

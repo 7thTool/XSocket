@@ -358,7 +358,7 @@ namespace XSocket {
         // CRLFs and =, and any characters not in the encoding table
         // are skiped
 
-        if (szSrc == NULL || nDestLen == NULL)
+        if (szSrc == NULL || nDestLen == 0)
         {
             ASSERT(0);
             return -1;

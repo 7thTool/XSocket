@@ -51,7 +51,7 @@ public:
 	}
 	
 	inline void Select(int lEvent) {
-		if(service()) {  
+		if(this->service()) {  
 			int lAsyncEvent = 0;
 			if(!Base::IsSelect(FD_READ) && (lEvent & FD_READ)) {
 				lAsyncEvent |= FD_READ;
@@ -67,7 +67,7 @@ public:
 			}
 			Base::Select(lEvent);
 			if(lAsyncEvent) {
-				service()->SelectSocket(this,lAsyncEvent);
+				this->service()->SelectSocket(this,lAsyncEvent);
 			}
 			if(lAsyncEvent & FD_READ) {
 				Base::Trigger(FD_READ, 0);
@@ -232,21 +232,21 @@ protected:
 					size_t data = 0;
 					if(sizeof(size_t) == read(evfd_, &data, sizeof(data))) {
 						//LOG4D("OnNotify %u", data);
-						OnNotify();
+						this->OnNotify();
 					}
 				} else if(EPOLL_EVENT_POS_PAIR == event.data.u64) {
 					void* data = 0;
 					if(sizeof(void*) == read(evfd_pair_[0], &data, sizeof(data))) {
-						OnNotifyData(data);
+						this->OnNotifyData(data);
 					}
 				} else if(EPOLL_EVENT_POS_TIMER == event.data.u64) {
 					uint64_t data = 0;
 					if(sizeof(uint64_t) == read(timerfd_, &data, sizeof(data))) {
 						//LOG4D("OnTimer %u", data);
-						OnTimer();
+						this->OnTimer();
 					}
 				} else {
-					OnEPollEvent(event);
+					this->OnEPollEvent(event);
 				}
 			}
 		} else {

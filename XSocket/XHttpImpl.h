@@ -876,7 +876,7 @@ namespace XSocket {
 		{
 			auto msg = msg_;
 			ASSERT(msg);
-			if(upgrade()) {
+			if(this->upgrade()) {
 				//收到升级到WEBSOCKET消息
 				holder_->OnUpgrade(msg);
 			} else {
@@ -1390,7 +1390,7 @@ namespace XSocket {
 
 		void SendHttpRequest(std::shared_ptr<RequestInfo> req)
 		{
-			if(!IsSocket()) {
+			if(!this->IsSocket()) {
 				return;
 			}
 			req_list_.emplace_back(req);
@@ -1481,7 +1481,7 @@ namespace XSocket {
 #endif
 				}
 				rsp->set_code(nErrorCode);
-				rsp->set_reason(GetErrorMessage(nErrorCode));
+				rsp->set_reason(this->GetErrorMessage(nErrorCode));
 				for(size_t i = 0; i < req_list_.size(); i++)
 				{
 					auto req_info = req_list_[i];
@@ -1512,7 +1512,7 @@ namespace XSocket {
 		virtual void OnSSLConnect()
 		{
 			Base::OnSSLConnect();
-			InnerSendHttpRequest();
+			this->InnerSendHttpRequest();
 		}
 
 		virtual void OnConnect(int nErrorCode)
@@ -1751,7 +1751,7 @@ namespace XSocket {
 
 		inline void SendHttpResponse(std::shared_ptr<HttpResponse> rsp)
 		{
-			if(!IsSocket()) {
+			if(!this->IsSocket()) {
 				return;
 			}
 			T* pT = static_cast<T*>(this);
@@ -1767,7 +1767,7 @@ namespace XSocket {
 
 		inline void SendHttpChunk(std::shared_ptr<String> rsp, bool last)
 		{
-			if(!IsSocket()) {
+			if(!this->IsSocket()) {
 				return;
 			}
 			T* pT = static_cast<T*>(this);
